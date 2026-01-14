@@ -72,7 +72,7 @@ void kernel_main() {
   }
 
   delete[] core_counters;
-#if 1
+#if 0
   uint64_t a = rdtsc();
   while (true) {
     asm volatile("lfence");
