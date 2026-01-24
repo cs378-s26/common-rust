@@ -1,2 +1,11 @@
 /build/
 
+
+
+# Added by cargo
+
+/target
+
+buildtool-cache/
+run/
+Cargo.lock
