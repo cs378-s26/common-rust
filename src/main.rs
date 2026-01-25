@@ -3,16 +3,21 @@
 #![feature(decl_macro)]
 
 mod arch;
-mod sync;
+mod heap;
+mod percore;
 mod print;
+mod sync;
+mod thread;
 
 use limine::BaseRevision;
 use limine::request::{
     BootloaderInfoRequest, FirmwareTypeRequest, RequestsEndMarker, RequestsStartMarker,
     RsdpRequest, SmbiosRequest,
 };
+use talc::Span;
 
-use crate::arch::halt;
+use crate::arch::{halt, initialize_mp};
+use crate::heap::init_malloc;
 use crate::print::init_tty;
 
 #[used]
@@ -43,15 +48,44 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
+static mut THE_HEAP: [u8; 6 * 1024 * 1024] = [0; _];
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
     assert!(BASE_REVISION.is_valid());
     init_tty();
-    halt();
+    init_malloc(Span::from_slice(&raw mut THE_HEAP));
+
+    // note we don't need to do anything special here because rust doesn't have init_array
+    // if we wanted once-initialized data, we would either provide our custom mechanism,
+    // or just spam OnceCell
+
+    // handle SSE/FSGSBASE/etc in initialize_mp
+    initialize_mp();
 }
 
 #[cfg(not(test))]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    use crate::arch::halt;
+    use crate::print::StackTrace;
+    use crate::print::kprintln;
+
+    match info.location() {
+        Some(location) => kprintln!(
+            "panic: {}\nat {}:{}:{}\n{}",
+            info.message(),
+            location.file(),
+            location.line(),
+            location.column(),
+            StackTrace::current()
+        ),
+        None => kprintln!(
+            "panic: {}\nat unknown location\n{}",
+            info.message(),
+            StackTrace::current()
+        ),
+    };
+
     halt()
 }

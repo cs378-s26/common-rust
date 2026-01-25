@@ -16,6 +16,7 @@ edition = "2024"
 bitflags = "2.10.0"
 derive_more = { version = "2.0.1", default-features = false, features = ["add_assign", "add", "constructor", "mul", "display", "debug"] }
 flanterm = { version = "0.1.0", path = "flanterm" }
+intrusive-collections = "0.10.0"
 limine = "0.5.0"
 lock_api = "0.4.14"
 spin = "0.10.0"

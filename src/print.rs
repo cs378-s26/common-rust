@@ -1,5 +1,5 @@
 use core::fmt::{
-    Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
+    self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
     UpperHex, Write,
 };
 use core::ptr;
@@ -12,6 +12,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
+use crate::arch::UnwindContext;
 use crate::sync::IntMutex;
 
 #[derive(Clone, Copy)]
@@ -47,6 +48,12 @@ impl Color {
     pub const BRIGHT_PURPLE: Color = Self::from_rgb(0xbb84e5);
     pub const BRIGHT_CYAN: Color = Self::from_rgb(0x6db0ad);
     pub const BRIGHT_WHITE: Color = Self::from_rgb(0xcccccc);
+
+    pub fn format<'a, T>(&self, data: &'a T) -> ANSIFormatter<'a, T> {
+        let mut fmt = ANSIFormatter::new(data);
+        fmt.color(*self);
+        fmt
+    }
 }
 
 bitflags! {
@@ -213,7 +220,8 @@ unsafe impl Send for FlanTermSink {}
 unsafe impl Sync for FlanTermSink {}
 
 // TODO: this is not very rusty
-static LOCK: IntMutex<()> = IntMutex::new(());
+static LOCK_PW: IntMutex<()> = IntMutex::new(());
+pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
 static SERIAL_BACKEND: Once<FlanTermSink> = Once::new();
 
@@ -221,7 +229,7 @@ pub struct PrintWriter;
 
 impl Write for PrintWriter {
     fn write_str(&mut self, s: &str) -> Result {
-        let _guard = LOCK.lock();
+        let _guard = LOCK_PW.lock();
 
         if let Some(ft) = FLAN_TERM_BACKEND.get() {
             for ele in s.bytes() {
@@ -250,7 +258,7 @@ pub fn init_tty() {
         FLAN_TERM_BACKEND.call_once(|| FlanTermSink::from_framebuffer(fb));
     }
 
-    kprintln!("init_tty): tty initialized");
+    kprintln!("init_tty(): tty initialized");
 
     if let Some(res) = FRAMEBUFFER_REQUEST.get_response()
         && let Some(ref fb) = res.framebuffers().next()
@@ -264,6 +272,7 @@ pub fn init_tty() {
 pub macro kprint {
     ($($arg:tt)*) => {{
         use $crate::print::PrintWriter;
+        let _guard = $crate::print::LOCK_KPRINT.lock();
         let _ = PrintWriter.write_fmt(::core::format_args!($($arg)*));
     }}
 }
@@ -278,4 +287,33 @@ pub macro kprintln {
     ($fmt:expr, $($arg:tt)*) => {{
         $crate::print::kprint!(concat!($fmt, "\n"), $($arg)*);
     }}
+}
+
+pub struct StackTrace(UnwindContext);
+
+impl StackTrace {
+    pub fn new(ctx: UnwindContext) -> StackTrace {
+        StackTrace(ctx)
+    }
+
+    #[inline(always)]
+    pub fn current() -> StackTrace {
+        Self::new(unsafe { UnwindContext::get() })
+    }
+}
+
+impl Display for StackTrace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result {
+        let StackTrace(mut context) = *self;
+
+        let mut i = 0;
+        while unsafe { context.valid() } {
+            let addr = unsafe { context.return_address() };
+            writeln!(f, "#{}: {:#016x}", i, addr)?;
+            i += 1;
+            context = unsafe { context.next() };
+        }
+
+        Ok(())
+    }
 }
