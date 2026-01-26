@@ -71,6 +71,21 @@ SECTIONS
 
     _marker_cpu_local_template_end = .;
 
+    /* thread local template */
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    
+    _marker_thread_local_template_start = .;
+
+    .thread_local_template : 
+    {
+        *(.thread_local)
+    } :rodata
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+
+    _marker_thread_local_template_end = .;
+
     _marker_rodata_end = .;
  
     /* data */

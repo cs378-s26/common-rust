@@ -360,9 +360,9 @@ fn gdb(kvm: bool, release: bool) -> Result<()> {
     let (kernel_elf, _) = build_kernel(release)?;
 
     let gdb_args = if kvm {
-        vec!["target remote localhost:1234", "hbreak kmain", "c"]
+        vec!["target remote localhost:1234", "hbreak system_main", "c"]
     } else {
-        vec!["target remote localhost:1234", "b kmain", "c"]
+        vec!["target remote localhost:1234", "b system_main", "c"]
     };
 
     let mut args = vec![path_to_string(&kernel_elf)?];

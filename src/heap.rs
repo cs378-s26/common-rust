@@ -1,9 +1,10 @@
 use core::{
     alloc::{GlobalAlloc, Layout},
     cmp::Ordering,
-    ptr::{NonNull, null_mut},
+    ptr::{NonNull, null_mut, slice_from_raw_parts_mut},
 };
 
+use alloc::boxed::Box;
 use spin::Once;
 use talc::{ErrOnOom, Span, Talc};
 
@@ -86,7 +87,9 @@ unsafe impl GlobalAlloc for GlobalAllocImpl {
 }
 
 #[global_allocator]
-static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl { delegate: Once::new() };
+static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl {
+    delegate: Once::new(),
+};
 
 pub fn init_malloc(memory: Span) {
     kprintln!("mem::init_malloc(): initializing heap");
@@ -96,4 +99,13 @@ pub fn init_malloc(memory: Span) {
         unsafe { talc.claim(memory).expect("failed to initialize talc") };
         IntMutex::new(talc)
     });
+}
+
+pub fn aligned_slice(size: usize, align: usize) -> Box<[u8]> {
+    let ptr = unsafe { alloc::alloc::alloc(Layout::from_size_align(size, align).unwrap()) };
+    unsafe { Box::from_raw(slice_from_raw_parts_mut(ptr, size)) }
+}
+
+pub fn slice_stack_pointer(slice: &[u8]) -> u64 {
+    slice.as_ptr_range().end as u64
 }

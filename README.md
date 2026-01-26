@@ -1,5 +1,11 @@
 # Rust Kernel Template
 
+## Extensions
+
+This builds on the common template with some extra features 
+- interrupts/preemption
+- blocking locks
+
 ## Running
 
 A utility program to launch the kernel is included in this template. You can use the following commands:

@@ -5,7 +5,13 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::arch::{IrqState, irq_disable};
+use spin::Mutex;
+
+use crate::{
+    arch::{IrqState, irq_disable},
+    mp::{MP_STAGE, MPStage},
+    thread::{CAN_YIELD, IS_ON_THREAD, ThreadQueue, can_yield, new_thread_queue, yield_thread_with_action},
+};
 
 pub struct IntMutexGuard<'a, T> {
     mutex: &'a IntMutex<T>,
@@ -41,7 +47,7 @@ pub struct IntMutex<T> {
     // underlying mutex
     lock: AtomicBool,
     data: UnsafeCell<T>,
-    // TODO: we need a blocked queue here
+    blocked: Mutex<Option<ThreadQueue>>,
 }
 
 impl<T> IntMutex<T> {
@@ -49,38 +55,64 @@ impl<T> IntMutex<T> {
         IntMutex {
             lock: AtomicBool::new(false),
             data: UnsafeCell::new(init),
+            blocked: Mutex::new(None),
         }
     }
 
-    fn lock_spin(&self, state: IrqState) {
-        /*if MP_STATE.load(Ordering::Relaxed) == MpState::MPPreempt {
-            // TODO: this is a pre-emptable state, we need to be able to pre-empt.
-            todo!()
-        }*/
+    #[inline(always)]
+    fn attempt_acquire_lock(&self, state: IrqState) -> bool {
+        irq_disable();
 
-        loop {
-            irq_disable();
+        if !self.lock.swap(true, Ordering::Acquire) {
+            // we got the lock
+            return true;
+        }
 
-            if !self.lock.swap(true, Ordering::Acquire) {
-                break;
+        state.restore();
+        false
+    }
+
+    #[inline(always)]
+    fn lock_block_yield(&self, state: IrqState) {
+        while !self.attempt_acquire_lock(state) {
+            while self.lock.load(Ordering::Relaxed) {
+                // attempt to block
+                let mut queue = self.blocked.lock();
+                irq_disable();
+
+                yield_thread_with_action(|thread| {
+                    queue.get_or_insert_with(new_thread_queue).push_back(thread);
+                    // drop queue or else bad things happen
+                    drop(queue);
+                });
             }
+        }
+    }
 
-            state.restore();
-
+    #[inline(always)]
+    fn lock_block_spin(&self, state: IrqState) {
+        while !self.attempt_acquire_lock(state) {
             while self.lock.load(Ordering::Relaxed) {
                 hint::spin_loop();
             }
         }
     }
 
+    #[inline(always)]
+    fn lock_block(&self, state: IrqState) {
+        if can_yield()        {
+            self.lock_block_yield(state);
+        } else {
+            self.lock_block_spin(state);
+        }
+    }
+
     pub fn lock(&self) -> IntMutexGuard<'_, T> {
         let state = IrqState::save();
+        irq_disable();
 
-        if self.lock.swap(true, Ordering::Acquire) {
-            // slow case, we may need to either
-            // 1) preempt out of the thread
-            // 2) spin
-            self.lock_spin(state);
+        if !self.attempt_acquire_lock(state) {
+            self.lock_block(state);
         }
 
         IntMutexGuard {
