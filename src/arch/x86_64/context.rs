@@ -1,9 +1,10 @@
 use core::arch::naked_asm;
 
-use x86::bits64::rflags::RFlags;
+use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::slice_stack_pointer;
+use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
 
+#[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GPRegisters {
     pub rax: u64,
@@ -64,9 +65,73 @@ impl const Default for Context {
     }
 }
 
+#[unsafe(naked)]
+// rdi, rsi, rdx, rcx, r8, r9
+unsafe extern "C" fn jump_to_context(
+    buf: *const GPRegisters,
+    ss: u64,
+    rsp: u64,
+    rflags: u64,
+    cs: u64,
+    rip: u64,
+) -> ! {
+    // TODO: we need to switch ds here
+    // maybe also fs
+    // and maybe everything else
+    // oh well it's up to John Userspace to do this
+    naked_asm!(
+        "pushq %rsi",
+        "pushq %rdx",
+        "pushq %rcx",
+        "pushq %r8",
+        "pushq %r9",
+        // oh god this routine gives me flashbacks
+        "movq (0 * 8)(%rdi), %rax",
+        "movq (1 * 8)(%rdi), %rbx",
+        "movq (2 * 8)(%rdi), %rcx",
+        "movq (3 * 8)(%rdi), %rdx",
+        "movq (4 * 8)(%rdi), %rsi",
+        // "movq (5 * 8)(%rdi), %rdi", MOVED
+        "movq (6 * 8)(%rdi), %rbp",
+        // "movq (7 * 8)(%rdi), %rsp", BAD BAD BAD don't load sp
+        "movq (8 * 8)(%rdi), %r8",
+        "movq (9 * 8)(%rdi), %r9",
+        "movq (10 * 8)(%rdi), %r10",
+        "movq (11 * 8)(%rdi), %r11",
+        "movq (12 * 8)(%rdi), %r12",
+        "movq (13 * 8)(%rdi), %r13",
+        "movq (14 * 8)(%rdi), %r14",
+        "movq (15 * 8)(%rdi), %r15",
+        // don't clobber registers!
+        "movq (5 * 8)(%rdi), %rdi",
+        // why use iretq? because of the woke left. just kidding. it makes handling DPL easier once you get userspace :D
+        "iretq",
+        options(att_syntax)
+    )
+}
+
 impl Context {
     pub fn jump_to(&self) -> ! {
-        todo!()
+        unsafe {
+            jump_to_context(
+                &raw const self.gp,
+                self.ss,
+                self.gp.rsp,
+                self.rflags.bits(),
+                self.cs,
+                self.rip,
+            )
+        }
+    }
+
+    pub fn setup_kthread_context(&mut self) {
+        self.cs = SegmentSelector::new(GlobalDescriptorTable::CS, Ring::Ring0)
+            .bits()
+            .into();
+
+        self.ss = SegmentSelector::new(GlobalDescriptorTable::DS, Ring::Ring0)
+            .bits()
+            .into();
     }
 
     pub fn setup_for_call<T>(
@@ -75,9 +140,11 @@ impl Context {
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
     ) {
+        self.setup_kthread_context();
+
         self.rip = function as usize as u64;
         self.gp.rdi = data as u64;
-        self.gp.rsp = slice_stack_pointer(stack)
+        self.gp.rsp = slice_stack_pointer(stack);
     }
 }
 

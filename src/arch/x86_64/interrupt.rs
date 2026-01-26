@@ -2,6 +2,7 @@ use core::arch::naked_asm;
 
 use x86::{
     bits64::rflags::{self, RFlags},
+    controlregs::cr2,
     irq,
 };
 
@@ -144,6 +145,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     // we are in a very fragile context here
     // we should probably tell the threading module that we are no longer in a thread...
     // TODO: implement that logic :D
-    kprintln!("hi: {} #{}", context.err, context.id);
-    panic!();
+    panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
+        cr2()
+    });
 }

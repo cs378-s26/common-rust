@@ -5,6 +5,7 @@ use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
     mem::forget,
+    ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -71,7 +72,7 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
     }
 
     fn get_base() -> u64 {
-        assert!(IS_ON_THREAD.load(Ordering::Relaxed));
+        assert!(is_on_thread());
         unsafe { get_thread_local_pointer() }
     }
 }
@@ -122,7 +123,7 @@ pub fn new_thread_queue() -> ThreadQueue {
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    pub IS_ON_THREAD: AtomicBool = AtomicBool::new(false);
+    IS_ON_THREAD: AtomicBool = AtomicBool::new(false);
 }
 
 // TODO: alignment here is ABI specific, this needs to be moved into src/arch
@@ -143,11 +144,24 @@ pub fn init_threading() {
     GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
 }
 
-unsafe fn go_to_thread(thread: &Thread) -> ! {
-    assert!(!IS_ON_THREAD.load(Ordering::Relaxed));
-
-    unsafe { set_thread_local_pointer(&thread.tls_addr) };
+fn thread_enter(tls_addr: *const u64) {
+    unsafe { set_thread_local_pointer(tls_addr) };
     IS_ON_THREAD.store(true, Ordering::Relaxed);
+}
+
+fn thread_exit() {
+    IS_ON_THREAD.store(false, Ordering::Relaxed);
+    unsafe { set_thread_local_pointer(ptr::null()) };
+}
+
+pub fn is_on_thread() -> bool {
+    IS_ON_THREAD.load(Ordering::Relaxed)
+}
+
+unsafe fn go_to_thread(thread: &Thread) -> ! {
+    assert!(!is_on_thread());
+
+    thread_enter(&thread.tls_addr);
 
     let ctx = CONTEXT.lock();
     let state: Context = *ctx;
@@ -161,10 +175,10 @@ pub fn set_up_idle() {
         panic!("expected core-local idle to be not init");
     };
 
-    unsafe { set_thread_local_pointer(&IDLE.get().unwrap().tls_addr) };
-    IS_ON_THREAD.store(true, Ordering::Relaxed);
-
-    CTX_GUARD.set(Some(CONTEXT.lock()));
+    thread_enter(&IDLE.get().unwrap().tls_addr);
+    let mut ctx = CONTEXT.lock();
+    ctx.setup_kthread_context();
+    CTX_GUARD.set(Some(ctx));
 }
 
 pub fn poll_tasks() -> ! {
@@ -183,8 +197,8 @@ pub fn poll_tasks() -> ! {
 
         let Some(x) = queue.pop_front() else {
             drop(queue);
-            kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
-            sleep_core();
+            // kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
+            // sleep_core();
             continue;
         };
 
@@ -201,17 +215,17 @@ pub fn can_yield() -> bool {
     // we can only yield if we are in a thread context
     // and the current thread can yield (for instance, idle cannot yield)
     MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
-        && IS_ON_THREAD.load(Ordering::Relaxed)
+        && is_on_thread()
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
 pub fn yield_thread_with_action_to<T: FnOnce(Arc<Thread>)>(pre_suspend_action: T, target: &Thread) {
     assert!(IrqState::save().is_masked());
-
-    if !IS_ON_THREAD.load(Ordering::Relaxed) {
-        panic!("store_context() called when the current core is not in a thread context")
-    }
+    assert!(
+        is_on_thread(),
+        "yield_thread_with_action_to() called when the current core is not in a thread context"
+    );
 
     let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
     let mut context = CTX_GUARD.take().expect("CTX_GUARD not set");
@@ -229,7 +243,7 @@ pub fn yield_thread_with_action_to<T: FnOnce(Arc<Thread>)>(pre_suspend_action: T
         }
     }
 
-    IS_ON_THREAD.store(false, Ordering::Relaxed);
+    thread_exit();
 
     pre_suspend_action(thread);
     drop(context);
@@ -266,12 +280,16 @@ pub fn spawn_thread<T: FnOnce()>(task: T) {
         panic!("unreachable")
     }
 
+    // need to push zero because of SysV abi:
+    // "the stack frame needs to be 16-byte aligned before a call, and 8 byte misaligned after the
+    // call"
     #[unsafe(naked)]
     unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
         naked_asm!(
             "pushq $0",
             "jmp {0}",
-            sym thread_entry::<T>
+            sym thread_entry::<T>,
+            options(att_syntax)
         )
     }
 
@@ -280,7 +298,7 @@ pub fn spawn_thread<T: FnOnce()>(task: T) {
     {
         let mut ctx = CONTEXT.read_for(&thread).lock();
         let task = Box::into_raw(Box::new(task));
-        ctx.setup_for_call(&(*STACK).0, thread_entry, task);
+        ctx.setup_for_call(&(*STACK).0, thread_entry0, task);
     }
 
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);

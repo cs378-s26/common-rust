@@ -27,11 +27,11 @@ use limine::request::{
 use spin::{Barrier, Once};
 use talc::Span;
 
-use crate::arch::{core_count, initialize_mp, irq_enable};
+use crate::arch::{core_count, halt, initialize_mp, irq_enable};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
-use crate::thread::{init_threading, poll_tasks, set_up_idle};
+use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -120,6 +120,13 @@ pub fn kernel_main() -> ! {
         .wait();
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+    spawn_thread(|| {
+        kprintln!("meow from {}", CORE_ID.get());
+        loop {
+            yield_thread();
+        }
+    });
 
     irq_enable();
     poll_tasks();
