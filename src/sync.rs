@@ -9,8 +9,7 @@ use spin::Mutex;
 
 use crate::{
     arch::{IrqState, irq_disable},
-    mp::{MP_STAGE, MPStage},
-    thread::{CAN_YIELD, IS_ON_THREAD, ThreadQueue, can_yield, new_thread_queue, yield_thread_with_action},
+    thread::{ThreadQueue, can_yield, new_thread_queue, yield_thread_with_action},
 };
 
 pub struct IntMutexGuard<'a, T> {
@@ -100,7 +99,7 @@ impl<T> IntMutex<T> {
 
     #[inline(always)]
     fn lock_block(&self, state: IrqState) {
-        if can_yield()        {
+        if can_yield() {
             self.lock_block_yield(state);
         } else {
             self.lock_block_spin(state);

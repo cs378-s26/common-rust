@@ -105,7 +105,3 @@ pub fn aligned_slice(size: usize, align: usize) -> Box<[u8]> {
     let ptr = unsafe { alloc::alloc::alloc(Layout::from_size_align(size, align).unwrap()) };
     unsafe { Box::from_raw(slice_from_raw_parts_mut(ptr, size)) }
 }
-
-pub fn slice_stack_pointer(slice: &[u8]) -> u64 {
-    slice.as_ptr_range().end as u64
-}

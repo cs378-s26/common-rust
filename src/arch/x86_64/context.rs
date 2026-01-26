@@ -2,6 +2,8 @@ use core::arch::naked_asm;
 
 use x86::bits64::rflags::RFlags;
 
+use crate::arch::x86_64::slice_stack_pointer;
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GPRegisters {
     pub rax: u64,
@@ -73,7 +75,9 @@ impl Context {
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
     ) {
-        self.rip = function as u64;
+        self.rip = function as usize as u64;
+        self.gp.rdi = data as u64;
+        self.gp.rsp = slice_stack_pointer(stack)
     }
 }
 

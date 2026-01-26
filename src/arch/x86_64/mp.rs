@@ -1,4 +1,3 @@
-use core::alloc::Layout;
 use core::arch::asm;
 
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -12,10 +11,11 @@ use x86::{
     msr::{IA32_GS_BASE, wrmsr},
 };
 
+use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
-use crate::heap::{aligned_slice, slice_stack_pointer};
+use crate::heap::aligned_slice;
 use crate::kernel_main;
 use crate::{
     arch::x86_64::cpuid::Features,
@@ -123,7 +123,7 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     CPU_ID_PRINT.call_once(|| kprint!("{}", Features(&cpu_id)));
 
     fn allocate_sp(pages: usize) -> u64 {
-        return slice_stack_pointer(unsafe { &*Box::into_raw(aligned_slice(pages * 4096, 4096)) });
+        slice_stack_pointer(unsafe { &*Box::into_raw(aligned_slice(pages * 4096, 4096)) })
     }
 
     let ist = IST.call_once(|| InterruptStackTable {

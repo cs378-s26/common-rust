@@ -1,16 +1,16 @@
 use x86::bits64::registers::rbp;
 
 mod asm;
+mod context;
 mod cpuid;
 mod interrupt;
 mod mp;
-mod context;
 mod tables;
 
 pub use asm::*;
+pub use context::*;
 pub use interrupt::*;
 pub use mp::*;
-pub use context::*;
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
@@ -40,3 +40,6 @@ impl UnwindContext {
     }
 }
 
+fn slice_stack_pointer(slice: &[u8]) -> u64 {
+    slice.as_ptr_range().end as u64
+}
