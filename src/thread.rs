@@ -248,6 +248,12 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
     let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
+    kprintln!(
+        "core {}: pre-leave thread {}",
+        CORE_ID.get(),
+        TID.read_for(&thread).load(Ordering::Relaxed)
+    );
+
     unsafe {
         save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
