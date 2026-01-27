@@ -5,11 +5,11 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use spin::Mutex;
+use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{IrqState, irq_disable},
-    thread::{ThreadQueue, can_yield, new_thread_queue, yield_thread_with_action},
+    thread::{ThreadQueue, can_yield, new_thread_queue, suspend_to_queue},
 };
 
 pub struct IntMutexGuard<'a, T> {
@@ -46,7 +46,15 @@ pub struct IntMutex<T> {
     // underlying mutex
     lock: AtomicBool,
     data: UnsafeCell<T>,
-    blocked: Mutex<Option<ThreadQueue>>,
+    blocked: Once<Mutex<ThreadQueue>>,
+}
+
+pub trait MutexLike<T> {
+    type Guard<'a>: DerefMut<Target = T>
+    where
+        Self: 'a;
+
+    fn lock(&self) -> Self::Guard<'_>;
 }
 
 impl<T> IntMutex<T> {
@@ -54,7 +62,7 @@ impl<T> IntMutex<T> {
         IntMutex {
             lock: AtomicBool::new(false),
             data: UnsafeCell::new(init),
-            blocked: Mutex::new(None),
+            blocked: Once::new(),
         }
     }
 
@@ -76,14 +84,9 @@ impl<T> IntMutex<T> {
         while !self.attempt_acquire_lock(state) {
             while self.lock.load(Ordering::Relaxed) {
                 // attempt to block
-                let mut queue = self.blocked.lock();
+                let queue = self.blocked.call_once(|| Mutex::new(new_thread_queue()));
                 irq_disable();
-
-                yield_thread_with_action(|thread| {
-                    queue.get_or_insert_with(new_thread_queue).push_back(thread);
-                    // drop queue or else bad things happen
-                    drop(queue);
-                });
+                suspend_to_queue(queue);
             }
         }
     }
@@ -108,7 +111,6 @@ impl<T> IntMutex<T> {
 
     pub fn lock(&self) -> IntMutexGuard<'_, T> {
         let state = IrqState::save();
-        irq_disable();
 
         if !self.attempt_acquire_lock(state) {
             self.lock_block(state);
@@ -123,3 +125,25 @@ impl<T> IntMutex<T> {
 
 unsafe impl<T: Send> Send for IntMutex<T> {}
 unsafe impl<T: Send> Sync for IntMutex<T> {}
+
+impl<T> MutexLike<T> for IntMutex<T> {
+    type Guard<'a>
+        = IntMutexGuard<'a, T>
+    where
+        Self: 'a;
+
+    fn lock(&self) -> Self::Guard<'_> {
+        self.lock()
+    }
+}
+
+impl<T> MutexLike<T> for Mutex<T> {
+    type Guard<'a>
+        = MutexGuard<'a, T>
+    where
+        Self: 'a;
+
+    fn lock(&self) -> Self::Guard<'_> {
+        self.lock()
+    }
+}

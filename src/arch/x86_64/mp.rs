@@ -148,7 +148,7 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     let idt = IDT.call_once(InterruptDescriptorTable::new);
 
     unsafe { gdt.load() };
-    unsafe { idt.load() };
+    // unsafe { idt.load() };
 
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads

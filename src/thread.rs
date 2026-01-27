@@ -4,7 +4,6 @@ use core::{
     arch::naked_asm,
     cell::{Cell, OnceCell},
     ffi::c_void,
-    mem::forget,
     ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -16,13 +15,13 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Context, IrqState, get_thread_local_pointer, save_context, set_thread_local_pointer,
-        sleep_core,
+        Context, IrqState, get_thread_local_pointer, irq_disable, irq_enable, save_context,
+        set_thread_local_pointer, sleep_core,
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     print::kprintln,
-    sync::IntMutex,
+    sync::{IntMutex, IntMutexGuard, MutexLike},
 };
 
 pub struct Thread {
@@ -121,14 +120,15 @@ pub fn new_thread_queue() -> ThreadQueue {
 
 // thread scheduling and management
 
-core_local! {
-    pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    IS_ON_THREAD: AtomicBool = AtomicBool::new(false);
-}
-
 // TODO: alignment here is ABI specific, this needs to be moved into src/arch
 #[repr(align(16))]
 struct Stack([u8; 32 * 4096]);
+
+core_local! {
+    pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
+    CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    CTX_SWITCH_STACK: Stack = Stack([0; _]);
+}
 
 thread_local! {
     pub THIS_THREAD: Once<Arc<Thread>> = Once::new();
@@ -144,24 +144,27 @@ pub fn init_threading() {
     GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
 }
 
-fn thread_enter(tls_addr: *const u64) {
-    unsafe { set_thread_local_pointer(tls_addr) };
-    IS_ON_THREAD.store(true, Ordering::Relaxed);
+fn thread_enter(thread: Arc<Thread>) {
+    unsafe { set_thread_local_pointer(&thread.tls_addr) };
+    CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
-    IS_ON_THREAD.store(false, Ordering::Relaxed);
+    CURRENT_THREAD.set(None);
     unsafe { set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
-    IS_ON_THREAD.load(Ordering::Relaxed)
+    let thread = CURRENT_THREAD.take();
+    let res = thread.is_some();
+    CURRENT_THREAD.set(thread);
+    res
 }
 
-unsafe fn go_to_thread(thread: &Thread) -> ! {
+unsafe fn go_to_thread(thread: Arc<Thread>) -> ! {
     assert!(!is_on_thread());
 
-    thread_enter(&thread.tls_addr);
+    thread_enter(thread);
 
     let ctx = CONTEXT.lock();
     let state: Context = *ctx;
@@ -175,7 +178,7 @@ pub fn set_up_idle() {
         panic!("expected core-local idle to be not init");
     };
 
-    thread_enter(&IDLE.get().unwrap().tls_addr);
+    thread_enter(IDLE.get().unwrap().clone());
     let mut ctx = CONTEXT.lock();
     ctx.setup_kthread_context();
     CTX_GUARD.set(Some(ctx));
@@ -188,26 +191,16 @@ pub fn poll_tasks() -> ! {
     );
 
     loop {
-        assert!(
-            !IrqState::save().is_masked(),
-            "irq must be enabled when polling tasks"
-        );
+        let thread = GLOBAL_WORK_QUEUE.get().unwrap().lock().pop_front();
 
-        let mut queue = GLOBAL_WORK_QUEUE.get().unwrap().lock();
-
-        let Some(x) = queue.pop_front() else {
-            drop(queue);
-            // kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
-            // sleep_core();
+        let Some(thread) = thread else {
+            irq_enable(); // unmask interrupts
+            kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
+            sleep_core();
             continue;
         };
 
-        yield_thread_with_action_to(
-            |_| {
-                drop(queue);
-            },
-            &x,
-        );
+        suspend_to_thread(thread);
     }
 }
 
@@ -220,64 +213,61 @@ pub fn can_yield() -> bool {
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
-pub fn yield_thread_with_action_to<T: FnOnce(Arc<Thread>)>(pre_suspend_action: T, target: &Thread) {
-    assert!(IrqState::save().is_masked());
+fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
+    let irq_state = IrqState::save();
+    irq_disable();
+
     assert!(
         is_on_thread(),
         "yield_thread_with_action_to() called when the current core is not in a thread context"
     );
 
     let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
-    let mut context = CTX_GUARD.take().expect("CTX_GUARD not set");
+    let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
     unsafe {
-        // THERE'S NO WAY THIS IS SAFE RIGHT
-        if save_context(&mut context) {
-            // must use forget to prevent double free
-            // TODO: this is really unsafe
-            forget(thread);
-            forget(context);
-            forget(pre_suspend_action);
+        save_context(&(*CTX_SWITCH_STACK).0, context, move || {
+            thread_exit();
+            action(thread);
+            go_to_thread(target);
+        })
+    };
 
-            return;
-        }
-    }
+    irq_state.restore();
+}
 
-    thread_exit();
+#[inline(always)]
+pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
+    // we need to lock *before* suspend_impl, because interrupts are blocked there, and we
+    // shouldn't deal with that
+    let mut queue = queue.lock();
 
-    pre_suspend_action(thread);
-    drop(context);
+    suspend_impl(
+        move |t| {
+            queue.push_back(t);
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
 
-    unsafe { go_to_thread(target) };
+#[inline(always)]
+pub fn suspend_to_thread(thread: Arc<Thread>) {
+    suspend_impl(drop, thread);
 }
 
 #[inline(always)]
 pub fn yield_thread() {
-    yield_thread_with_action_to(|_| {}, IDLE.get().unwrap());
+    suspend_to_thread(IDLE.get().unwrap().clone());
 }
 
-#[inline(always)]
-pub fn yield_thread_to(target: &Thread) {
-    yield_thread_with_action_to(|_| {}, target);
-}
-
-#[inline(always)]
-pub fn yield_thread_with_action<T: FnOnce(Arc<Thread>)>(pre_suspend_action: T) {
-    yield_thread_with_action_to(pre_suspend_action, IDLE.get().unwrap());
-}
-
-pub fn spawn_thread<T: FnOnce()>(task: T) {
+pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
             task();
         }
 
-        yield_thread_with_action(|_| {
-            todo!("implement thread cleanup");
-        });
-
-        panic!("unreachable")
+        todo!()
     }
 
     // need to push zero because of SysV abi:

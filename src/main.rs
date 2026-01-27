@@ -6,6 +6,7 @@
 #![feature(slice_ptr_get)]
 #![feature(box_as_ptr)]
 #![feature(const_range)]
+#![feature(never_type)]
 
 extern crate alloc;
 
@@ -121,12 +122,16 @@ pub fn kernel_main() -> ! {
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-    spawn_thread(|| {
-        kprintln!("meow from {}", CORE_ID.get());
-        loop {
-            yield_thread();
-        }
-    });
+    let initial_core = CORE_ID.get();
+
+    for i in 0..100 {
+        spawn_thread(move || {
+            kprintln!("meow from {}, id={}, initial_core={}", CORE_ID.get(), i, initial_core);
+            loop {
+                yield_thread();
+            }
+        });
+    }
 
     irq_enable();
     poll_tasks();

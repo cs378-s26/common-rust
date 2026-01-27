@@ -1,8 +1,16 @@
-use core::arch::naked_asm;
+use core::{
+    arch::naked_asm,
+    mem::forget,
+    ptr::{self},
+};
 
+use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
+use crate::{
+    arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
+    print::kprintln,
+};
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -148,42 +156,95 @@ impl Context {
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn save_context_impl(buf: *mut u64) -> u64 {
-    // Functions preserve the registers rbx, rsp, rbp, r12, r13, r14, and r15
-    naked_asm!(
-        "movq %rbx, (0 * 8)(%rdi)",
-        "movq %rsp, (1 * 8)(%rdi)",
-        "movq %rbp, (2 * 8)(%rdi)",
-        "movq %r12, (3 * 8)(%rdi)",
-        "movq %r13, (4 * 8)(%rdi)",
-        "movq %r14, (5 * 8)(%rdi)",
-        "movq %r15, (6 * 8)(%rdi)",
-        "leaq .L0(%rip), %rax",
-        "movq %rax, (7 * 8)(%rdi)",
-        "movq $0, %rax",
-        "ret",
-        ".L0:",
-        "movq $1, %rax",
-        "ret",
-        options(att_syntax)
-    )
+#[repr(C)]
+struct StackContextFrame {
+    rip: u64,
+    rflags: u64,
+    r15: u64,
+    r14: u64,
+    r13: u64,
+    r12: u64,
+    rbp: u64,
+    rsp: u64,
+    rbx: u64,
 }
 
-pub unsafe fn save_context(ctx: &mut Context) -> bool {
-    let mut buf = [0u64; 8];
+// TODO: this routine is most definitely NOT SAFE and has a bunch of undefined behavior
+// I should attempt to reduce the amount of UB here, but this is a nontrivial question
+#[allow(unused_assignments)]
+pub unsafe fn save_context<T: FnOnce() -> !>(
+    stack: &[u8],
+    mut ctx: MutexGuard<'static, Context>,
+    mut fwd: T,
+) {
+    unsafe extern "C" fn save_context_save<T: FnOnce() -> !>(
+        frame: *const StackContextFrame,
+        ctx: *mut MutexGuard<'static, Context>,
+        fwd: *mut T,
+    ) -> ! {
+        let frame = unsafe { &*frame };
+        let fwd = unsafe { ptr::read(fwd) };
+        let mut ctx = unsafe { ptr::read(ctx) };
 
-    if unsafe { save_context_impl(buf.as_mut_ptr()) } == 0 {
-        ctx.gp.rbx = buf[0];
-        ctx.gp.rsp = buf[1];
-        ctx.gp.rbp = buf[2];
-        ctx.gp.r12 = buf[3];
-        ctx.gp.r13 = buf[4];
-        ctx.gp.r14 = buf[5];
-        ctx.gp.r15 = buf[6];
-        ctx.rip = buf[7];
-        false
-    } else {
-        true
+        ctx.gp.rbx = frame.rbx;
+        ctx.gp.rsp = frame.rsp;
+        ctx.gp.rbp = frame.rbp;
+        ctx.gp.r12 = frame.r12;
+        ctx.gp.r13 = frame.r13;
+        ctx.gp.r14 = frame.r14;
+        ctx.gp.r15 = frame.r15;
+        ctx.rip = frame.rip;
+        ctx.rflags = RFlags::from_bits(frame.rflags).unwrap();
+
+        drop(ctx);
+
+        fwd();
     }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn save_context_impl<T: FnOnce() -> !>(
+        stack: u64,
+        ctx: *mut MutexGuard<'static, Context>,
+        fwd: *mut T,
+    ) {
+        // Functions preserve the registers rbx, rsp, rbp, r12, r13, r14, and r15
+        // so we should store them in the context, and jump to the handler
+        //
+        // strictly speaking, this is probably not ABI compliant
+        naked_asm!(
+            // use r11 as a scratch register to hold rsp
+            "movq %rsp, %r11",
+            // set rsp = stack, switch off the main call stack
+            "movq %rdi, %rsp",
+
+            // push things onto the *new* stack
+            "pushq %rbx",
+            "pushq %r11", // in lieu of rsp, push r11
+            "pushq %rbp",
+            "pushq %r12",
+            "pushq %r13",
+            "pushq %r14",
+            "pushq %r15",
+            "pushfq",
+            "leaq 1f(%rip), %rax",
+            "pushq %rax",
+
+            "movq %rsp, %rdi",
+
+            // stack frame setup
+            "andq $~15, %rsp",
+            // call into the function, set null as return addr
+            "pushq $0",
+            "jmp {0}",
+            "ud2",
+            "1:",
+            "ret",
+            sym save_context_save::<T>,
+            options(att_syntax)
+        )
+    }
+
+    unsafe { save_context_impl(slice_stack_pointer(stack), &raw mut ctx, &raw mut fwd) };
+    forget(ctx);
+    forget(fwd);
 }

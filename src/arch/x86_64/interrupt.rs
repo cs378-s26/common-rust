@@ -6,8 +6,6 @@ use x86::{
     irq,
 };
 
-use crate::print::kprintln;
-
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
