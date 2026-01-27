@@ -34,7 +34,7 @@ use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{
-    THIS_THREAD, Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
+    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
 };
 
 // some sample limine requests, for no particular reason
@@ -61,7 +61,7 @@ static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
 // heap
 // TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 128 * 1024 * 1024] = [0; _];
+static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
@@ -129,7 +129,7 @@ pub fn kernel_main() -> ! {
 
     let initial_core = CORE_ID.get();
 
-    for i in 0..100 {
+    for i in 0..1000 {
         spawn_thread(move || {
             kprintln!(
                 "meow from {}, id={}, initial_core={}, tid={}",

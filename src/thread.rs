@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use core::{
-    arch::{asm, naked_asm},
+    arch::naked_asm,
     cell::{Cell, OnceCell},
     ffi::c_void,
     ptr,
@@ -134,7 +134,7 @@ pub fn new_thread_queue() -> ThreadQueue {
 
 // TODO: alignment here is ABI specific, this needs to be moved into src/arch
 #[repr(align(16))]
-struct Stack([u8; 32 * 4096]);
+struct Stack([u8; 4 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
@@ -178,12 +178,6 @@ pub fn is_on_thread() -> bool {
 
 unsafe fn go_to_thread(thread: Arc<Thread>) -> ! {
     assert!(!is_on_thread());
-
-    kprintln!(
-        "core {}: enter thread {}",
-        CORE_ID.get(),
-        TID.read_for(&thread).load(Ordering::Relaxed)
-    );
 
     thread_enter(thread);
 
@@ -248,22 +242,9 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
     let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
-    kprintln!(
-        "core {}: pre-leave thread {}",
-        CORE_ID.get(),
-        TID.read_for(&thread).load(Ordering::Relaxed)
-    );
-
     unsafe {
         save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
-
-            kprintln!(
-                "core {}: leave thread {}",
-                CORE_ID.get(),
-                TID.read_for(&thread).load(Ordering::Relaxed)
-            );
-
             action(thread);
             go_to_thread(target);
         })
@@ -326,7 +307,7 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     {
         let mut ctx = CONTEXT.read_for(&thread).lock();
         let task = Box::into_raw(Box::new(task));
-        ctx.setup_for_call(&(*STACK).0, thread_entry0, task);
+        ctx.setup_for_call(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);

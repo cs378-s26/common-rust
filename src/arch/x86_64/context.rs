@@ -180,8 +180,8 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         fwd: *mut T,
     ) -> ! {
         let frame = unsafe { &*frame };
-        let fwd = unsafe { ptr::read(fwd) };
-        let mut ctx = unsafe { ptr::read(ctx) };
+        let fwd: T = unsafe { ptr::read(fwd) };
+        let mut ctx:  MutexGuard<'static, Context> = unsafe { ptr::read(ctx) };
 
         ctx.gp.rbx = frame.rbx;
         ctx.gp.rsp = frame.rsp;
