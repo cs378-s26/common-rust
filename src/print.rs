@@ -12,7 +12,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
-use crate::arch::UnwindContext;
+use crate::arch::{self, SerialCharSink, UnwindContext};
 use crate::sync::IntMutex;
 
 #[derive(Clone, Copy)]
@@ -223,7 +223,7 @@ unsafe impl Sync for FlanTermSink {}
 static LOCK_PW: IntMutex<()> = IntMutex::new(());
 pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
-static SERIAL_BACKEND: Once<FlanTermSink> = Once::new();
+static SERIAL_BACKEND: Once<SerialCharSink> = Once::new();
 
 pub struct PrintWriter;
 
@@ -266,7 +266,7 @@ pub fn init_tty() {
         kprintln!("init_tty(): framebuffer: {}x{}", fb.width(), fb.height());
     }
 
-    // arch::init_tty(SERIAL_BACKEND);
+    arch::init_tty(&SERIAL_BACKEND);
 }
 
 pub macro kprint {

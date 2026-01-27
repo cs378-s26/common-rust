@@ -7,6 +7,7 @@
 #![feature(box_as_ptr)]
 #![feature(const_range)]
 #![feature(never_type)]
+#![feature(sync_unsafe_cell)]
 
 extern crate alloc;
 
@@ -28,11 +29,13 @@ use limine::request::{
 use spin::{Barrier, Once};
 use talc::Span;
 
-use crate::arch::{core_count, halt, initialize_mp, irq_enable};
+use crate::arch::{core_count, initialize_mp, irq_enable};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
-use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use crate::thread::{
+    THIS_THREAD, Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
+};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -114,7 +117,9 @@ pub fn kernel_main() -> ! {
         })
         .wait();
 
-    set_up_idle();
+    let idle = set_up_idle();
+
+    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count()))
@@ -126,7 +131,13 @@ pub fn kernel_main() -> ! {
 
     for i in 0..100 {
         spawn_thread(move || {
-            kprintln!("meow from {}, id={}, initial_core={}", CORE_ID.get(), i, initial_core);
+            kprintln!(
+                "meow from {}, id={}, initial_core={}, tid={}",
+                CORE_ID.get(),
+                i,
+                initial_core,
+                Thread::this_tid()
+            );
             loop {
                 yield_thread();
             }

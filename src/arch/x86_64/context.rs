@@ -7,10 +7,7 @@ use core::{
 use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::{
-    arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
-    print::kprintln,
-};
+use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -196,6 +193,8 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         ctx.rip = frame.rip;
         ctx.rflags = RFlags::from_bits(frame.rflags).unwrap();
 
+        // at this point, it is safe to resume the current thread on any other core
+        // all relevant context variables are moved onto the new temporary stack
         drop(ctx);
 
         fwd();
@@ -245,6 +244,9 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
     }
 
     unsafe { save_context_impl(slice_stack_pointer(stack), &raw mut ctx, &raw mut fwd) };
+
+    // need to forget here because they were moved into save_context_impl, despite the semantics
+    // being a bit weird
     forget(ctx);
     forget(fwd);
 }

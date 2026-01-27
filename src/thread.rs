@@ -1,11 +1,11 @@
 extern crate alloc;
 
 use core::{
-    arch::naked_asm,
+    arch::{asm, naked_asm},
     cell::{Cell, OnceCell},
     ffi::c_void,
     ptr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use alloc::boxed::Box;
@@ -21,7 +21,7 @@ use crate::{
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     print::kprintln,
-    sync::{IntMutex, IntMutexGuard, MutexLike},
+    sync::{IntMutex, MutexLike},
 };
 
 pub struct Thread {
@@ -43,11 +43,23 @@ impl Thread {
 
         THIS_THREAD.read_for(&handle).call_once(|| handle.clone());
 
+        // TODO: relax memory ordering here
+        TID.read_for(&handle)
+            .store(CURR_TID.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+
         handle
     }
 
     pub fn is_same_thread(lhs: &Arc<Thread>, rhs: &Arc<Thread>) -> bool {
         Arc::as_ptr(lhs) == Arc::as_ptr(rhs)
+    }
+
+    pub fn tid(&self) -> u64 {
+        TID.read_for(self).load(Ordering::Relaxed)
+    }
+
+    pub fn this_tid() -> u64 {
+        TID.load(Ordering::Relaxed)
     }
 }
 
@@ -134,9 +146,12 @@ thread_local! {
     pub THIS_THREAD: Once<Arc<Thread>> = Once::new();
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
+    TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
 }
+
+static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
 static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
 
@@ -164,6 +179,12 @@ pub fn is_on_thread() -> bool {
 unsafe fn go_to_thread(thread: Arc<Thread>) -> ! {
     assert!(!is_on_thread());
 
+    kprintln!(
+        "core {}: enter thread {}",
+        CORE_ID.get(),
+        TID.read_for(&thread).load(Ordering::Relaxed)
+    );
+
     thread_enter(thread);
 
     let ctx = CONTEXT.lock();
@@ -173,7 +194,7 @@ unsafe fn go_to_thread(thread: Arc<Thread>) -> ! {
     state.jump_to();
 }
 
-pub fn set_up_idle() {
+pub fn set_up_idle() -> Arc<Thread> {
     let Ok(_) = IDLE.set(Thread::new()) else {
         panic!("expected core-local idle to be not init");
     };
@@ -182,6 +203,8 @@ pub fn set_up_idle() {
     let mut ctx = CONTEXT.lock();
     ctx.setup_kthread_context();
     CTX_GUARD.set(Some(ctx));
+
+    IDLE.get().unwrap().clone()
 }
 
 pub fn poll_tasks() -> ! {
@@ -228,6 +251,13 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     unsafe {
         save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
+
+            kprintln!(
+                "core {}: leave thread {}",
+                CORE_ID.get(),
+                TID.read_for(&thread).load(Ordering::Relaxed)
+            );
+
             action(thread);
             go_to_thread(target);
         })
@@ -245,6 +275,7 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
     suspend_impl(
         move |t| {
             queue.push_back(t);
+            drop(queue);
         },
         IDLE.get().unwrap().clone(),
     );
@@ -257,7 +288,8 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 
 #[inline(always)]
 pub fn yield_thread() {
-    suspend_to_thread(IDLE.get().unwrap().clone());
+    let queue = GLOBAL_WORK_QUEUE.get().unwrap();
+    suspend_to_queue(queue);
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
