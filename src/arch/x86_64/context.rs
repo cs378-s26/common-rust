@@ -211,6 +211,9 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         //
         // strictly speaking, this is probably not ABI compliant
         naked_asm!(
+            "pushq %rbp",
+            "movq %rsp, %rbp",
+
             // use r11 as a scratch register to hold rsp
             "movq %rsp, %r11",
             // set rsp = stack, switch off the main call stack
@@ -232,11 +235,11 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
 
             // stack frame setup
             "andq $~15, %rsp",
-            // call into the function, set null as return addr
-            "pushq $0",
-            "jmp {0}",
+            "call {0}",
             "ud2",
             "1:",
+
+            "popq %rbp",
             "ret",
             sym save_context_save::<T>,
             options(att_syntax)

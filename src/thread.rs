@@ -2,7 +2,7 @@ extern crate alloc;
 
 use core::{
     arch::naked_asm,
-    cell::{Cell, OnceCell},
+    cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
     ffi::c_void,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
@@ -26,6 +26,7 @@ use crate::{
 
 pub struct Thread {
     pub link: LinkedListAtomicLink,
+    #[allow(unused)]
     pub tls: Box<[u8]>,
     pub tls_addr: u64, // aliased to tls
 }
@@ -140,6 +141,7 @@ core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
     CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
+    LOCAL_WORK_QUEUE: LazyCell<RefCell<ThreadQueue>> = LazyCell::new(|| RefCell::new(new_thread_queue()));
 }
 
 thread_local! {
@@ -157,6 +159,10 @@ static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
 
 pub fn init_threading() {
     GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
+}
+
+pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
+    LOCAL_WORK_QUEUE.borrow_mut()
 }
 
 fn thread_enter(thread: Arc<Thread>) {
@@ -208,6 +214,14 @@ pub fn poll_tasks() -> ! {
     );
 
     loop {
+        loop {
+            let Some(thread) = local_work_queue().pop_front() else {
+                break;
+            };
+
+            suspend_to_thread(thread);
+        }
+
         let thread = GLOBAL_WORK_QUEUE.get().unwrap().lock().pop_front();
 
         let Some(thread) = thread else {
@@ -309,6 +323,8 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         let task = Box::into_raw(Box::new(task));
         ctx.setup_for_call(&STACK.read_for(&thread).0, thread_entry0, task);
     }
+
+    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
 
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
 }

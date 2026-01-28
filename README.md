@@ -23,3 +23,7 @@ The current configuration for `buildtool` only supports `x86_64` on a fairly gen
 Use the `-k` flag to enable KVM, which is fairly close to real hardware as far as the processor is concerned. When running `gdb`, you **must**
 pass in `-k` if and only if the `qemu` instance was started with `-k`. Use `--help` for more options. You can configure the number of cores and
 amount of memory.
+
+## TODO
+
+- fix kernel symbol module generation

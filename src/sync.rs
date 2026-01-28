@@ -5,11 +5,11 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use spin::{Mutex, MutexGuard, Once};
+use spin::{Mutex, MutexGuard, lazy::Lazy};
 
 use crate::{
     arch::{IrqState, irq_disable},
-    thread::{ThreadQueue, can_yield, new_thread_queue, suspend_to_queue},
+    thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
 };
 
 pub struct IntMutexGuard<'a, T> {
@@ -22,6 +22,10 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
         // TODO: wake things up from the queue
         self.mutex.lock.store(false, Ordering::Release);
         self.irq_state.restore();
+
+        if let Some(task) = self.mutex.blocked.lock().pop_front() {
+            local_work_queue().push_back(task);
+        }
     }
 }
 
@@ -46,7 +50,7 @@ pub struct IntMutex<T> {
     // underlying mutex
     lock: AtomicBool,
     data: UnsafeCell<T>,
-    blocked: Once<Mutex<ThreadQueue>>,
+    blocked: Lazy<Mutex<ThreadQueue>>,
 }
 
 pub trait MutexLike<T> {
@@ -62,7 +66,7 @@ impl<T> IntMutex<T> {
         IntMutex {
             lock: AtomicBool::new(false),
             data: UnsafeCell::new(init),
-            blocked: Once::new(),
+            blocked: Lazy::new(|| Mutex::new(new_thread_queue())),
         }
     }
 
@@ -82,9 +86,18 @@ impl<T> IntMutex<T> {
     #[inline(always)]
     fn lock_block_yield(&self, state: IrqState) {
         while !self.attempt_acquire_lock(state) {
+            // TODO: don't hardcode this constant
+            for _ in 0..500 {
+                if !self.lock.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                hint::spin_loop();
+            }
+
             while self.lock.load(Ordering::Relaxed) {
                 // attempt to block
-                let queue = self.blocked.call_once(|| Mutex::new(new_thread_queue()));
+                let queue = &*self.blocked;
                 irq_disable();
                 suspend_to_queue(queue);
             }
