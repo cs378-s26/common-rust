@@ -1,11 +1,9 @@
 /build/
 
+.vim
 
-
-# Added by cargo
-
-/target
-
-buildtool-cache/
-run/
-Cargo.lock
+# rust source tree
+rust/target
+rust/buildtool-cache/
+rust/run/
+rust/Cargo.lock
