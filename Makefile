@@ -117,10 +117,9 @@ HOST_CXXFLAGS = \
     -O2 \
     -Wall -Wextra -Werror \
     -DHOST_BUILD \
-    -pthread \
     -I.
 
-GTEST_LIBS = -lgtest -lgtest_main -pthread
+GTEST_LIBS = -lgtest -lgtest_main
 
 UNIT_TEST_SRCS := $(wildcard tests/unit/test_*.cc)
 UNIT_TEST_OBJS := $(UNIT_TEST_SRCS:tests/unit/%.cc=build/tests/unit/%.o)

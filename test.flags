@@ -4,5 +4,4 @@
 -Wextra
 -Werror
 -DHOST_BUILD
--pthread
 -I.
