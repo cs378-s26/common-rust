@@ -20,7 +20,7 @@ CFLAGS = \
     ${AG_OPT} \
     ${AG_WARN} \
     @common.flags \
-    -std=gnu23
+    -std=gnu2x
 
 CCFLAGS = \
     ${AG_OPT} \
@@ -109,8 +109,104 @@ run: build/kernel.img
         -drive file=build/kernel.img,format=raw \
         -device isa-debug-exit,iobase=0xf4,iosize=0x04 ; exit $$(($$? >> 1))
 
+### UNIT TESTS (these run on the host) ###
+
+HOST_CXX = g++
+HOST_CXXFLAGS = \
+    -std=gnu++23 \
+    -O2 \
+    -Wall -Wextra -Werror \
+    -DHOST_BUILD \
+    -pthread \
+    -I.
+
+GTEST_LIBS = -lgtest -lgtest_main -pthread
+
+UNIT_TEST_SRCS := $(wildcard tests/unit/test_*.cc)
+UNIT_TEST_OBJS := $(UNIT_TEST_SRCS:tests/unit/%.cc=build/tests/unit/%.o)
+
+.PHONY: unit-test
+unit-test: build/unit_tests
+	@echo "Running unit tests..."
+	./build/unit_tests
+
+build/unit_tests: $(UNIT_TEST_OBJS)
+	@mkdir -p build
+	$(HOST_CXX) $(HOST_CXXFLAGS) $^ -o $@ $(GTEST_LIBS)
+
+build/tests/unit/%.o: tests/unit/%.cc
+	@echo "[$@] : $<"
+	@mkdir -p "$(dir $@)"
+	$(HOST_CXX) $(HOST_CXXFLAGS) -c $< -o $@
+
+#######################
+# Integration Tests   #
+#######################
+
+INTEGRATION_TESTS := threading multicore
+
+.PHONY: integration-test
+integration-test: $(addprefix run-test-,$(INTEGRATION_TESTS))
+
+.PHONY: run-test-%
+run-test-%: build/test_%.img
+	@echo "Running integration test: $*"
+	@qemu-system-x86_64 \
+		-accel $(AG_ACCEL) \
+		-machine q35 \
+		-cpu $(AG_CPU),tsc-freq=1000000000 \
+		-smp $(AG_SMP) \
+		-m 128m \
+		-no-reboot \
+		-nographic \
+		--monitor none \
+		-drive file=$<,format=raw \
+		-device isa-debug-exit,iobase=0xf4,iosize=0x04 ; \
+		EXIT_CODE=$$(($$? >> 1)); \
+		if [ $$EXIT_CODE -eq 0 ]; then \
+			echo "PASS: $*"; \
+		else \
+			echo "FAIL: $* (exit code $$EXIT_CODE)"; \
+			exit 1; \
+		fi
+
+# Build integration test image (uses test file instead of kernel_main)
+INTEGRATION_OFILES := $(filter-out build/src/kernel_main.cc.o,$(OFILES))
+
+build/test_%.img: build/test_%/kernel limine/limine ${LIMINE_FILES}
+	@echo "[$@] : $?"
+	rm -f $@
+	dd if=/dev/zero bs=1M seek=8 count=0 of=$@ 2>/dev/null
+	PATH=$$PATH:/usr/sbin:/sbin sgdisk $@ -n 1:2048 -t 1:ef00 -m 1 >/dev/null 2>&1
+	./limine/limine bios-install $@ >/dev/null 2>&1
+	mformat -i $@@@1M
+	mmd -i $@@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
+	mcopy -i $@@@1M build/test_$*/kernel ::/boot/kernel
+	mcopy -i $@@@1M ${LIMINE_FILES} ::/boot/limine
+
+build/test_%/kernel: $(INTEGRATION_OFILES) build/test_%/test.o common.flags Makefile script.ld
+	@echo "[$@] : $?"
+	@mkdir -p "$(dir $@)"
+	$(LD) $(LDFLAGS) $(INTEGRATION_OFILES) build/test_$*/test.o -o $@ -lgcc
+
+build/test_%/test.o: tests/integration/test_%.cc
+	@echo "[$@] : $<"
+	@mkdir -p "$(dir $@)"
+	$(CXX) $(CCFLAGS) $(CPPFLAGS) -c $< -o $@
+
+#######################
+# Combined Test Target#
+#######################
+
+.PHONY: test
+test: unit-test integration-test
+
+.PHONY: clean-tests
+clean-tests:
+	rm -rf build/tests build/test_* build/unit_tests
+
 .PHONY: clean
-clean:
+clean: clean-tests
 	-rm -rf build 
 	-make -C limine clean
 
