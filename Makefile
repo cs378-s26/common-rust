@@ -110,7 +110,6 @@ run: build/kernel.img
         -device isa-debug-exit,iobase=0xf4,iosize=0x04 ; exit $$(($$? >> 1))
 
 ### UNIT TESTS (these run on the host) ###
-
 HOST_CXX = g++
 HOST_CXXFLAGS = \
     -std=gnu++23 \
@@ -138,10 +137,7 @@ build/tests/unit/%.o: tests/unit/%.cc
 	@mkdir -p "$(dir $@)"
 	$(HOST_CXX) $(HOST_CXXFLAGS) -c $< -o $@
 
-#######################
-# Integration Tests   #
-#######################
-
+### INTEGRATION TESTS (these run in QEMU) ###
 INTEGRATION_TESTS := threading multicore
 
 .PHONY: integration-test
@@ -193,10 +189,8 @@ build/test_%/test.o: tests/integration/test_%.cc
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(CCFLAGS) $(CPPFLAGS) -c $< -o $@
 
-#######################
-# Combined Test Target#
-#######################
 
+### Test Targets ###
 .PHONY: test
 test: unit-test integration-test
 
