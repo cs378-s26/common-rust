@@ -27,7 +27,7 @@
 SpinBarrier *impl::start_barrier;
 
 [[noreturn]] void impl::core_main(limine_mp_info *info) {
-  KPRINT("bootstraping core ?\n", info->lapic_id);
+  KPRINT("bootstrapping core ?\n", info->lapic_id);
 
   // Check supported CPU features and enable required ones
   Features features{};
@@ -38,7 +38,7 @@ SpinBarrier *impl::start_barrier;
 
   Thread::bootstrap();
   wrgsbase(uintptr_t(leak(new PerCore(info->lapic_id, rdfsbase()), true)));
-  KPRINT("bootstraped core ?\n", Dec(PerCore::id()));
+  KPRINT("bootstrapped core ?\n", Dec(PerCore::id()));
 
   impl::start_barrier->sync();
 
