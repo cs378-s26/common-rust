@@ -1,0 +1,7 @@
+-std=gnu++23 
+-O2
+-Wall
+-Wextra
+-Werror
+-DHOST_BUILD
+-I.
