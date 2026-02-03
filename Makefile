@@ -16,6 +16,8 @@ AG_ACCEL ?= tcg,thread=multi
 AG_SMP ?= 4
 AG_CPU ?= max
 
+CLANG_FORMAT ?= clang-format
+
 CFLAGS = \
     ${AG_OPT} \
     ${AG_WARN} \
@@ -36,6 +38,9 @@ LDFLAGS = \
     -T script.ld
 
 SRCFILES := $(shell find src -type f 2>/dev/null | sort)
+FORMATFILES := $(shell find src tests -type f \
+    \( -name '*.c' -o -name '*.cc' -o -name '*.h' -o -name '*.hpp' \) \
+    2>/dev/null)
 CFILES := $(filter %.c,$(SRCFILES))
 CCFILES := $(filter %.cc,$(SRCFILES))
 SFILES := $(filter %.S,$(SRCFILES))
@@ -94,7 +99,7 @@ build/kernel.img: Makefile limine/limine build/kernel ${LIMINE_FILES}
 
 
 format:
-	clang-format -i src/*.cc src/*.h
+	$(CLANG_FORMAT) -i $(FORMATFILES)
 
 run: build/kernel.img
 	qemu-system-x86_64 \
