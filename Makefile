@@ -17,6 +17,7 @@ AG_SMP ?= 4
 AG_CPU ?= max
 
 CLANG_FORMAT ?= clang-format
+CLANG_TIDY ?= clang-tidy
 
 CFLAGS = \
     ${AG_OPT} \
@@ -104,6 +105,9 @@ format:
 .PHONY: check
 check:
 	$(CLANG_FORMAT) --dry-run --Werror $(FORMATFILES)
+	$(CLANG_TIDY) $(CCFILES) -- --target=x86_64-pc-none-elf $(CCFLAGS) $(CPPFLAGS)
+# Check C files (targeting x86_64)
+	$(CLANG_TIDY) $(CFILES) -- --target=x86_64-pc-none-elf $(CFLAGS) $(CPPFLAGS)
 
 run: build/kernel.img
 	qemu-system-x86_64 \
