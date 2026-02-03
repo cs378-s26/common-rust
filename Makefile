@@ -101,6 +101,10 @@ build/kernel.img: Makefile limine/limine build/kernel ${LIMINE_FILES}
 format:
 	$(CLANG_FORMAT) -i $(FORMATFILES)
 
+.PHONY: check
+check:
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMATFILES)
+
 run: build/kernel.img
 	qemu-system-x86_64 \
         -accel ${AG_ACCEL} \
