@@ -46,6 +46,7 @@ CFILES := $(filter %.c,$(SRCFILES))
 CCFILES := $(filter %.cc,$(SRCFILES))
 SFILES := $(filter %.S,$(SRCFILES))
 OFILES := $(addprefix build/,$(CFILES:.c=.c.o) $(CCFILES:.cc=.cc.o) $(SFILES:.S=.S.o))
+GCC_INCLUDES := $(shell $(CXX) -E -Wp,-v -xc++ /dev/null 2>&1 | grep '^ /' | sed 's/^ /-isystem /')
 
 .PHONY: all
 all: build/kernel
@@ -105,9 +106,12 @@ format:
 .PHONY: check
 check:
 	$(CLANG_FORMAT) --dry-run --Werror $(FORMATFILES)
-	$(CLANG_TIDY) $(CCFILES) -- --target=x86_64-pc-none-elf $(CCFLAGS) $(CPPFLAGS)
-# Check C files (targeting x86_64)
-	$(CLANG_TIDY) $(CFILES) -- --target=x86_64-pc-none-elf $(CFLAGS) $(CPPFLAGS)
+ifneq ($(strip $(CCFILES)),)
+	$(CLANG_TIDY) $(CCFILES) -- --target=x86_64-pc-none-elf $(CCFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
+endif
+ifneq ($(strip $(CFILES)),)
+	$(CLANG_TIDY) $(CFILES) -header-filter=.* -- --target=x86_64-pc-none-elf $(CFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
+endif
 
 run: build/kernel.img
 	qemu-system-x86_64 \
