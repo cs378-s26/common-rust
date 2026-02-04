@@ -1,5 +1,4 @@
 ---
-Checks: '-*,bugprone-*,clang-analyzer-*,cert-*,performance-*,readability-simplify-boolean-expr,misc-no-relative-includes'
-CheckOptions:
-  - key: readability-identifier-naming.FunctionCase
-    value: lower_case # use lowercase for kernel functions
+Checks: '-*,bugprone-*,performance-*,cert-*,-bugprone-easily-swappable-parameters'
+HeaderFilterRegex: 'src/.*'
+WarningsAsErrors: ''

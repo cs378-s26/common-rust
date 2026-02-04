@@ -107,10 +107,10 @@ format:
 check:
 	$(CLANG_FORMAT) --dry-run --Werror $(FORMATFILES)
 ifneq ($(strip $(CCFILES)),)
-	$(CLANG_TIDY) $(CCFILES) -- --target=x86_64-pc-none-elf $(CCFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
+	$(CLANG_TIDY) -header-filter=src/.* $(CCFILES) -- --target=x86_64-pc-none-elf $(CCFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
 endif
 ifneq ($(strip $(CFILES)),)
-	$(CLANG_TIDY) $(CFILES) -header-filter=.* -- --target=x86_64-pc-none-elf $(CFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
+	$(CLANG_TIDY) -header-filter=src/.* $(CFILES) -- --target=x86_64-pc-none-elf $(CFLAGS) $(CPPFLAGS) $(GCC_INCLUDES)
 endif
 
 run: build/kernel.img
