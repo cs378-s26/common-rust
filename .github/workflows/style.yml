@@ -2,8 +2,8 @@ name: Styling and Linting
 
 on:
   push:
-  pull_request:
     branches: [main]
+  pull_request:
 
 jobs:
   unit-tests:
