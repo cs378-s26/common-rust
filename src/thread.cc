@@ -56,6 +56,7 @@ bool block_impl(bool must, void (*func)(void *), void *arg) {
   return true;
 }
 
+[[noreturn]] [[gnu::force_align_arg_pointer]]
 void thread_entry() {
   if (thread_fun != nullptr) {
     (*thread_fun)();
