@@ -26,7 +26,7 @@ static void test_all_cores_participate() {
   SAY("Test 1: Verify all cores participat\n");
 
   constexpr int MAX_CORES = 16;
-  constexpr int THREADS_PER_CORE = 50;
+  constexpr int THREADS_PER_CORE = 500000;
 
   Atomic<uint64_t> core_seen[MAX_CORES];
   for (int i = 0; i < MAX_CORES; i++) {
