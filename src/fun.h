@@ -15,9 +15,7 @@
 
 #include "debug.h"
 
-template <typename Work> void caller(void *p) {
-  static_cast<Work *>(p)->operator()();
-}
+template <typename Work> void caller(void *p) { static_cast<Work *>(p)->operator()(); }
 
 class Fun {
 public:

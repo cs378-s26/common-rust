@@ -28,12 +28,10 @@ struct Range {
   uint64_t const base;
   uint64_t const length;
 
-  Range(uint64_t base, uint64_t length)
-      : next(nullptr), base(base), length(length) {}
+  Range(uint64_t base, uint64_t length) : next(nullptr), base(base), length(length) {}
 };
 
-[[gnu::section(
-    ".limine_requests")]] static constexpr volatile MemMap limine_memmap{};
+[[gnu::section(".limine_requests")]] static constexpr volatile MemMap limine_memmap{};
 
 #if 0
 static char const *memmap_type_names[] = {"Usable",

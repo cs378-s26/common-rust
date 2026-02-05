@@ -48,12 +48,8 @@ public:
     return *this;
   }
   operator T() const { return __atomic_load_n(&value, __ATOMIC_SEQ_CST); }
-  T fetch_add(T inc) {
-    return __atomic_fetch_add(&value, inc, __ATOMIC_SEQ_CST);
-  }
-  T add_fetch(T inc) {
-    return __atomic_add_fetch(&value, inc, __ATOMIC_SEQ_CST);
-  }
+  T fetch_add(T inc) { return __atomic_fetch_add(&value, inc, __ATOMIC_SEQ_CST); }
+  T add_fetch(T inc) { return __atomic_add_fetch(&value, inc, __ATOMIC_SEQ_CST); }
   void set(T inc) { return __atomic_store_n(&value, inc, __ATOMIC_SEQ_CST); }
   T get(void) { return __atomic_load_n(&value, __ATOMIC_SEQ_CST); }
   T exchange(T v) {

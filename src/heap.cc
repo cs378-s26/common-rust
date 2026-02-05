@@ -110,8 +110,8 @@ void makeTaken(uint64_t i, uint64_t entry_count) {
 void check_leaks() {
   LockGuardP g{theLock};
   if (n_free + n_leak != n_malloc) {
-    SAY("heap leaks: (n_free:?+n_leak:?)==? != n_malloc:?\n", Dec(n_free),
-        Dec(n_leak), Dec(n_free + n_leak), Dec(n_malloc));
+    SAY("heap leaks: (n_free:?+n_leak:?)==? != n_malloc:?\n", Dec(n_free), Dec(n_leak),
+        Dec(n_free + n_leak), Dec(n_malloc));
   }
 }
 
@@ -137,8 +137,7 @@ void init(uintptr_t base, uint64_t bytes) {
   bytes = bytes / 16 * 16;
   ASSERT((bytes % 16) == 0);
 
-  ASSERT(bytes >
-         64); // 16 (start marker) + 32 (one available node) + 16 (end marker)
+  ASSERT(bytes > 64); // 16 (start marker) + 32 (one available node) + 16 (end marker)
 
   KDEBUG("| heap range ? ?\n", base, base + bytes);
 

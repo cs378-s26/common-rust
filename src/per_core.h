@@ -18,8 +18,7 @@
 
 class PerCore {
 public:
-  PerCore(uint64_t lapic_id, uint64_t idle_thread)
-      : lapic_id(lapic_id), idle_thread(idle_thread) {}
+  PerCore(uint64_t lapic_id, uint64_t idle_thread) : lapic_id(lapic_id), idle_thread(idle_thread) {}
   const uint64_t lapic_id;
   const uint64_t idle_thread;
 

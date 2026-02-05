@@ -24,9 +24,7 @@ template <typename T> class Dec {
   const T value;
 
 public:
-  Dec(T const v) : value(v) {
-    static_assert(std::is_integral_v<T>, "Not an integer");
-  }
+  Dec(T const v) : value(v) { static_assert(std::is_integral_v<T>, "Not an integer"); }
 
   template <typename U> friend void do_print(Dec<U> const d);
 };
@@ -89,14 +87,11 @@ inline void do_print(int64_t const v) { do_print(uint64_t(v)); }
 
 inline void do_print(char const *str) { puts(str); }
 
-template <typename T> inline void do_print(T const *p) {
-  do_print(uintptr_t(p));
-}
+template <typename T> inline void do_print(T const *p) { do_print(uintptr_t(p)); }
 
 inline void print(const char *msg) { puts(msg); };
 
-template <typename T, typename... Rest>
-void print(const char *msg, T arg, Rest... args) {
+template <typename T, typename... Rest> void print(const char *msg, T arg, Rest... args) {
   while (true) {
     const char c1 = *msg;
     if (c1 == 0) {
@@ -138,8 +133,7 @@ template <std::size_t Start, std::size_t N> struct StringLiteral {
   }
 };
 
-template <std::size_t N>
-StringLiteral(const char (&)[N]) -> StringLiteral<0, N>;
+template <std::size_t N> StringLiteral(const char (&)[N]) -> StringLiteral<0, N>;
 
 template <StringLiteral str> void xprint() {
   puts(str());
@@ -179,11 +173,10 @@ template <StringLiteral str> [[gnu::noinline]] void kprint() {
 #define KPRINT(str, ...) kprint<str>(__VA_ARGS__)
 #define SAY(str, ...) KPRINT("*** " str, __VA_ARGS__)
 
-#define KDEBUG(str, ...)                                                       \
-  kprint<"[?:?] " str>(__FILE__, Dec(__LINE__), __VA_ARGS__)
+#define KDEBUG(str, ...) kprint<"[?:?] " str>(__FILE__, Dec(__LINE__), __VA_ARGS__)
 
-#define KPANIC(msg, ...)                                                       \
-  do {                                                                         \
-    xprint<"[?:?] " msg>(__FILE__, Dec(__LINE__), __VA_ARGS__);                \
-    shutdown();                                                                \
+#define KPANIC(msg, ...)                                                                           \
+  do {                                                                                             \
+    xprint<"[?:?] " msg>(__FILE__, Dec(__LINE__), __VA_ARGS__);                                    \
+    shutdown();                                                                                    \
   } while (0)

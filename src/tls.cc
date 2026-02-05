@@ -37,11 +37,9 @@ TLS *TLS::create(bool willLeak) {
   using namespace impl;
   const auto base = leak(new uint8_t[tls_size + sizeof(TCB)], willLeak);
 
-  ASSERT((uintptr_t(base) & 0xf) == 0); // guranateed by the heap implementation
-  ASSERT((uintptr_t(&__tls_start__) & 0xf) ==
-         0); // guaranteed by the linker script
-  ASSERT((uintptr_t(&__tls_end__) & 0xf) ==
-         0); // guaranteed by the linker script
+  ASSERT((uintptr_t(base) & 0xf) == 0);           // guranateed by the heap implementation
+  ASSERT((uintptr_t(&__tls_start__) & 0xf) == 0); // guaranteed by the linker script
+  ASSERT((uintptr_t(&__tls_end__) & 0xf) == 0);   // guaranteed by the linker script
 
   TLS *const tls = (TLS *)base;
   TCB *const tcb = tls->tcb();
