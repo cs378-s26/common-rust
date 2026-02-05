@@ -1,0 +1,5 @@
+[alias]
+buildtool = "run -r --package buildtool --"
+
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static"]

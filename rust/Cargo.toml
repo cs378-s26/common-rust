@@ -1,0 +1,32 @@
+[profile.release]
+panic = "abort"
+debug = "full"
+lto = "fat"
+
+[profile.dev]
+panic = "abort"
+debug = "full"
+
+[package]
+name = "kernel-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+atomic_enum = "0.3.0"
+bitflags = "2.10.0"
+derive_more = { version = "2.0.1", default-features = false, features = ["add_assign", "add", "constructor", "mul", "display", "debug"] }
+flanterm = { version = "0.1.0", path = "flanterm" }
+intrusive-collections = "0.10.0"
+limine = "0.5.0"
+lock_api = "0.4.14"
+seq-macro = "0.3.6"
+spin = "0.10.0"
+static_cell = "2.1.1"
+talc = "4.4.3"
+uart_16550 = "0.4.0"
+x86 = "0.52.0"
+
+[workspace]
+members = ["buildtool", "flanterm"]
+
