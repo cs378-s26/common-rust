@@ -31,7 +31,6 @@ CCFLAGS = \
     @common.flags \
     -std=gnu++23
 
-
 LDFLAGS = \
     @common.flags \
     -nostdlib \
