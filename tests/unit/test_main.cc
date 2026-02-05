@@ -11,23 +11,12 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#pragma once
-
-#include "debug.h"
-
-template <typename Work> void caller(void *p) { static_cast<Work *>(p)->operator()(); }
-
-class Fun {
-public:
-  virtual void operator()() = 0;
-  virtual ~Fun() = default;
-};
-
-template <typename Work> class FunImpl : public Fun {
-public:
-  Work work;
-
-  FunImpl(const Work &work) : work(work) {}
-
-  void operator()() override { work(); }
-};
+#include <gtest/gtest.h>
+/*
+    Google Test entry point for kernel unit tests.
+    Initialized and runs all unit tests compiled into the test binary.
+*/
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

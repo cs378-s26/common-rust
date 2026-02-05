@@ -43,11 +43,8 @@ class PPN {
 public:
   uint64_t const ppn;
   explicit constexpr inline PPN(uint64_t ppn) : ppn(ppn) {}
-  explicit constexpr inline PPN(PA pa)
-      : ppn(pa.pa >> PhysMem::LOG_FRAME_SIZE) {}
-  explicit constexpr inline operator PA() const {
-    return PA(ppn << PhysMem::LOG_FRAME_SIZE);
-  }
+  explicit constexpr inline PPN(PA pa) : ppn(pa.pa >> PhysMem::LOG_FRAME_SIZE) {}
+  explicit constexpr inline operator PA() const { return PA(ppn << PhysMem::LOG_FRAME_SIZE); }
 };
 
 extern PhysMem physMem;

@@ -7,3 +7,7 @@ rust/target
 rust/buildtool-cache/
 rust/run/
 rust/Cargo.lock
+
+.vscode/settings.json
+limine/limine.dSYM/Contents/Info.plist
+limine/limine.dSYM/Contents/Resources/Relocations/aarch64/limine.yml

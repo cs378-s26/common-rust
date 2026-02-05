@@ -31,8 +31,7 @@ extern void (*_init_array_end)();
 
 char the_heap[6 * 1024 * 1024];
 
-[[gnu::section(
-    ".limine_requests")]] constexpr volatile BaseRevision base_revision{};
+[[gnu::section(".limine_requests")]] constexpr volatile BaseRevision base_revision{};
 [[gnu::section(".limine_requests")]] constexpr volatile MultiProcessor mp{};
 
 //[[gnu::section(".limine_requests")]] constexpr volatile HHDM limine_hhdm{};
@@ -82,8 +81,7 @@ extern "C" [[noreturn]] void system_main(void) {
   // Run global initializers -- has to be done after initializing the heap //
   ///////////////////////////////////////////////////////////////////////////
 
-  KPRINT("_init_array_start:? _init_array_end:?\n", &_init_array_start,
-         &_init_array_end);
+  KPRINT("_init_array_start:? _init_array_end:?\n", &_init_array_start, &_init_array_end);
 
   std::size_t count = &_init_array_end - &_init_array_start;
   for (std::size_t i = 0; i < count; i++) {
@@ -94,8 +92,8 @@ extern "C" [[noreturn]] void system_main(void) {
   // Wake up other cores //
   /////////////////////////
 
-  KPRINT("has ? cores, flags=?, bsp_lapic_id=?\n", Dec(core_count),
-         mp.response->flags, mp.response->bsp_lapic_id);
+  KPRINT("has ? cores, flags=?, bsp_lapic_id=?\n", Dec(core_count), mp.response->flags,
+         mp.response->bsp_lapic_id);
 
   impl::start_barrier = leak(new SpinBarrier(core_count), true);
 

@@ -21,8 +21,7 @@ namespace limine {
 constexpr uint64_t REVISION = 4;
 
 struct BaseRevision {
-  const uint64_t id[2] = {UINT64_C(0xf9562b2d5c95a6c8),
-                          UINT64_C(0x6a7b384944536bdc)};
+  const uint64_t id[2] = {UINT64_C(0xf9562b2d5c95a6c8), UINT64_C(0x6a7b384944536bdc)};
   uint64_t revision = REVISION;
 
   consteval BaseRevision() {}
