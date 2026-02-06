@@ -42,7 +42,7 @@ use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
-use crate::coroutine::{init_coroutines, spawn_coroutine};
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -95,9 +95,9 @@ async fn async_int(number: u64) -> u64 {
 async fn async_task(argument: u64) {
     for i in 0..4 {
         let n = async_int(i).await;
-        kprintln!("Async loop {}: {}", i, n);
+        kprintln!("Core {} async loop {}: {}", CORE_ID.get(), i, n);
     }
-    kprintln!("Async task complete with argument: {}", argument);
+    kprintln!("Core {} async task complete with argument: {}", CORE_ID.get(), argument);
 }
 
 #[unsafe(no_mangle)]
@@ -150,6 +150,7 @@ pub fn kernel_main() -> ! {
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count());
             init_threading();
+            init_coroutine_queue();
             Barrier::new(core_count())
         })
         .wait();
@@ -158,8 +159,8 @@ pub fn kernel_main() -> ! {
 
     kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
-    init_coroutines();
-    kprintln!("Coroutines initialized.");
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count()))

@@ -79,13 +79,10 @@ fn coroutine_executor() {
     }
 }
 
-// Cores must be initialized before this.
-pub fn init_coroutines() {
+pub fn init_coroutine_queue() {
     GLOBAL_COROUTINE_QUEUE.call_once(|| Mutex::new(VecDeque::new()));
+}
 
-    // Spawn executor threads.
-    let cores = core_count();
-    for _ in 0..cores {
-        spawn_thread(coroutine_executor);
-    }
+pub fn init_coroutine_executor() {
+    spawn_thread(coroutine_executor);
 }
