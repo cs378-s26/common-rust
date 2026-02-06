@@ -78,11 +78,12 @@ struct IntFuture {
 impl Future for IntFuture {
     type Output = u64;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Randomly pend.
         if unsafe { rdtsc() } % 10 == 0 {
             Poll::Ready(self.value)
         } else {
+            cx.waker().wake_by_ref(); // Theoretically, something else wakes this when ready.
             Poll::Pending
         }
     }
