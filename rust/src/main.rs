@@ -18,9 +18,15 @@ mod mp;
 mod print;
 mod sync;
 mod thread;
+mod coroutine;
 
 use core::arch::asm;
 use core::sync::atomic::Ordering;
+
+// For coroutines.
+use core::future::Future;
+use core::pin::Pin;
+use core::task::{Poll, Context};
 
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -36,6 +42,7 @@ use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -62,6 +69,37 @@ static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 // heap
 // TODO: use virtual memory herez
 static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
+
+// For async/await testing. Move if/when we have a better testing setup.
+struct IntFuture {
+    value: u64,
+}
+
+impl Future for IntFuture {
+    type Output = u64;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Randomly pend.
+        if unsafe { rdtsc() } % 10 == 0 {
+            Poll::Ready(self.value)
+        } else {
+            cx.waker().wake_by_ref(); // Theoretically, something else wakes this when ready.
+            Poll::Pending
+        }
+    }
+}
+
+async fn async_int(number: u64) -> u64 {
+    IntFuture { value: number }.await
+}
+
+async fn async_task(argument: u64) {
+    for i in 0..4 {
+        let n = async_int(i).await;
+        kprintln!("Core {} async loop {}: {}", CORE_ID.get(), i, n);
+    }
+    kprintln!("Core {} async task complete with argument: {}", CORE_ID.get(), argument);
+}
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
@@ -113,6 +151,7 @@ pub fn kernel_main() -> ! {
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count());
             init_threading();
+            init_coroutine_queue();
             Barrier::new(core_count())
         })
         .wait();
@@ -120,6 +159,9 @@ pub fn kernel_main() -> ! {
     let idle = set_up_idle();
 
     kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count()))
@@ -147,6 +189,8 @@ pub fn kernel_main() -> ! {
             }
         });
     }
+
+    spawn_coroutine(async_task(1624252));
 
     irq_enable();
     poll_tasks();
