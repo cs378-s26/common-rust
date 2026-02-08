@@ -175,7 +175,9 @@ pub fn kernel_main() -> ! {
         spawn_thread(move || {
             // bad sleep function :D
             let tsc = unsafe { rdtsc() };
-            while unsafe { rdtsc() } < tsc + 100000000 {}
+            while unsafe { rdtsc() } < tsc + 10000000000 {
+                yield_thread();
+            }
 
             kprintln!(
                 "meow from {}, id={}, initial_core={}, tid={}",

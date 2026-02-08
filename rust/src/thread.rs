@@ -219,7 +219,7 @@ pub fn poll_tasks() -> ! {
                 break;
             };
 
-            suspend_to_thread(thread);
+            GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
         }
 
         let thread = GLOBAL_WORK_QUEUE.get().unwrap().lock().pop_front();
