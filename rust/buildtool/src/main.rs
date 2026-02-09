@@ -323,8 +323,8 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
     let mut args = vec![
         "-bios".into(),
         path_to_string(&download_ovmf()?)?,
-        "-hda".into(),
-        path_to_string(&path)?,
+        "-drive".into(),
+        format!("file={},format=raw", path_to_string(&path)?),
         "-no-reboot".into(),
         "-monitor".into(),
         "stdio".into(),

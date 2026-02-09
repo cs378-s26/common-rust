@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 fn main() {
     cc::Build::new()
-        .file("flanterm/src/flanterm.c")
-        .file("flanterm/src/flanterm_backends/fb.c")
-        .include("flanterm/src")
-        .include("flanterm/src/backends")
+        .file("flanterm-c/src/flanterm.c")
+        .file("flanterm-c/src/flanterm_backends/fb.c")
+        .include("flanterm-c/src")
+        .include("flanterm-c/src/backends")
         .flag("-ffreestanding")
         .flag("-fno-omit-frame-pointer")
         .flag("-mno-sse")
@@ -19,7 +19,7 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .use_core()
-        .header("flanterm/src/flanterm_backends/fb.h")
+        .header("flanterm-c/src/flanterm_backends/fb.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .allowlist_item(r"^flanterm_.+$")
         .generate()

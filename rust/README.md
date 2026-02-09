@@ -24,6 +24,8 @@ Use the `-k` flag to enable KVM, which is fairly close to real hardware as far a
 pass in `-k` if and only if the `qemu` instance was started with `-k`. Use `--help` for more options. You can configure the number of cores and
 amount of memory.
 
+**Note:** Your QEMU version **must** be new enough for compatibility with `ovmf.fd`, ideally at least 8.2 (the latest possible with Ubuntu 24.04). 
+
 ## TODO
 
 - fix kernel symbol module generation
