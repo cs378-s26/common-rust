@@ -63,7 +63,7 @@ impl const Default for Context {
                 r15: 0,
             },
             rip: Default::default(),
-            rflags: RFlags::FLAGS_IF,
+            rflags: RFlags::empty(), // RFlags::FLAGS_IF,
             cs: Default::default(),
             ss: Default::default(),
         }
@@ -181,7 +181,7 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
     ) -> ! {
         let frame = unsafe { &*frame };
         let fwd: T = unsafe { ptr::read(fwd) };
-        let mut ctx:  MutexGuard<'static, Context> = unsafe { ptr::read(ctx) };
+        let mut ctx: MutexGuard<'static, Context> = unsafe { ptr::read(ctx) };
 
         ctx.gp.rbx = frame.rbx;
         ctx.gp.rsp = frame.rsp;

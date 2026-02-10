@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod arch;
+mod cmdline;
 mod heap;
 mod local_storage;
 mod mp;
@@ -38,6 +39,7 @@ use talc::Span;
 use x86::time::rdtsc;
 
 use crate::arch::{core_count, initialize_mp, irq_enable};
+use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
@@ -69,6 +71,43 @@ static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 // heap
 // TODO: use virtual memory herez
 static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
+
+fn dump_boot_info() {
+    if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
+        kprintln!("bootloader: {} v{}", res.name(), res.version());
+    }
+
+    if let Some(res) = get_cmdline_text() {
+        kprintln!("cmdline: \"{}\"", res);
+    }
+
+    if let Some(err) = get_cmdline_error() {
+        match err {
+            cmdline::CmdlineError::NoResponse => {
+                kprintln!("warn: no response received for cmdline request")
+            }
+            cmdline::CmdlineError::Utf8Error(err) => {
+                kprintln!("warn: failed to convert cmdline to utf8: {}", err)
+            }
+            cmdline::CmdlineError::ParseError(err) => {
+                kprintln!("warn: failed to parse cmdline: {}", err)
+            }
+        }
+    }
+
+    if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
+        kprintln!(
+            "firmware: {}",
+            match res.firmware_type() {
+                FirmwareType::X86_BIOS => "bios",
+                FirmwareType::UEFI_32 => "efi_32",
+                FirmwareType::UEFI_64 => "efi_64",
+                FirmwareType::SBI => "sbi",
+                _ => "unknown",
+            }
+        );
+    }
+}
 
 // For async/await testing. Move if/when we have a better testing setup.
 struct IntFuture {
@@ -105,6 +144,7 @@ async fn async_task(argument: u64) {
 unsafe extern "C" fn system_main() -> ! {
     assert!(BASE_REVISION.is_valid());
 
+    parse_kernel_cmdline();
     init_tty();
 
     // print some system info
@@ -173,6 +213,8 @@ pub fn kernel_main() -> ! {
 
     for i in 0..1000 {
         spawn_thread(move || {
+            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+
             // bad sleep function :D
             let tsc = unsafe { rdtsc() };
             while unsafe { rdtsc() } < tsc + 10000000000 {

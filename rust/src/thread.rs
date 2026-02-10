@@ -222,7 +222,12 @@ pub fn poll_tasks() -> ! {
             GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
         }
 
-        let thread = GLOBAL_WORK_QUEUE.get().unwrap().lock().pop_front();
+        let thread = {
+            let mut lock = GLOBAL_WORK_QUEUE.get().unwrap().lock();
+            let task = lock.pop_front();
+            drop(lock);
+            task
+        };
 
         let Some(thread) = thread else {
             irq_enable(); // unmask interrupts

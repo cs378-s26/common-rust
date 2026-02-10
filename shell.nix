@@ -18,6 +18,7 @@ pkgs.mkShell rec {
         openssl
         qemu
         wabt
+        gdb
     ];
     RUSTC_VERSION = overrides.toolchain.channel;
     LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];

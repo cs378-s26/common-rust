@@ -26,7 +26,9 @@ static_cell = "2.1.1"
 talc = "4.4.3"
 uart_16550 = "0.4.0"
 x86 = "0.52.0"
+proc-macros = { version = "0.1.0", path = "proc-macros" }
+logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 
 [workspace]
-members = ["buildtool", "flanterm"]
+members = ["buildtool", "flanterm", "proc-macros"]
 
