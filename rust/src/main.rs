@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod arch;
+mod coroutine;
 mod cmdline;
 mod heap;
 mod local_storage;
@@ -19,7 +20,6 @@ mod mp;
 mod print;
 mod sync;
 mod thread;
-mod coroutine;
 
 use core::arch::asm;
 use core::sync::atomic::Ordering;
@@ -27,7 +27,7 @@ use core::sync::atomic::Ordering;
 // For coroutines.
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Poll, Context};
+use core::task::{Context, Poll};
 
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -39,12 +39,12 @@ use talc::Span;
 use x86::time::rdtsc;
 
 use crate::arch::{core_count, initialize_mp, irq_enable};
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -112,6 +112,7 @@ fn dump_boot_info() {
 // For async/await testing. Move if/when we have a better testing setup.
 struct IntFuture {
     value: u64,
+    has_been_polled: bool,
 }
 
 impl Future for IntFuture {
@@ -119,9 +120,10 @@ impl Future for IntFuture {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Randomly pend.
-        if unsafe { rdtsc() } % 10 == 0 {
+        if self.has_been_polled {
             Poll::Ready(self.value)
         } else {
+            self.get_mut().has_been_polled = true;
             cx.waker().wake_by_ref(); // Theoretically, something else wakes this when ready.
             Poll::Pending
         }
@@ -129,7 +131,11 @@ impl Future for IntFuture {
 }
 
 async fn async_int(number: u64) -> u64 {
-    IntFuture { value: number }.await
+    IntFuture {
+        value: number,
+        has_been_polled: false,
+    }
+    .await
 }
 
 async fn async_task(argument: u64) {
@@ -137,7 +143,11 @@ async fn async_task(argument: u64) {
         let n = async_int(i).await;
         kprintln!("Core {} async loop {}: {}", CORE_ID.get(), i, n);
     }
-    kprintln!("Core {} async task complete with argument: {}", CORE_ID.get(), argument);
+    kprintln!(
+        "Core {} async task complete with argument: {}",
+        CORE_ID.get(),
+        argument
+    );
 }
 
 #[unsafe(no_mangle)]
@@ -211,6 +221,8 @@ pub fn kernel_main() -> ! {
 
     let initial_core = CORE_ID.get();
 
+    spawn_coroutine(async_task(1624252));
+
     for i in 0..1000 {
         spawn_thread(move || {
             kprintln!("hi, id={}, initial_core={}", i, initial_core);
@@ -233,8 +245,6 @@ pub fn kernel_main() -> ! {
             }
         });
     }
-
-    spawn_coroutine(async_task(1624252));
 
     irq_enable();
     poll_tasks();

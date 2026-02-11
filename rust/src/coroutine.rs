@@ -2,72 +2,37 @@ use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
-    sync::atomic::{AtomicU64, Ordering::SeqCst},
-    cmp::Ordering,
 };
 
-use alloc::task::Wake;
 use alloc::boxed::Box;
-use alloc::collections::VecDeque;
 use alloc::sync::Arc;
+use alloc::task::Wake;
 
-use intrusive_collections::{RBTreeAtomicLink, RBTree, LinkedList, LinkedListAtomicLink,
-    intrusive_adapter, KeyAdapter};
+use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::{Once, RwLock};
 // TODO: use a blocking RwLock.
 
 use crate::{
-    thread::{spawn_thread, yield_thread},
-    print::kprintln,
     sync::IntMutex,
+    thread::{spawn_thread, yield_thread},
 };
 
-#[repr(transparent)]
-struct TaskId {
-    id: u64,
-}
+// If we decide we want task IDs again:
+// #[repr(transparent)]
+// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// struct TaskId(u64);
 
-impl TaskId {
-    fn new() -> Self {
-        // Increment every new instance.
-        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
-        // kprintln!("Creating coroutine with ID {}.", NEXT_ID.load(SeqCst));
-        TaskId { id: NEXT_ID.fetch_add(1, SeqCst) }
-    }
-}
-
-impl Clone for TaskId {
-    fn clone(&self) -> Self {
-        TaskId { id: self.id }
-    }
-}
-
-impl Copy for TaskId {}
-
-// Ordering for TaskId.
-impl PartialEq for TaskId {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for TaskId {}
-
-impl PartialOrd for TaskId {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TaskId {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.id.cmp(&other.id)
-    }
-}
+// impl TaskId {
+//     fn new() -> Self {
+//         // Increment every new instance.
+//         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+//         // kprintln!("Creating coroutine with ID {}.", NEXT_ID.load(SeqCst));
+//         TaskId(NEXT_ID.fetch_add(1, SeqCst))
+//     }
+// }
 
 pub struct CoroutineTask {
     future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>, // Send so thread-safe.
-    waker: Once<Waker> // Lazy initialization.
 }
 
 impl CoroutineTask {
@@ -75,7 +40,6 @@ impl CoroutineTask {
     pub fn new(future: impl Future<Output = ()> + Send + Sync + 'static) -> CoroutineTask {
         CoroutineTask {
             future: Box::pin(future),
-            waker: Once::new()
         }
     }
 
@@ -86,16 +50,14 @@ impl CoroutineTask {
 
 // Wrapper for intrusive to add RwLock.
 struct CoroutineTaskNode {
-    link: RBTreeAtomicLink,
-    id: TaskId,
-    c: RwLock<CoroutineTask>,
+    link: LinkedListAtomicLink,
+    c: RwLock<CoroutineTask>, // For interior mutability when polling.
 }
 
 impl CoroutineTaskNode {
     pub fn new(future: impl Future<Output = ()> + Send + Sync + 'static) -> Self {
         CoroutineTaskNode {
-            link: RBTreeAtomicLink::new(),
-            id: TaskId::new(),
+            link: LinkedListAtomicLink::new(),
             c: RwLock::new(CoroutineTask::new(future)),
         }
     }
@@ -104,34 +66,29 @@ impl CoroutineTaskNode {
 static GLOBAL_EXECUTOR: Once<Executor> = Once::new();
 
 // Intrusive data structures.
-intrusive_adapter!(CoroutineTreeAdapter = Arc<CoroutineTaskNode>: CoroutineTaskNode { link => RBTreeAtomicLink });
+intrusive_adapter!(CoroutineQueueAdapter = Arc<CoroutineTaskNode>: CoroutineTaskNode { link => LinkedListAtomicLink });
 
-impl<'a> KeyAdapter<'a> for CoroutineTreeAdapter {
-    type Key = &'a TaskId;
+type CoroutineQueue = LinkedList<CoroutineQueueAdapter>;
 
-    fn get_key(&self, task: &'a CoroutineTaskNode) -> Self::Key {
-        &task.id
-    }
-}
-
-type CoroutineTree = RBTree<CoroutineTreeAdapter>;
-
-fn new_coroutine_tree() -> CoroutineTree {
-    CoroutineTree::new(CoroutineTreeAdapter::new())
+fn new_coroutine_queue() -> CoroutineQueue {
+    CoroutineQueue::new(CoroutineQueueAdapter::new())
 }
 
 struct CoroutineWaker {
-    task_id: TaskId,
-    ready_queue: Arc<IntMutex<VecDeque<TaskId>>>,
+    task_node: Arc<CoroutineTaskNode>,
+    ready_queue: Arc<IntMutex<CoroutineQueue>>,
 }
 
 impl CoroutineWaker {
-    fn new(task_id: TaskId, ready_queue: Arc<IntMutex<VecDeque<TaskId>>>) -> Waker {
-        Waker::from(Arc::new(CoroutineWaker { task_id, ready_queue }))
+    fn new(task_node: Arc<CoroutineTaskNode>, ready_queue: Arc<IntMutex<CoroutineQueue>>) -> Waker {
+        Waker::from(Arc::new(CoroutineWaker {
+            task_node,
+            ready_queue,
+        }))
     }
 
     fn wake_task(&self) {
-        self.ready_queue.lock().push_back(self.task_id);
+        self.ready_queue.lock().push_back((&self.task_node).clone());
     }
 }
 
@@ -146,15 +103,13 @@ impl Wake for CoroutineWaker {
 }
 
 struct Executor {
-    tasks: IntMutex<CoroutineTree>,
-    ready_queue: Arc<IntMutex<VecDeque<TaskId>>>,
+    ready_queue: Arc<IntMutex<CoroutineQueue>>,
 }
 
 impl Executor {
     fn new() -> Self {
         Executor {
-            tasks: IntMutex::new(new_coroutine_tree()),
-            ready_queue: Arc::new(IntMutex::new(VecDeque::new())),
+            ready_queue: Arc::new(IntMutex::new(new_coroutine_queue())),
         }
     }
 
@@ -162,59 +117,34 @@ impl Executor {
         const BATCH_SIZE: usize = 20;
         loop {
             for _ in 0..BATCH_SIZE {
-                let task_id = { self.ready_queue.lock().pop_front() };
-                
-                let Some(task_id) = task_id else {
+                let task_node = { self.ready_queue.lock().pop_front() };
+
+                let Some(task_node) = task_node else {
                     break; // Empty queue.
                 };
-                let mut tasks = self.tasks.lock();
-                let mut task_cursor = tasks.find_mut(&task_id);
 
-                let should_remove = match task_cursor.get() {
-                    Some(task) => {
-                        // Get or create waker.
-                        {
-                            let task_writer = task.c.write();
-                            task_writer.waker.call_once(|| CoroutineWaker::new(task.id, Arc::clone(&self.ready_queue)));
-                        }
-                        // Clone to prevent deadlock with writer.
-                        // Are there better ways of doing this?
-                        let waker = {
-                            let task_reader = task.c.read();
-                            task_reader.waker.get().unwrap().clone()
-                        };
-                        let mut context = Context::from_waker(&waker);
+                // Create new waker.
+                let waker = CoroutineWaker::new(task_node.clone(), self.ready_queue.clone());
+                let mut context = Context::from_waker(&waker);
 
-                        match { task.c.write().poll(&mut context) } {
-                            Poll::Ready(()) => true, // Done.
-                            Poll::Pending => false, // Waker will put in ready queue.
-                        }
-                    }
-                    None => false, // Task not found.
-                };
-
-                if should_remove {
-                    task_cursor.remove();
-                }
+                // Make progress.
+                let _ = task_node.c.write().poll(&mut context);
+                // If not ready, waker will put back in queue.
             }
             yield_thread();
         }
     }
 
-    fn spawn_node(&self, task: CoroutineTaskNode) {
-        let task_id = task.id;
-        { self.tasks.lock().insert(Arc::new(task)); }
-        { self.ready_queue.lock().push_back(task_id); }
-    }
-
-    fn spawn_future(&self, future: impl Future<Output = ()> + Send + Sync + 'static) {
+    fn spawn(&self, future: impl Future<Output = ()> + Send + Sync + 'static) {
         let task = CoroutineTaskNode::new(future);
-        self.spawn_node(task);
+        {
+            self.ready_queue.lock().push_back(Arc::new(task))
+        };
     }
 }
 
 pub fn spawn_coroutine(future: impl Future<Output = ()> + Send + Sync + 'static) {
-    GLOBAL_EXECUTOR.get().unwrap().spawn_future(future);
+    GLOBAL_EXECUTOR.get().unwrap().spawn(future);
 }
 
 pub fn init_coroutine_queue() {
