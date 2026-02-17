@@ -20,6 +20,7 @@ mod mp;
 mod print;
 mod sync;
 mod thread;
+mod physical_memory;
 
 use core::arch::asm;
 use core::sync::atomic::Ordering;
@@ -45,6 +46,7 @@ use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use crate::physical_memory::{THE_HEAP};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -67,10 +69,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 fn dump_boot_info() {
     if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
@@ -247,6 +245,7 @@ pub fn kernel_main() -> ! {
     }
 
     irq_enable();
+    // let test_pfh : u64 = unsafe {*(0xB00 as *const u64)};
     poll_tasks();
 }
 

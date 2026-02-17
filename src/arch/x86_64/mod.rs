@@ -18,6 +18,8 @@ pub use mp::*;
 
 use crate::print::CharSink;
 
+pub const PAGE_SIZE: usize = 4096;
+
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
     ptr: *const u64,
