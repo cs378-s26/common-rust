@@ -46,7 +46,7 @@ use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
-use crate::physical_memory::{THE_HEAP};
+use crate::physical_memory::{THE_HEAP, frame_alloc, frame_dealloc};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -244,8 +244,19 @@ pub fn kernel_main() -> ! {
         });
     }
 
+    let frame_1 : u64 = frame_alloc();
+    kprintln!("frame 1: {}", frame_1);
+    let frame_2 : u64 = frame_alloc();
+    kprintln!("frame 2: {}", frame_2);
+    frame_dealloc(frame_1);
+    let frame_3 : u64 = frame_alloc();
+    assert!(frame_1 != frame_3); // implementation dependent!
+    frame_dealloc(frame_2);
+    frame_dealloc(frame_3);
+
     irq_enable();
     // let test_pfh : u64 = unsafe {*(0xB00 as *const u64)};
+
     poll_tasks();
 }
 
