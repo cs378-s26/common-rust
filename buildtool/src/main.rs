@@ -33,13 +33,23 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug, Copy)]
+enum Target {
+    X86_64,
+    Aarch64,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Image {
+        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        target: Target,
         #[arg(short = 'r', long)]
         release: bool,
     },
     Qemu {
+        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        target: Target,
         #[arg(short = 'k', long)]
         kvm: bool,
         #[arg(short = 'j', long, default_value_t = 1)]
@@ -50,6 +60,8 @@ enum Commands {
         release: bool,
     },
     Gdb {
+        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        target: Target,
         #[arg(short = 'k', long)]
         kvm: bool,
         #[arg(short = 'r', long)]
@@ -103,14 +115,18 @@ fn download_ovmf() -> Result<PathBuf> {
     Ok(ovmf_path)
 }
 
-fn build_kernel(release: bool) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
+fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
     let mut args = vec![
         "build",
         "--message-format=json-render-diagnostics",
-        "--target",
-        "x86_64-unknown-none",
         "-Zbuild-std=core,alloc",
+        "--target",
     ];
+
+    match target {
+        Target::X86_64 => args.push("x86_64-unknown-none"),
+        Target::Aarch64 => args.push("aarch64-unknown-none"),
+    }
 
     if release {
         args.push("--release");
@@ -317,8 +333,8 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
     Err(err.into())
 }
 
-fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
-    let path = build_image(&build_kernel(release)?, release)?;
+fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
+    let path = build_image(&build_kernel(release, target)?, release)?;
 
     let mut args = vec![
         "-bios".into(),
@@ -356,8 +372,8 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
     exec("qemu-system-x86_64", args)
 }
 
-fn gdb(kvm: bool, release: bool) -> Result<()> {
-    let (kernel_elf, _) = build_kernel(release)?;
+fn gdb(kvm: bool, release: bool, target: Target) -> Result<()> {
+    let (kernel_elf, _) = build_kernel(release, target)?;
 
     let gdb_args = if kvm {
         vec!["target remote localhost:1234", "hbreak system_main", "c"]
@@ -379,16 +395,21 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Image { release } => {
-            build_image(&build_kernel(release)?, release)?;
+        Commands::Image { target, release } => {
+            build_image(&build_kernel(release, target)?, release)?;
         }
         Commands::Qemu {
+            target,
             kvm,
             cores,
             mem,
             release,
-        } => qemu(kvm, cores, mem, release)?,
-        Commands::Gdb { kvm, release } => gdb(kvm, release)?,
+        } => qemu(kvm, cores, mem, release, target)?,
+        Commands::Gdb {
+            target,
+            kvm,
+            release,
+        } => gdb(kvm, release, target)?,
         Commands::Clean => {
             fs::remove_dir_all(cache_dir()?)?;
             cache_dir()?;
