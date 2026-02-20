@@ -21,9 +21,12 @@ use uuid::Uuid;
 
 mod debug;
 
-const LIMINE_URL: &str =
+const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";
-const OVMF_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-x86_64.fd";
+const LIMINE_AARCH64_URL: &str =
+    "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTAA64.EFI";
+const OVMF_X86_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-x86_64.fd";
+const OVMF_AARCH64_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-aarch64.fd";
 const LIMINE_CONF: &str = "limine.conf";
 
 #[derive(Parser)]
@@ -87,12 +90,16 @@ fn run_dir() -> Result<PathBuf> {
     Ok(root)
 }
 
-fn download_limine() -> Result<PathBuf> {
+fn download_limine(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
     let limine_path = root.join("limine.efi");
 
     if !limine_path.exists() {
-        let response = blocking::get(LIMINE_URL)?;
+        let url = match target {
+            Target::X86_64 => LIMINE_X86_URL,
+            Target::Aarch64 => LIMINE_AARCH64_URL,
+        };
+        let response = blocking::get(url)?;
         let mut dest = File::create(&limine_path)?;
         let content = response.bytes()?;
         io::copy(&mut content.as_ref(), &mut dest)?;
@@ -101,12 +108,16 @@ fn download_limine() -> Result<PathBuf> {
     Ok(limine_path)
 }
 
-fn download_ovmf() -> Result<PathBuf> {
+fn download_ovmf(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
     let ovmf_path = root.join("ovmf.fd");
 
     if !ovmf_path.exists() {
-        let response = blocking::get(OVMF_URL)?;
+        let url = match target {
+            Target::X86_64 => OVMF_X86_URL,
+            Target::Aarch64 => OVMF_AARCH64_URL,
+        };
+        let response = blocking::get(url)?;
         let mut dest = File::create(&ovmf_path)?;
         let content = response.bytes()?;
         io::copy(&mut content.as_ref(), &mut dest)?;
@@ -222,11 +233,15 @@ fn split_debug_info(elf: &Path) -> Result<Vec<u8>> {
     Ok(fs::read(tmp_stripped)?)
 }
 
-fn build_image(build_res: &(PathBuf, Vec<(String, PathBuf)>), release: bool) -> Result<PathBuf> {
+fn build_image(
+    build_res: &(PathBuf, Vec<(String, PathBuf)>),
+    release: bool,
+    target: Target,
+) -> Result<PathBuf> {
     let (kernel_elf, package_data) = build_res;
 
     let cache_dir = cache_dir()?;
-    let limine_efi = download_limine()?;
+    let limine_efi = download_limine(target)?;
     let limine_cfg = resources_dir()?.join(LIMINE_CONF);
     let output_img = cache_dir.join(format!(
         "kernel-{}.img",
@@ -334,11 +349,11 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 }
 
 fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
-    let path = build_image(&build_kernel(release, target)?, release)?;
+    let path = build_image(&build_kernel(release, target)?, release, target)?;
 
     let mut args = vec![
         "-bios".into(),
-        path_to_string(&download_ovmf()?)?,
+        path_to_string(&download_ovmf(target)?)?,
         "-drive".into(),
         format!("file={},format=raw", path_to_string(&path)?),
         "-no-reboot".into(),
@@ -396,7 +411,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Image { target, release } => {
-            build_image(&build_kernel(release, target)?, release)?;
+            build_image(&build_kernel(release, target)?, release, target)?;
         }
         Commands::Qemu {
             target,
