@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-fn main() {
+#[cfg(target_arch = "x86_64")]
+fn build_flanterm() {
     cc::Build::new()
         .file("flanterm-c/src/flanterm.c")
         .file("flanterm-c/src/flanterm_backends/fb.c")
@@ -16,6 +17,25 @@ fn main() {
         .flag("-fno-PIC")
         .flag("-mcmodel=kernel")
         .compile("flanterm");
+}
+
+#[cfg(target_arch = "aarch64")]
+fn build_flanterm() {
+    cc::Build::new()
+        .file("flanterm-c/src/flanterm.c")
+        .file("flanterm-c/src/flanterm_backends/fb.c")
+        .include("flanterm-c/src")
+        .include("flanterm-c/src/backends")
+        .flag("-ffreestanding")
+        .flag("-fno-omit-frame-pointer")
+        .flag("-mgeneral-regs-only")
+        .flag("-fno-stack-protector")
+        .flag("-fno-pic")
+        .compile("flanterm");
+}
+
+fn main() {
+    build_flanterm();
 
     let bindings = bindgen::Builder::default()
         .use_core()
