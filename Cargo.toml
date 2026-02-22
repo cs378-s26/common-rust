@@ -31,4 +31,3 @@ logos = { version = "0.16.1", default-features = false, features = ["export_deri
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]
-
