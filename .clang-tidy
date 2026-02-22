@@ -1,4 +1,0 @@
----
-Checks: '-*,bugprone-*,performance-*,cert-*,-bugprone-easily-swappable-parameters'
-HeaderFilterRegex: 'src/.*'
-WarningsAsErrors: ''
