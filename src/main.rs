@@ -27,6 +27,7 @@ use spin::{Barrier, Once};
 use talc::Span;
 use x86::time::rdtsc;
 
+use core::sync::atomic::Ordering;
 use kernel_common::arch::{core_count, initialize_mp, irq_enable};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
@@ -98,6 +99,74 @@ fn dump_boot_info() {
     }
 }
 
+static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+
+
+
+pub fn kernel_main() -> ! {
+    // kprintln!("we are the MPCorelings! please feed us!");
+
+    INIT_THREADING_BARRIER
+        .call_once(|| {
+            kprintln!("hii~");
+            kprintln!("preparing common tasks on {}", CORE_ID.get());
+            kprintln!("there are {} cores total", core_count());
+            init_threading();
+            init_coroutine_queue();
+            Barrier::new(core_count())
+        })
+        .wait();
+
+    let idle = set_up_idle();
+
+    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
+
+    MP_PREEMPT_ENTER_BARRIER
+        .call_once(|| Barrier::new(core_count()))
+        .wait();
+
+    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+    let initial_core = CORE_ID.get();
+
+    /*
+    for i in 0..1000 {
+        spawn_thread(move || {
+            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+
+            // bad sleep function :D
+            let tsc = unsafe { rdtsc() };
+            while unsafe { rdtsc() } < tsc + 10000000000 {
+                yield_thread();
+            }
+
+            kprintln!(
+                "meow from {}, id={}, initial_core={}, tid={}",
+                CORE_ID.get(),
+                i,
+                initial_core,
+                Thread::this_tid()
+            );
+            loop {
+                yield_thread();
+            }
+        });
+    }
+    */
+
+    irq_enable();
+    poll_tasks();
+}
+
+
+unsafe extern "C" fn go_to_kern_main() -> ! {
+    kernel_main()
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
     assert!(BASE_REVISION.is_valid());
@@ -134,7 +203,7 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
-    initialize_mp();
+    initialize_mp(go_to_kern_main);
 }
 
 // workaround for rust-analyzer being stupid

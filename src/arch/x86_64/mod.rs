@@ -10,11 +10,13 @@ mod cpuid;
 mod interrupt;
 mod mp;
 mod tables;
+mod debug;
 
 pub use asm::*;
 pub use context::*;
 pub use interrupt::*;
 pub use mp::*;
+pub use debug::*;
 
 use crate::print::CharSink;
 
