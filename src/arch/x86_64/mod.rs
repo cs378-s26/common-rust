@@ -10,13 +10,17 @@ mod cpuid;
 mod interrupt;
 mod mp;
 mod tables;
+mod vmm;
 
 pub use asm::*;
 pub use context::*;
 pub use interrupt::*;
 pub use mp::*;
+pub use vmm::*;
 
 use crate::print::CharSink;
+
+pub const PAGE_SIZE: usize = 4096;
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {

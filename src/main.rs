@@ -20,8 +20,9 @@ mod mp;
 mod print;
 mod sync;
 mod thread;
+mod physical_memory;
+mod virtual_memory;
 
-use core::arch::asm;
 use core::sync::atomic::Ordering;
 
 // For coroutines.
@@ -38,13 +39,15 @@ use spin::{Barrier, Once};
 use talc::Span;
 use x86::time::rdtsc;
 
-use crate::arch::{core_count, initialize_mp, irq_enable};
+use crate::arch::{core_count, initialize_mp, irq_enable, vmap, vunmap, get_address_space};
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use crate::physical_memory::{THE_HEAP, frame_alloc, frame_dealloc};
+use crate::virtual_memory::{init_virtual_memory_allocator, virtual_alloc, virtual_dealloc};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -67,10 +70,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 fn dump_boot_info() {
     if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
@@ -246,7 +245,53 @@ pub fn kernel_main() -> ! {
         });
     }
 
+    init_virtual_memory_allocator();
+    let frame_1 : usize = frame_alloc();
+    kprintln!("frame 1: {:x}", frame_1);
+    let frame_2 : usize = frame_alloc();
+    kprintln!("frame 2: {:x}", frame_2);
+    frame_dealloc(frame_1);
+    let frame_3 : usize = frame_alloc();
+    assert!(frame_1 == frame_3); // implementation dependent!
+
+    let vaddr : u64 = 0x1000;
+    kprintln!("manually mapping vmem");
+    vmap(get_address_space(), vaddr, frame_2 as u64, false, true, true);
+    kprintln!("writing to manually mapped vmem");
+    for i in 0..4096 {
+        unsafe {*((vaddr + i) as *mut u8) = i as u8};
+    }
+    kprintln!("reading from manually mapped vmem");
+    for i in 0..4096 {
+        assert!(unsafe {*((vaddr + i) as *mut u8)} == i as u8);
+    }
+    kprintln!("manually unmapping vmem");
+    // unsafe {*((vaddr + 4096) as *mut u8) = 0xaa as u8}; 
+    vunmap(get_address_space(), vaddr);
+    frame_dealloc(frame_2);
+    frame_dealloc(frame_3);
+
+    kprintln!("properly mapping vmem");
+    let mmapped = virtual_alloc(0x3000);
+    kprintln!("writing to properly mapped vmem");
+    for i in 0..4096 {
+        unsafe {*((mmapped + i) as *mut u8) = i as u8};
+    }
+    for i in 0..4096 {
+        unsafe {*((mmapped + i) as *mut u8) = i as u8};
+    }
+    kprintln!("reading from properly mapped vmem");
+    for i in 8192..8192+4096 {
+        unsafe {*((mmapped + i) as *mut u8) = i as u8};
+    }
+    for i in 8192..8192+4096 {
+        unsafe {*((mmapped + i) as *mut u8) = i as u8};
+    }
+    kprintln!("properly unmapping vmem");
+    let mmapped = virtual_dealloc(mmapped);
+
     irq_enable();
+
     poll_tasks();
 }
 

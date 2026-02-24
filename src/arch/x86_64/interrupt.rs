@@ -1,10 +1,12 @@
-use core::arch::naked_asm;
+use core::{arch::naked_asm, iter::empty};
+use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
 
 use x86::{
     bits64::rflags::{self, RFlags},
     controlregs::cr2,
     irq,
 };
+use x86_64::structures::idt::PageFaultErrorCode;
 
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -143,7 +145,28 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     // we are in a very fragile context here
     // we should probably tell the threading module that we are no longer in a thread...
     // TODO: implement that logic :D
-    panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
-        cr2()
-    });
+
+    match context.id {
+        14 => {
+            if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
+                // seems like kind of a lot of overhead for interface translation...
+                let mut cause = PageFaultConditions::empty();
+                if code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {cause.insert(PageFaultConditions::PRESENT);}
+                if code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {cause.insert(PageFaultConditions::WRITE);}
+                if code.contains(PageFaultErrorCode::USER_MODE) {cause.insert(PageFaultConditions::USER);}
+                if code.contains(PageFaultErrorCode::MALFORMED_TABLE) {cause.insert(PageFaultConditions::CORRUPT);}
+                if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {cause.insert(PageFaultConditions::FETCH);}
+                handle_page_fault(cause, unsafe {cr2()});
+            } else {
+                panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
+                    cr2()
+                });
+            }
+        }
+        _ => {panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
+            cr2()
+        });}
+    }
+
 }
+
