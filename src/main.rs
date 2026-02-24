@@ -20,6 +20,7 @@ mod mp;
 mod print;
 mod sync;
 mod thread;
+mod physical_memory;
 
 use core::arch::asm;
 use core::sync::atomic::Ordering;
@@ -38,13 +39,14 @@ use spin::{Barrier, Once};
 use talc::Span;
 use x86::time::rdtsc;
 
-use crate::arch::{core_count, initialize_mp, irq_enable};
+use crate::arch::{core_count, initialize_mp, irq_enable, vmap, vunmap, get_address_space};
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use crate::heap::init_malloc;
 use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use crate::physical_memory::{THE_HEAP, frame_alloc, frame_dealloc};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -67,10 +69,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 fn dump_boot_info() {
     if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
@@ -246,7 +244,32 @@ pub fn kernel_main() -> ! {
         });
     }
 
+    let frame_1 : u64 = frame_alloc();
+    kprintln!("frame 1: {:x}", frame_1);
+    let frame_2 : u64 = frame_alloc();
+    kprintln!("frame 2: {:x}", frame_2);
+    frame_dealloc(frame_1);
+    let frame_3 : u64 = frame_alloc();
+    assert!(frame_1 == frame_3); // implementation dependent!
+
+    let vaddr : u64 = 0x123456789000;
+    kprintln!("mapping vmem");
+    vmap(get_address_space(), vaddr, frame_2, false, true, true);
+    kprintln!("writing to mapped vmem");
+    for i in 0..4096 {
+        unsafe {*((vaddr + i) as *mut u8) = i as u8};
+    }
+    kprintln!("reading from mapped vmem");
+    for i in 0..4096 {
+        assert!(unsafe {*((vaddr + i) as *mut u8)} == i as u8);
+    }
+    kprintln!("unmapping vmem");
+    vunmap(get_address_space(), vaddr);
+    frame_dealloc(frame_2);
+    frame_dealloc(frame_3);
+
     irq_enable();
+
     poll_tasks();
 }
 

@@ -92,6 +92,7 @@ impl GlobalDescriptorTable {
             load_ds(SegmentSelector::new(Self::DS, Ring::Ring0));
             load_ss(SegmentSelector::new(Self::DS, Ring::Ring0));
             load_es(SegmentSelector::new(Self::DS, Ring::Ring0));
+            // how are we doing thread-local and core-local data if we load the data segment here?
             load_fs(SegmentSelector::new(Self::DS, Ring::Ring0));
             load_gs(SegmentSelector::new(Self::DS, Ring::Ring0));
             load_tr(SegmentSelector::new(Self::TSS, Ring::Ring0))

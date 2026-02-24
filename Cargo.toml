@@ -28,6 +28,7 @@ uart_16550 = "0.4.0"
 x86 = "0.52.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
+x86_64 = "0.15.4"
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]
