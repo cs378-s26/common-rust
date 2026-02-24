@@ -29,6 +29,12 @@ const LIMINE_CONF: &str = "limine.conf";
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[arg(short = 'k', long)]
+    kvm : bool,
+    #[arg(short = 'j', long, default_value_t = 1)]
+    cores : u8,
+    #[arg(short = 'm', long, default_value_t = 4)]
+    mem : u8,
     path_to_img : String,
 }
 
@@ -401,6 +407,7 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 
 fn qemu(path: PathBuf, kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
 
+    /* 
     let mut args = vec![
         "-bios".into(),
         path_to_string(&download_ovmf()?)?,
@@ -430,9 +437,15 @@ fn qemu(path: PathBuf, kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result
         args.push("-cpu".into());
         args.push("host".into());
     }
+    */
+    let mut args = vec![
+        path_to_string(&download_ovmf()?)?,
+        format!("{}", path_to_string(&path)?),
+        format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
+    ];
 
-    eprintln!("running: {} {:?}", "qemu-system-x86_64", args);
-    let mut res = Command::new("qemu-system-x86_64")
+    eprintln!("running: {} {:?}", "run_qemu.sh", args);
+    let mut res = Command::new("../run_qemu.sh")
                                 .args(args)
                                 .current_dir(run_dir()?)
                                 .status()?;
@@ -472,5 +485,5 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let p = build_image(&(PathBuf::from(cli.path_to_img), vec![]), false)?;
-    qemu(p, true, 4, 4, false)
+    qemu(p, cli.kvm, cli.cores, cli.mem, false)
 }

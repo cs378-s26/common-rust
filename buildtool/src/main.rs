@@ -114,7 +114,6 @@ fn test_kernel(release: bool) -> Result<()> {
         "--target",
         "x86_64-unknown-none",
         "--lib",
-        //"-Zbuild-std=core,alloc",
     ];
 
     if release {
