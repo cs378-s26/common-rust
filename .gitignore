@@ -7,3 +7,4 @@ buildtool-cache/
 run/
 Cargo.lock
 
+qemu.log
