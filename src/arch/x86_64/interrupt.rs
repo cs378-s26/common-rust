@@ -1,4 +1,5 @@
 use core::arch::naked_asm;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use x86::{
     bits64::rflags::{self, RFlags},
@@ -6,7 +7,14 @@ use x86::{
     irq,
 };
 
+use super::apic;
 use crate::arch::{Arch, IrqStateTrait};
+
+static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
+
+pub fn timer_ticks() -> u64 {
+    TIMER_TICKS.load(Ordering::Relaxed)
+}
 
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -133,12 +141,23 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
     );
 }
 
+pub extern "C" fn timer_interrupt_handler() {
+    TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    apic::eoi();
+
+    crate::thread::preempt_if_needed();
+}
+
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
-    // we are in a very fragile context here
-    // we should probably tell the threading module that we are no longer in a thread...
-    // TODO: implement that logic :D
-    panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
-        cr2()
-    });
+
+    match context.id {
+        0x20 => timer_interrupt_handler(),
+        _ => panic!(
+            "Unhandled interrupt #{}: err={}, cr2={:x}",
+            context.id,
+            context.err,
+            unsafe { cr2() }
+        ),
+    }
 }

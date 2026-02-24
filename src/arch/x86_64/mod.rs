@@ -12,6 +12,8 @@ mod debug;
 mod interrupt;
 mod mp;
 mod tables;
+pub mod apic;
+pub mod tsc;
 
 pub use asm::*;
 pub use context::Context;

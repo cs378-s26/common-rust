@@ -248,6 +248,15 @@ pub fn can_yield() -> bool {
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
+pub fn preempt_if_needed() {
+    if !can_yield() {
+        return;
+    }
+
+    yield_thread();
+}
+
+// flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let irq_state = IrqState::save();
     Arch::set_irq_enabled(false);
@@ -304,8 +313,7 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
             task();
         }
 
-        // implement thread cleanup here
-        todo!()
+        todo!("handle thread exit");
     }
 
     #[cfg(target_arch = "x86_64")]

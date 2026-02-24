@@ -18,15 +18,13 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
+use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
@@ -228,31 +226,42 @@ pub fn kernel_main() -> ! {
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-    let initial_core = CORE_ID.get();
+    if CORE_ID.get().0 == 0 {
+        spawn_coroutine(async_task(1624252));
 
-    spawn_coroutine(async_task(1624252));
+        kprintln!("Spawning 20 test threads across {} cores", core_count);
 
-    for i in 0..1000 {
-        spawn_thread(move || {
-            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+        for i in 0..20 {
+            spawn_thread(move || {
+                let start_core = CORE_ID.get();
+                let start_tick = timer_ticks();
 
-            // bad sleep function :D
-            let tsc = Arch::read_cycle_counter();
-            while Arch::read_cycle_counter() < tsc + 10000000000 {
-                yield_thread();
-            }
+                kprintln!(
+                    "Thread {} started on core {} at tick {}",
+                    i,
+                    start_core.0,
+                    start_tick
+                );
 
-            kprintln!(
-                "meow from {}, id={}, initial_core={}, tid={}",
-                CORE_ID.get(),
-                i,
-                initial_core,
-                Thread::this_tid()
-            );
-            loop {
-                yield_thread();
-            }
-        });
+                let mut iterations = 0u64;
+                let tsc_start = Arch::read_cycle_counter();
+                while Arch::read_cycle_counter() < tsc_start + 100_000_000 {
+                    iterations += 1;
+                }
+
+                let end_core = CORE_ID.get();
+                let end_tick = Arch::read_cycle_counter();
+
+                kprintln!(
+                    "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed, {}M iterations",
+                    i,
+                    start_core.0,
+                    end_core.0,
+                    end_tick - start_tick,
+                    iterations / 1_000_000
+                );
+            });
+        }
     }
 
     Arch::set_irq_enabled(true);
