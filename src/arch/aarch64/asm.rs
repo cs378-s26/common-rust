@@ -1,5 +1,19 @@
 use core::arch::asm;
 
+pub fn read_cycle_counter() -> u64 {
+    let value: u64;
+
+    unsafe {
+        asm!(
+            "mrs {}, cntvct_el0",
+            out(reg) value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+
+    value
+}
+
 pub fn halt() -> ! {
     unsafe {
         // Mask debug, SError, IRQ, and FIQ before halting.
