@@ -11,12 +11,14 @@ use x86::{
     msr::{IA32_GS_BASE, wrmsr},
 };
 
+//use kernel_common::kern_main::kernel_main;
+
 use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
 use crate::heap::aligned_slice;
-use crate::kernel_main;
+use crate::kern_main::kernel_main;
 use crate::{
     arch::x86_64::cpuid::Features,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for, init_cpu_local_table},
@@ -155,5 +157,6 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
 
+    //loop {}
     kernel_main();
 }
