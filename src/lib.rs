@@ -21,7 +21,6 @@ pub mod print;
 pub mod thread;
 pub mod sync;
 pub mod local_storage;
-pub mod kern_main;
 
 extern crate alloc;
 
