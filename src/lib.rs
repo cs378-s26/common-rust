@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 #![feature(decl_macro)]
 #![feature(const_trait_impl)]
@@ -7,6 +8,9 @@
 #![feature(const_range)]
 #![feature(never_type)]
 #![feature(sync_unsafe_cell)]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 pub mod arch;
 pub mod coroutine;
@@ -117,6 +121,55 @@ fn dump_boot_info() {
 }
 
 #[cfg(test)]
+static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+#[cfg(test)]
+static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+
+
+#[cfg(test)]
+pub fn kernel_main() -> ! {
+    // kprintln!("we are the MPCorelings! please feed us!");
+
+    INIT_THREADING_BARRIER
+        .call_once(|| {
+            kprintln!("hii~");
+            kprintln!("preparing common tasks on {}", CORE_ID.get());
+            kprintln!("there are {} cores total", core_count());
+            init_threading();
+            init_coroutine_queue();
+            Barrier::new(core_count())
+        })
+        .wait();
+
+    let idle = set_up_idle();
+
+    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
+
+    MP_PREEMPT_ENTER_BARRIER
+        .call_once(|| Barrier::new(core_count()))
+        .wait();
+
+    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+    let initial_core = CORE_ID.get();
+
+    spawn_thread(move || {
+        test_main();
+    });
+
+    irq_enable();
+    poll_tasks();
+}
+
+#[cfg(test)]
+unsafe extern "C" fn go_to_kernel_main() -> ! {
+    kernel_main()
+}
+
+#[cfg(test)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
     assert!(BASE_REVISION.is_valid());
@@ -153,8 +206,9 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
-    initialize_mp();
+    initialize_mp(go_to_kernel_main);
 }
+
 
 // workaround for rust-analyzer being stupid
 #[cfg(test)]

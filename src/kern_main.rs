@@ -24,6 +24,3 @@ use crate::mp::{CORE_ID, MP_STAGE, MPStage};
 use crate::print::{init_tty, kprintln};
 use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
 
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-

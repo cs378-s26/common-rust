@@ -233,7 +233,6 @@ fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
     halt()
 }
 
-#[cfg(not(test))]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     rust_panic_impl(info);

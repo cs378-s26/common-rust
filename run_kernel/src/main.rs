@@ -29,8 +29,7 @@ const LIMINE_CONF: &str = "limine.conf";
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+    path_to_img : String,
 }
 
 #[derive(Subcommand)]
@@ -113,7 +112,6 @@ fn test_kernel(release: bool) -> Result<()> {
         "--message-format=json-render-diagnostics",
         "--target",
         "x86_64-unknown-none",
-        "--lib",
         //"-Zbuild-std=core,alloc",
     ];
 
@@ -399,8 +397,9 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
     Err(err.into())
 }
 
-fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
-    let path = build_image(&build_kernel(release)?, release)?;
+
+
+fn qemu(path: PathBuf, kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
 
     let mut args = vec![
         "-bios".into(),
@@ -408,15 +407,10 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
         "-drive".into(),
         format!("file={},format=raw", path_to_string(&path)?),
         "-no-reboot".into(),
-        "-monitor".into(),
-        "stdio".into(),
         "-d".into(),
         "int,cpu_reset".into(),
         "-D".into(),
         "qemu.log".into(),
-        "-no-shutdown".into(),
-        "-s".into(),
-        "-S".into(),
         "-M".into(),
         "smm=off".into(),
         "-m".into(),
@@ -425,6 +419,8 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
         format!("{}", cores),
         "-vga".into(),
         "std".into(),
+        "-device".into(),
+        "isa-debug-exit,iobase=0xf4,iosize=0x04".into(),
         "-serial".into(),
         format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
     ];
@@ -435,7 +431,22 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool) -> Result<()> {
         args.push("host".into());
     }
 
-    exec("qemu-system-x86_64", args)
+    eprintln!("running: {} {:?}", "qemu-system-x86_64", args);
+    let mut res = Command::new("qemu-system-x86_64")
+                                .args(args)
+                                .current_dir(run_dir()?)
+                                .status()?;
+    println!("{:#?}", res);
+    match res.code() {
+        Some(code) => {
+            if code == 1 {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("bad"))
+            }
+        }
+        None => Err(anyhow::anyhow!("bad"))
+    }
 }
 
 fn gdb(kvm: bool, release: bool) -> Result<()> {
@@ -460,25 +471,6 @@ fn gdb(kvm: bool, release: bool) -> Result<()> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Test { release } => {
-            test_kernel(release)?
-        }
-        Commands::Image { release } => {
-            build_image(&build_kernel(release)?, release)?;
-        }
-        Commands::Qemu {
-            kvm,
-            cores,
-            mem,
-            release,
-        } => qemu(kvm, cores, mem, release)?,
-        Commands::Gdb { kvm, release } => gdb(kvm, release)?,
-        Commands::Clean => {
-            fs::remove_dir_all(cache_dir()?)?;
-            cache_dir()?;
-        }
-    }
-
-    Ok(())
+    let p = build_image(&(PathBuf::from(cli.path_to_img), vec![]), false)?;
+    qemu(p, true, 4, 4, false)
 }
