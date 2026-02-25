@@ -1,37 +1,40 @@
+use std::env;
 use std::path::PathBuf;
 
-#[cfg(target_arch = "x86_64")]
 fn build_flanterm() {
-    cc::Build::new()
-        .file("flanterm-c/src/flanterm.c")
-        .file("flanterm-c/src/flanterm_backends/fb.c")
-        .include("flanterm-c/src")
-        .include("flanterm-c/src/backends")
-        .flag("-ffreestanding")
-        .flag("-fno-omit-frame-pointer")
-        .flag("-mno-sse")
-        .flag("-mno-sse2")
-        .flag("-mno-mmx")
-        .flag("-mno-80387")
-        .flag("-fno-stack-protector")
-        .flag("-fno-PIC")
-        .flag("-mcmodel=kernel")
-        .compile("flanterm");
-}
+    let target = env::var("TARGET").expect("TARGET not set");
+    let target_arch =
+        env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
 
-#[cfg(target_arch = "aarch64")]
-fn build_flanterm() {
-    cc::Build::new()
+    let mut build = cc::Build::new();
+    build
         .file("flanterm-c/src/flanterm.c")
         .file("flanterm-c/src/flanterm_backends/fb.c")
         .include("flanterm-c/src")
         .include("flanterm-c/src/backends")
         .flag("-ffreestanding")
         .flag("-fno-omit-frame-pointer")
-        .flag("-mgeneral-regs-only")
-        .flag("-fno-stack-protector")
-        .flag("-fno-pic")
-        .compile("flanterm");
+        .flag("-fno-stack-protector");
+
+    match target_arch.as_str() {
+        "x86_64" => {
+            build
+                .flag("-mno-sse")
+                .flag("-mno-sse2")
+                .flag("-mno-mmx")
+                .flag("-mno-80387")
+                .flag("-fno-PIC")
+                .flag("-mcmodel=kernel");
+        }
+        "aarch64" => {
+            build.flag("-mgeneral-regs-only").flag("-fno-pic");
+        }
+        other => {
+            panic!("unsupported target arch for flanterm: {other}");
+        }
+    }
+
+    build.target(&target).compile("flanterm");
 }
 
 fn main() {
