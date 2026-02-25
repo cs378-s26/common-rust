@@ -16,7 +16,6 @@ use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
 use crate::heap::aligned_slice;
-use crate::kernel_main;
 use crate::{
     arch::x86_64::cpuid::Features,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for, init_cpu_local_table},
@@ -80,7 +79,13 @@ pub fn core_count() -> usize {
 
 // initialization routines
 
-pub fn initialize_mp() -> ! {
+pub unsafe extern "C" fn dummy() -> ! {
+    loop{}
+}
+
+static mut KERN_MAIN_PTR : unsafe extern "C" fn() -> ! = dummy;
+
+pub fn initialize_mp(func: unsafe extern "C" fn() -> !) -> ! {
     let response = MP_REQUEST.get_response().expect("mp response not received");
 
     let n_cores = response.cpus().len();
@@ -92,6 +97,8 @@ pub fn initialize_mp() -> ! {
     let bsp_id = response.bsp_lapic_id();
 
     let mut core_self = None;
+
+    unsafe { KERN_MAIN_PTR = func; }
 
     for cpu in response.cpus() {
         if bsp_id != cpu.lapic_id {
@@ -155,5 +162,5 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
 
-    kernel_main();
+    unsafe { KERN_MAIN_PTR(); }
 }

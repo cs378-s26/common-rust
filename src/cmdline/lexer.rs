@@ -233,31 +233,31 @@ impl<'a> CmdlineLexer<'a> {
 mod test {
     use super::*;
 
-    #[test]
+    #[test_case]
     fn test_parse_int_decimal() {
         assert_eq!(parse_int("123"), 123);
         assert_eq!(parse_int("-123"), -123);
     }
 
-    #[test]
+    #[test_case]
     fn test_parse_int_hex() {
         assert_eq!(parse_int("0x1a3"), 0x1a3);
         assert_eq!(parse_int("-0x1a3"), -0x1a3);
     }
 
-    #[test]
+    #[test_case]
     fn test_parse_int_octal() {
         assert_eq!(parse_int("075"), 0o75);
         assert_eq!(parse_int("-075"), -0o75);
     }
 
-    #[test]
+    #[test_case]
     fn test_parse_int_zero() {
         assert_eq!(parse_int("0"), 0);
         assert_eq!(parse_int("-0"), 0);
     }
 
-    #[test]
+    #[test_case]
     fn test_cmdline_tokenizer_identifiers() {
         let data = "hello world _underscore identifier";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -280,7 +280,7 @@ mod test {
         );
     }
 
-    #[test]
+    #[test_case]
     fn test_cmdline_tokenizer_numbers() {
         let data = "123 0x1a3 075 -42";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -291,7 +291,7 @@ mod test {
         assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Number(-42));
     }
 
-    #[test]
+    #[test_case]
     fn test_cmdline_tokenizer_commas_and_colons() {
         let data = "cmd1, cmd2:cmd3";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -312,7 +312,7 @@ mod test {
         );
     }
 
-    #[test]
+    #[test_case]
     fn test_cmdline_tokenizer_braces() {
         let data = "{cmd1, cmd2}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -330,7 +330,7 @@ mod test {
         assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::ClosedBrace);
     }
 
-    #[test]
+    #[test_case]
     fn test_cmdline_tokenizer_invalid_token() {
         let data = "cmd1 @ cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -338,7 +338,7 @@ mod test {
         assert_eq!(lexer.next().unwrap_err().0, CmdlineErrorCode::BadToken);
     }
 
-    #[test]
+    #[test_case]
     fn test_expect_valid_token() {
         let data = "cmd1 : cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -351,7 +351,7 @@ mod test {
         );
     }
 
-    #[test]
+    #[test_case]
     fn test_expect_invalid_token() {
         let data = "cmd1 : cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -365,7 +365,7 @@ mod test {
         );
     }
 
-    #[test]
+    #[test_case]
     fn test_parse_block_with_delimiter() {
         let data = "{cmd1, cmd2, cmd3}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
@@ -383,7 +383,7 @@ mod test {
             .unwrap();
     }
 
-    #[test]
+    #[test_case]
     fn test_parse_block_end_token() {
         let data = "{cmd1 cmd2}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
