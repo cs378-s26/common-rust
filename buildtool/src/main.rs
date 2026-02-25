@@ -51,16 +51,48 @@ impl Target {
     }
 }
 
+fn require_tool(name: &str) -> Result<()> {
+    let status = Command::new(name)
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|_| Error::msg(format!("{} not found in PATH", name)))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!("{} failed to run", name)))
+    }
+}
+
+fn configure_c_toolchain(target: Target, target_triple: &str, cmd: &mut Command) -> Result<()> {
+    if !matches!(target, Target::Aarch64) {
+        return Ok(());
+    }
+
+    require_tool("clang")?;
+    require_tool("ar")?;
+
+    let cc_key = format!("CC_{}", target_triple.replace('-', "_"));
+    let ar_key = format!("AR_{}", target_triple.replace('-', "_"));
+    let cflags_key = format!("CFLAGS_{}", target_triple.replace('-', "_"));
+
+    cmd.env(cc_key, "clang");
+    cmd.env(ar_key, "ar");
+    cmd.env(cflags_key, format!("--target={}", target_triple));
+    Ok(())
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Image {
-        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
         target: Target,
         #[arg(short = 'r', long)]
         release: bool,
     },
     Qemu {
-        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
         target: Target,
         #[arg(short = 'k', long)]
         kvm: bool,
@@ -72,7 +104,7 @@ enum Commands {
         release: bool,
     },
     Gdb {
-        #[arg(short = 't', long, value_enum, default_value = "X86_64")]
+        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
         target: Target,
         #[arg(short = 'k', long)]
         kvm: bool,
@@ -224,10 +256,11 @@ fn build_kernel(release: bool) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
         "--target",
     ];
 
-    match target {
-        Target::X86_64 => args.push("x86_64-unknown-none"),
-        Target::Aarch64 => args.push("aarch64-unknown-none"),
-    }
+    let target_triple = match target {
+        Target::X86_64 => "x86_64-unknown-none",
+        Target::Aarch64 => "aarch64-unknown-none",
+    };
+    args.push(target_triple);
 
     if release {
         args.push("--release");
@@ -269,14 +302,17 @@ fn build_kernel(release: bool) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
         sys_root.join("lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins"),
     ));
 
-    let mut cmd = Command::new("cargo")
-        .args(args)
+    let mut cmd = Command::new("cargo");
+    cmd.args(args)
         .env(
             "RUSTFLAGS",
             "-C relocation-model=static -C force-frame-pointers=yes",
         )
-        .stdout(Stdio::piped())
-        .spawn()?;
+        .stdout(Stdio::piped());
+
+    configure_c_toolchain(target, target_triple, &mut cmd)?;
+
+    let mut cmd = cmd.spawn()?;
 
     let stdout = cmd.stdout.take().expect("Failed to capture cargo stdout");
     let reader = BufReader::new(stdout);
@@ -307,18 +343,30 @@ fn path_to_string(path: &Path) -> Result<String> {
         .to_string())
 }
 
-fn split_debug_info(elf: &Path) -> Result<Vec<u8>> {
+fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     let cache = cache_dir()?;
     let tmp_stripped = NamedTempFile::new_in(&cache)?;
 
-    Command::new("strip")
+    let strip_tool = match target {
+        Target::X86_64 => "strip",
+        Target::Aarch64 => "aarch64-linux-gnu-strip",
+    };
+
+    let status = Command::new(strip_tool)
         .args([
             path_to_string(elf)?,
             "-o".into(),
             path_to_string(tmp_stripped.path())?,
         ])
-        .spawn()?
-        .wait()?;
+        .status();
+
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!(
+            "warning: {} failed; using unstripped kernel",
+            strip_tool
+        );
+        return Ok(fs::read(elf)?);
+    }
 
     Ok(fs::read(tmp_stripped)?)
 }
@@ -410,7 +458,7 @@ fn build_image(
             &mut fs.root_dir().create_file(LIMINE_CONF)?,
         )?;
 
-        let elf_data = split_debug_info(kernel_elf)?;
+        let elf_data = split_debug_info(kernel_elf, target)?;
         let debug_data = gen_debug_module(fs::read(kernel_elf)?, package_data)?;
 
         fs.root_dir()
