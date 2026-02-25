@@ -52,16 +52,16 @@ impl Target {
 }
 
 fn require_tool(name: &str) -> Result<()> {
-    let status = Command::new(name)
-        .arg("--version")
+    let status = Command::new("which")
+        .arg(name)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|_| Error::msg(format!("{} not found in PATH", name)))?;
+        .map_err(|_| Error::msg("which command not available"))?;
     if status.success() {
         Ok(())
     } else {
-        Err(Error::msg(format!("{} failed to run", name)))
+        Err(Error::msg(format!("{} not found in PATH", name)))
     }
 }
 
