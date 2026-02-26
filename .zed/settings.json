@@ -1,0 +1,20 @@
+{
+    "lsp": {
+        // "rust-analyzer": {
+        //     "initialization_options": {
+        //         "cargo": {
+        //             "target": "aarch64-unknown-none",
+        //             "allTargets": false,
+        //         },
+        //         "check": {
+        //             "workspace": false,
+        //             "allTargets": false,
+        //             "extraArgs": ["-Zbuild-std=core,alloc"],
+        //         },
+        //         "rust": {
+        //             "analyzerTargetDir": true,
+        //         },
+        //     },
+        // },
+    },
+}

@@ -1,23 +1,14 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
-    kernel_main,
-    mp::{core_local, get_cpu_local_pointer_for, init_cpu_local_table, CoreId, CORE_ID},
+    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::kprintln,
 };
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
-use limine::{mp::Cpu, request::MpRequest};
-
-#[used]
-#[unsafe(link_section = ".limine_requests")]
-static MP_REQUEST: MpRequest = MpRequest::new();
+use limine::mp::Cpu;
 
 core_local! {
     pub MPDIR_ID: AtomicU64 = AtomicU64::new(0);
-}
-
-pub fn core_count() -> usize {
-    MP_REQUEST.get_response().unwrap().cpus().len()
 }
 
 fn enable_advsimd() {
@@ -34,7 +25,7 @@ fn enable_advsimd() {
     }
 }
 
-fn init_cpu_local_ptr(core_id: CoreId) {
+pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe {
         asm!(
@@ -83,33 +74,7 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
     unsafe { *(slot as *const u64) }
 }
 
-pub fn initialize_mp() -> ! {
-    let response = MP_REQUEST.get_response().expect("mp response not received");
-
-    let n_cores = response.cpus().len();
-    kprintln!("aarch64::initialize_mp(): bootstrapping {} cores", n_cores);
-
-    init_cpu_local_table(n_cores);
-
-    let mut core_id: u64 = 1;
-    let bsp_id = response.bsp_mpidr();
-
-    let mut core_self = None;
-
-    for cpu in response.cpus() {
-        if bsp_id != cpu.mpidr {
-            cpu.extra.store(core_id, Ordering::SeqCst);
-            core_id += 1;
-            cpu.goto_address.write(initialize_core);
-        } else {
-            core_self = Some(cpu);
-        }
-    }
-
-    unsafe { initialize_core(core_self.expect("limine did not give current CPU in MP response")) };
-}
-
-unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
+pub unsafe fn initialize_core(cpu: &Cpu) -> () {
     enable_advsimd();
 
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
@@ -124,6 +89,4 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     );
 
     // TODO: handle interrupts
-
-    kernel_main()
 }

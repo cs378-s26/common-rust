@@ -4,6 +4,7 @@ use core::{
     ptr::{self},
 };
 
+use crate::arch::{Arch, ContextTrait};
 use spin::MutexGuard;
 
 const SPSR_MODE_EL1H: u64 = 0x5;
@@ -24,6 +25,34 @@ pub struct Context {
     pub spsr: u64,
 }
 
+fn slice_stack_ptr(stack: &[u8]) -> u64 {
+    stack.as_ptr_range().end as u64
+}
+
+impl ContextTrait for Context {
+    type Arch = Arch;
+    fn setup_kthread_context(&mut self) {
+        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
+    }
+
+    fn jump_to(&self) -> ! {
+        unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
+    }
+
+    fn setup_for_call<T>(
+        &mut self,
+        stack: &[u8],
+        function: unsafe extern "C" fn(*mut T) -> !,
+        data: *mut T,
+    ) {
+        self.setup_kthread_context();
+
+        self.pc = function as usize as u64;
+        self.gp.regs[0] = data as u64;
+        self.sp = slice_stack_ptr(stack) & !0xF;
+    }
+}
+
 impl const Default for Context {
     fn default() -> Self {
         Self {
@@ -33,10 +62,6 @@ impl const Default for Context {
             spsr: SPSR_MODE_EL1H | SPSR_IRQ_MASK, // EL1h with IRQ masked
         }
     }
-}
-
-fn slice_stack_pointer(slice: &[u8]) -> u64 {
-    slice.as_ptr_range().end as u64
 }
 
 #[unsafe(naked)]
@@ -67,29 +92,6 @@ unsafe extern "C" fn jump_to_context(
         "ldr x0, [x0, #0]",
         "br x16",
     )
-}
-
-impl Context {
-    pub fn jump_to(&self) -> ! {
-        unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
-    }
-
-    pub fn setup_kthread_context(&mut self) {
-        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
-    }
-
-    pub fn setup_for_call<T>(
-        &mut self,
-        stack: &[u8],
-        function: unsafe extern "C" fn(*mut T) -> !,
-        data: *mut T,
-    ) {
-        self.setup_kthread_context();
-
-        self.pc = function as usize as u64;
-        self.gp.regs[0] = data as u64;
-        self.sp = slice_stack_pointer(stack) & !0xF;
-    }
 }
 
 #[repr(C)]
@@ -180,7 +182,7 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         )
     }
 
-    unsafe { save_context_impl(slice_stack_pointer(stack), &raw mut ctx, &raw mut fwd) };
+    unsafe { save_context_impl(slice_stack_ptr(stack), &raw mut ctx, &raw mut fwd) };
 
     // Ownership was moved through raw pointers into save_context_impl.
     forget(ctx);

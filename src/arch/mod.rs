@@ -35,23 +35,33 @@ pub trait UnwindContextTrait {
 }
 
 pub trait IrqStateTrait {
+    type Arch: ArchTrait<IrqState = Self>;
     // Save the current IrqState
     fn save() -> Self;
-    fn is_masked() -> bool;
+    fn is_masked(&self) -> bool;
+    fn restore(&self) {
+        Arch::set_irq_enabled(!self.is_masked());
+    }
 }
 
 pub trait ContextTrait {
     type Arch: ArchTrait<Context = Self>;
     /// from what i understand basically a constructor -- give your thread the correct perms
     fn setup_kthread_context(&mut self);
-    fn jump_to(&self);
-    fn setup_for_call(&mut self);
+    fn jump_to(&self) -> !;
+    fn setup_for_call<T>(
+        &mut self,
+        stack: &[u8],
+        function: unsafe extern "C" fn(*mut T) -> !,
+        data: *mut T,
+    );
 }
 
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
+    type IrqState: IrqStateTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
-    fn is_bsp(res: &MpRequest, cpu: &Cpu) -> bool;
+    fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
     /// calls initalize core
     fn initialize_mp(req: &MpRequest) -> ! {
         let resp = req
@@ -81,10 +91,7 @@ pub trait ArchTrait {
         unsafe { Self::initialize_core(cpu) };
         kernel_main()
     }
-    unsafe fn set_irq_enabled(enabled: bool);
-    unsafe fn restore(state: &IrqState) {
-        unsafe { Self::set_irq_enabled(!state.is_masked()) };
-    }
+    fn set_irq_enabled(enabled: bool);
     /// save the current context and swith on to the provided temp stack & call fwd()
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
