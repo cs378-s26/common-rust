@@ -14,29 +14,24 @@ pub use context::*;
 pub use interrupt::*;
 pub use mp::*;
 
-// use crate::arch::Arch;
+pub use crate::arch::{ArchTrait, ContextTrait, IrqStateTrait, UnwindContextTrait};
 
-// pub struct Aarch64;
-
-// impl Arch for Aarch64 {
-//     fn initialize_mp(req: limine::request::MpRequest) {
-//         mp::initialize_mp(req);
-//     }
-
-//     unsafe fn initialize_core() {
-//         mp::initialize_core();
-//         interrupt::initialize_interrupts();
-//     }
-// }
+pub struct Aarch64;
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
     ptr: *const u64,
 }
 
-impl UnwindContext {
+impl UnwindContextTrait for UnwindContext {
+    fn from_ptr(ptr: *const u64) -> UnwindContext {
+        UnwindContext { ptr }
+    }
+    fn get_ptr(&self) -> *const u64 {
+        self.ptr
+    }
     #[inline(always)]
-    pub unsafe fn get() -> UnwindContext {
+    unsafe fn get() -> UnwindContext {
         let fp: u64;
         unsafe {
             asm!(
@@ -48,20 +43,6 @@ impl UnwindContext {
 
         UnwindContext {
             ptr: fp as *const u64,
-        }
-    }
-
-    pub unsafe fn valid(&self) -> bool {
-        (unsafe { self.return_address() }) != 0
-    }
-
-    pub unsafe fn return_address(&self) -> u64 {
-        unsafe { self.ptr.wrapping_add(1).read() }
-    }
-
-    pub unsafe fn next(&self) -> UnwindContext {
-        UnwindContext {
-            ptr: unsafe { self.ptr.read() } as *const u64,
         }
     }
 }

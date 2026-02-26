@@ -12,7 +12,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
-use crate::arch::{self, SerialCharSink, UnwindContext};
+use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
 use crate::sync::IntMutex;
 
 #[derive(Clone, Copy)]
