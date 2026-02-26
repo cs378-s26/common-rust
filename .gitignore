@@ -8,3 +8,5 @@ run/
 Cargo.lock
 
 qemu.log
+
+.direnv/
