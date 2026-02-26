@@ -26,6 +26,7 @@ pub struct Context {
 }
 
 fn slice_stack_ptr(stack: &[u8]) -> u64 {
+    assert!(stack.as_ptr_range().end as u64 & 0xF == 0);
     stack.as_ptr_range().end as u64
 }
 
