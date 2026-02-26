@@ -15,7 +15,7 @@ use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 
-pub trait UnwindContextTrait {
+pub trait UnwindContextTrait: Sized {
     /// Returns the current stack frame as an unwind context
     unsafe fn get() -> Self;
     unsafe fn valid(&self) -> bool {
@@ -26,10 +26,10 @@ pub trait UnwindContextTrait {
         unsafe { self.get_ptr().wrapping_add(1).read() }
     }
 
-    fn from_ptr(ptr: *const u64) -> UnwindContext;
+    fn from_ptr(ptr: *const u64) -> Self;
     fn get_ptr(&self) -> *const u64;
 
-    unsafe fn next(&self) -> UnwindContext {
+    unsafe fn next(&self) -> Self {
         Self::from_ptr(unsafe { self.get_ptr().read() } as *const u64)
     }
 }
@@ -92,7 +92,7 @@ pub trait ArchTrait {
         kernel_main()
     }
     fn set_irq_enabled(enabled: bool);
-    /// save the current context and swith on to the provided temp stack & call fwd()
+    /// save the current context and switch on to the provided temp stack & call fwd()
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: MutexGuard<'static, Self::Context>,

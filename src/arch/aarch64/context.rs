@@ -90,6 +90,8 @@ unsafe extern "C" fn jump_to_context(
         "ldr x29, [x0, #232]",
         "ldr x30, [x0, #240]",
         "ldr x0, [x0, #0]",
+        // Restore interrupt mask state from SPSR before transferring control.
+        "msr daif, x2",
         "br x16",
     )
 }
