@@ -46,10 +46,10 @@ pub trait IrqStateTrait {
 
 pub trait ContextTrait {
     type Arch: ArchTrait<Context = Self>;
-    /// from what i understand basically a constructor -- give your thread the correct perms
+    /// basically a constructor -- give your thread the correct permissions
     fn setup_kthread_context(&mut self);
     fn jump_to(&self) -> !;
-    fn setup_for_call<T>(
+    fn setup_kthread_entry<T>(
         &mut self,
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
