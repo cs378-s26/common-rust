@@ -23,6 +23,7 @@ pub mod print;
 pub mod sync;
 pub mod thread;
 pub mod virtual_memory;
+pub mod fs;
 
 extern crate alloc;
 

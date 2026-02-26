@@ -27,6 +27,7 @@ use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
+use kernel_common::fs::fs_init;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
@@ -161,6 +162,7 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+    fs_init();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

@@ -377,12 +377,14 @@ fn build_image(
         target.name(),
         if release { "release" } else { "debug" }
     ));
+    let fs_dir = current_dir()?.join("fs_dir");
 
     if !fs::exists(&output_img)?
-        || fs::metadata(kernel_elf)?.modified()? > fs::metadata(&output_img)?.modified()?
+        || fs::metadata(&kernel_elf)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_efi)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_cfg)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&current_exe()?)?.modified()? > fs::metadata(&output_img)?.modified()?
+        || fs::metadata(&fs_dir)?.modified()? > fs::metadata(&output_img)?.modified()?
     {
         eprintln!(
             "rebuilding image: {}",
@@ -390,6 +392,23 @@ fn build_image(
                 .to_str()
                 .ok_or(Error::msg("could not convert image file"))?
         );
+
+        // build filesystem
+        let fs_img = cache_dir.join("fs_img");
+        let result = Command::new("mkfs.ext2")
+            .args(vec![
+                "-q",
+                "-F",
+                "-d",
+                &fs_dir.to_str().ok_or(Error::msg("could not find fs dir"))?,
+                &fs_img.to_str().ok_or(Error::msg("could not make fs img"))?,
+                "1M",
+            ])
+            .spawn()?
+            .wait()?;
+        if !result.success() {
+            return Err(Error::msg("could not format file system"));
+        }
 
         let temp_img_out = NamedTempFile::new_in(cache_dir)?;
         let mut output_file = temp_img_out.as_file();
@@ -439,6 +458,10 @@ fn build_image(
         io::copy(
             &mut File::open(limine_cfg)?,
             &mut fs.root_dir().create_file(LIMINE_CONF)?,
+        )?;
+        io::copy(
+            &mut File::open(fs_img)?,
+            &mut fs.root_dir().create_file("fs_img")?,
         )?;
 
         let elf_data = split_debug_info(kernel_elf, target)?;
