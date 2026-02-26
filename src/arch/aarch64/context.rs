@@ -40,7 +40,7 @@ impl ContextTrait for Context {
         unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
     }
 
-    fn setup_for_call<T>(
+    fn setup_kthread_entry<T>(
         &mut self,
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
