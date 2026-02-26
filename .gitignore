@@ -7,3 +7,4 @@ run/
 Cargo.lock
 
 .vscode/
+.zed/settings.json
