@@ -171,7 +171,7 @@ fn thread_enter(thread: Arc<Thread>) {
 
 fn thread_exit() {
     CURRENT_THREAD.set(None);
-    Arch::set_thread_local_pointer(ptr::null())
+    Arch::set_thread_local_pointer(ptr::null());
 }
 
 pub fn is_on_thread() -> bool {

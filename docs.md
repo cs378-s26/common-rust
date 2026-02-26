@@ -3,7 +3,7 @@
 mostly focused on how the hardware interacts w/ the kernel.
 
 ## all arch functions called from kernel
-### initalization functions
+### initialization functions
 - [x] `crate::arch::initialize_mp` (caller: `system_main`; site: `src/main.rs:186`)
 - [ ] `crate::arch::init_tty` (caller: `print::init_tty`; site: `src/print.rs:270`)
 - [x] `crate::arch::Context::setup_kthread_context` (caller: `set_up_idle`; site: `src/thread.rs:206`)
