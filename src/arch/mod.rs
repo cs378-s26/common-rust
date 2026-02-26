@@ -40,7 +40,7 @@ pub trait IrqStateTrait {
     fn save() -> Self;
     fn is_masked(&self) -> bool;
     fn restore(&self) {
-        Arch::set_irq_enabled(!self.is_masked());
+        Self::Arch::set_irq_enabled(!self.is_masked());
     }
 }
 

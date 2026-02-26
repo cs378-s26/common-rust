@@ -8,6 +8,7 @@ use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
 use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
+use crate::arch::{Arch, ContextTrait};
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -115,8 +116,10 @@ unsafe extern "C" fn jump_to_context(
     )
 }
 
-impl Context {
-    pub fn jump_to(&self) -> ! {
+impl ContextTrait for Context {
+    type Arch = Arch;
+
+    fn jump_to(&self) -> ! {
         unsafe {
             jump_to_context(
                 &raw const self.gp,
@@ -129,7 +132,7 @@ impl Context {
         }
     }
 
-    pub fn setup_kthread_context(&mut self) {
+    fn setup_kthread_context(&mut self) {
         self.cs = SegmentSelector::new(GlobalDescriptorTable::CS, Ring::Ring0)
             .bits()
             .into();
@@ -139,7 +142,7 @@ impl Context {
             .into();
     }
 
-    pub fn setup_for_call<T>(
+    fn setup_for_call<T>(
         &mut self,
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
