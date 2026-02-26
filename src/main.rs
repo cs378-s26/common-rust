@@ -28,7 +28,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use crate::arch::{Arch, ArchTrait, read_cycle_counter};
+use crate::arch::{Arch, ArchTrait};
 use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::heap::init_malloc;
@@ -237,8 +237,8 @@ pub fn kernel_main() -> ! {
             kprintln!("hi, id={}, initial_core={}", i, initial_core);
 
             // bad sleep function :D
-            let tsc = read_cycle_counter();
-            while read_cycle_counter() < tsc + 10000000000 {
+            let tsc = Arch::read_cycle_counter();
+            while Arch::read_cycle_counter() < tsc + 10000000000 {
                 yield_thread();
             }
 

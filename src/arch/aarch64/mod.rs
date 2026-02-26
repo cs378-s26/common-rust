@@ -9,7 +9,7 @@ mod context;
 mod interrupt;
 mod mp;
 
-pub use asm::*;
+use asm::halt;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::IrqState;
@@ -71,6 +71,10 @@ impl ArchTrait for Arch {
 
     fn set_thread_local_pointer(base: *const u64) {
         unsafe { set_thread_local_pointer(base) };
+    }
+
+    fn read_cycle_counter() -> u64 {
+        asm::read_cycle_counter()
     }
 
     fn halt() -> ! {
