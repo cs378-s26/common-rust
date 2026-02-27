@@ -77,6 +77,11 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn shutdown(_err_code: u16) {
+        // TODO implement this
+        halt();
+    }
+
     fn halt() -> ! {
         halt()
     }

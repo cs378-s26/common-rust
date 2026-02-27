@@ -8,10 +8,10 @@ use x86::bits64::registers::rbp;
 mod asm;
 mod context;
 mod cpuid;
+mod debug;
 mod interrupt;
 mod mp;
 mod tables;
-mod debug;
 
 pub use asm::*;
 pub use context::Context;
@@ -80,6 +80,10 @@ impl ArchTrait for Arch {
 
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
+    }
+
+    fn shutdown(err_code: u16) {
+        debug::shutdown(err_code);
     }
 
     fn halt() -> ! {

@@ -10,7 +10,7 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
-use crate::{kernel_main, mp::CoreId};
+use crate::mp::CoreId;
 use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
@@ -56,13 +56,17 @@ pub trait ContextTrait {
     ) -> Self;
 }
 
+pub trait KernelEntryTrait {
+    fn kernel_main() -> !;
+}
+
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
     type IrqState: IrqStateTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
     /// calls initalize core
-    fn initialize_mp(req: &MpRequest) -> ! {
+    fn initialize_mp<E: KernelEntryTrait>(req: &MpRequest) -> ! {
         let resp = req
             .get_response()
             .expect("Expected to find MpResponse, got None");
@@ -74,10 +78,10 @@ pub trait ArchTrait {
             } else {
                 cpu.extra.store(core_id, Ordering::SeqCst);
                 core_id += 1;
-                cpu.goto_address.write(Self::start_core);
+                cpu.goto_address.write(Self::start_core::<E>);
             }
         }
-        unsafe { Self::start_core(bsp.expect("Couldn't find the bootstrap processor")) }
+        unsafe { Self::start_core::<E>(bsp.expect("Couldn't find the bootstrap processor")) }
     }
     /// does per core init
     /// this looks like:
@@ -86,9 +90,9 @@ pub trait ArchTrait {
     /// 3. turning on needed features
     unsafe fn initialize_core(cpu: &Cpu) -> ();
     /// wrapper around initalize core that goes to kernel main
-    unsafe extern "C" fn start_core(cpu: &Cpu) -> ! {
+    unsafe extern "C" fn start_core<E: KernelEntryTrait>(cpu: &Cpu) -> ! {
         unsafe { Self::initialize_core(cpu) };
-        kernel_main()
+        E::kernel_main()
     }
     fn set_irq_enabled(enabled: bool);
     /// save the current context and switch on to the provided temp stack & call fwd()
@@ -102,5 +106,6 @@ pub trait ArchTrait {
     fn set_thread_local_pointer(base: *const u64);
     fn get_thread_local_pointer() -> u64;
     fn read_cycle_counter() -> u64;
+    fn shutdown(err_code: u16);
     fn halt() -> !;
 }
