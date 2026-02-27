@@ -1,5 +1,6 @@
 use core::cell::SyncUnsafeCell;
 
+use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
@@ -13,13 +14,74 @@ mod tables;
 mod debug;
 
 pub use asm::*;
-pub use context::*;
+pub use context::Context;
+use context::save_context;
 pub use interrupt::*;
-pub use mp::*;
-pub use debug::*;
+use interrupt::{disable, enable};
+use mp::{
+    get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
+    set_thread_local_pointer,
+};
 
-pub use crate::arch::UnwindContextTrait;
+pub use crate::arch::{ArchTrait, UnwindContextTrait};
+use crate::mp::CoreId;
 use crate::print::CharSink;
+
+pub struct Arch;
+
+impl ArchTrait for Arch {
+    type Context = Context;
+    type IrqState = IrqState;
+
+    fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
+        let resp = req
+            .get_response()
+            .expect("Failed to get response from MpRequest.");
+        cpu.lapic_id == resp.bsp_lapic_id()
+    }
+
+    unsafe fn initialize_core(cpu: &Cpu) {
+        unsafe { initialize_core(cpu) };
+    }
+
+    fn set_irq_enabled(enabled: bool) {
+        unsafe {
+            if enabled {
+                enable();
+            } else {
+                disable();
+            }
+        }
+    }
+
+    unsafe fn save_context<T: FnOnce() -> !>(
+        temp_stack: &[u8],
+        ctx: spin::MutexGuard<'static, Self::Context>,
+        fwd: T,
+    ) {
+        unsafe { save_context(temp_stack, ctx, fwd) };
+    }
+
+    fn get_cpu_local_pointer() -> u64 {
+        get_cpu_local_pointer()
+    }
+
+    fn set_cpu_local_pointer(core_id: CoreId) {
+        init_cpu_local_ptr(core_id);
+    }
+
+    fn get_thread_local_pointer() -> u64 {
+        unsafe { get_thread_local_pointer() }
+    }
+
+    fn set_thread_local_pointer(base: *const u64) {
+        unsafe { set_thread_local_pointer(base) };
+    }
+
+    fn halt() -> ! {
+        halt()
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
