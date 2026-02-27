@@ -1,12 +1,14 @@
 extern crate alloc;
 
 use core::{
-    arch::naked_asm,
     cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
     ffi::c_void,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -14,10 +16,7 @@ use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter}
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{
-        Context, IrqState, get_thread_local_pointer, irq_disable, irq_enable, save_context,
-        set_thread_local_pointer, sleep_core,
-    },
+    arch::{Arch, ArchTrait, Context, ContextTrait, IrqState, IrqStateTrait, sleep_core},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     print::kprintln,
@@ -85,7 +84,7 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
 
     fn get_base() -> u64 {
         assert!(is_on_thread());
-        unsafe { get_thread_local_pointer() }
+        Arch::get_thread_local_pointer()
     }
 }
 
@@ -166,13 +165,13 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
 }
 
 fn thread_enter(thread: Arc<Thread>) {
-    unsafe { set_thread_local_pointer(&thread.tls_addr) };
+    Arch::set_thread_local_pointer(&thread.tls_addr);
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
     CURRENT_THREAD.set(None);
-    unsafe { set_thread_local_pointer(ptr::null()) };
+    Arch::set_thread_local_pointer(ptr::null());
 }
 
 pub fn is_on_thread() -> bool {
@@ -230,7 +229,7 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            irq_enable(); // unmask interrupts
+            Arch::set_irq_enabled(true); // unmask interrupts
             kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
             sleep_core();
             continue;
@@ -251,7 +250,7 @@ pub fn can_yield() -> bool {
 // flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let irq_state = IrqState::save();
-    irq_disable();
+    Arch::set_irq_enabled(false);
 
     assert!(
         is_on_thread(),
@@ -262,7 +261,7 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
     unsafe {
-        save_context(&(*CTX_SWITCH_STACK).0, context, move || {
+        Arch::save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
             action(thread);
             go_to_thread(target);
@@ -308,11 +307,10 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         todo!()
     }
 
-    // need to push zero because of SysV abi:
-    // "the stack frame needs to be 16-byte aligned before a call, and 8 byte misaligned after the
-    // call"
+    #[cfg(target_arch = "x86_64")]
     #[unsafe(naked)]
     unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        // SysV ABI: emulate a call frame so the callee entry stack layout is what Rust expects.
         naked_asm!(
             "pushq $0",
             "jmp {0}",
@@ -321,12 +319,17 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         )
     }
 
+    #[cfg(target_arch = "aarch64")]
+    unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        unsafe { thread_entry(task) }
+    }
+
     let thread = Thread::new();
 
     {
-        let mut ctx = CONTEXT.read_for(&thread).lock();
         let task = Box::into_raw(Box::new(task));
-        ctx.setup_for_call(&STACK.read_for(&thread).0, thread_entry0, task);
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_kthread(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);

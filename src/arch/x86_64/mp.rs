@@ -3,7 +3,7 @@ use core::arch::asm;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use alloc::boxed::Box;
-use limine::{mp::Cpu, request::MpRequest};
+use limine::mp::Cpu;
 use spin::Once;
 use x86::msr::IA32_FS_BASE;
 use x86::{
@@ -18,13 +18,9 @@ use crate::arch::x86_64::tables::{
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
-    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for, init_cpu_local_table},
+    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::{kprint, kprintln},
 };
-
-#[used]
-#[unsafe(link_section = ".limine_requests")]
-static MP_REQUEST: MpRequest = MpRequest::new();
 
 static CPU_ID_PRINT: Once<()> = Once::new();
 
@@ -36,7 +32,7 @@ core_local! {
 }
 
 // Gheith uses FSGSBASE instructions here, but the MSR is older and doesn't need to be enabled
-fn init_cpu_local_ptr(core_id: CoreId) {
+pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe { wrmsr(IA32_GS_BASE, ptr) };
 }
@@ -73,47 +69,7 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
     val
 }
 
-pub fn core_count() -> usize {
-    MP_REQUEST.get_response().unwrap().cpus().len()
-}
-
-// initialization routines
-
-pub unsafe extern "C" fn dummy() -> ! {
-    loop{}
-}
-
-static mut KERN_MAIN_PTR : unsafe extern "C" fn() -> ! = dummy;
-
-pub fn initialize_mp(func: unsafe extern "C" fn() -> !) -> ! {
-    let response = MP_REQUEST.get_response().expect("mp response not received");
-
-    let n_cores = response.cpus().len();
-    kprintln!("x86::initialize_mp(): bootstrapping {} cores", n_cores);
-
-    init_cpu_local_table(n_cores);
-
-    let mut core_id: u64 = 1;
-    let bsp_id = response.bsp_lapic_id();
-
-    let mut core_self = None;
-
-    unsafe { KERN_MAIN_PTR = func; }
-
-    for cpu in response.cpus() {
-        if bsp_id != cpu.lapic_id {
-            cpu.extra.store(core_id, Ordering::SeqCst);
-            core_id += 1;
-            cpu.goto_address.write(initialize_core);
-        } else {
-            core_self = Some(cpu);
-        }
-    }
-
-    unsafe { initialize_core(core_self.expect("limine did not give current CPU in MP response")) };
-}
-
-unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
+pub unsafe fn initialize_core(cpu: &Cpu) {
     // kprintln!("hello from x86::initialize_core");
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
@@ -153,7 +109,7 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     });
 
     let gdt = GDT.call_once(|| GlobalDescriptorTable::new(ist));
-    let idt = IDT.call_once(InterruptDescriptorTable::new);
+    let _idt = IDT.call_once(InterruptDescriptorTable::new);
 
     unsafe { gdt.load() };
     // unsafe { idt.load() };
