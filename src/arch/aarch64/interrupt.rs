@@ -1,20 +1,23 @@
+use crate::arch::{Arch, IrqStateTrait};
+
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
 
 const DAIF_IRQ_BIT: u64 = 1 << 7;
 
-unsafe fn disable() {
+pub unsafe fn disable() {
     unsafe { core::arch::asm!("msr daifset, #2", options(nomem, nostack, preserves_flags)) }
 }
 
-unsafe fn enable() {
+pub unsafe fn enable() {
     unsafe { core::arch::asm!("msr daifclr, #2", options(nomem, nostack, preserves_flags)) }
 }
 
-impl IrqState {
+impl IrqStateTrait for IrqState {
+    type Arch = Arch;
     #[inline(always)]
-    pub fn save() -> IrqState {
+    fn save() -> IrqState {
         let daif: u64;
         unsafe {
             core::arch::asm!(
@@ -25,26 +28,7 @@ impl IrqState {
         IrqState((daif & DAIF_IRQ_BIT) == 0)
     }
 
-    #[inline(always)]
-    pub fn restore(self) {
-        if self.0 {
-            unsafe { enable() };
-        } else {
-            unsafe { disable() };
-        }
-    }
-
-    pub fn is_masked(self) -> bool {
+    fn is_masked(&self) -> bool {
         !self.0
     }
-}
-
-#[inline(always)]
-pub fn irq_disable() {
-    unsafe { disable() };
-}
-
-#[inline(always)]
-pub fn irq_enable() {
-    unsafe { enable() };
 }
