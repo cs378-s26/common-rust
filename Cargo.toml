@@ -30,5 +30,4 @@ proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 
 [workspace]
-members = ["run_kernel", "buildtool", "flanterm", "proc-macros"]
-
+members = ["buildtool", "flanterm", "proc-macros"]
