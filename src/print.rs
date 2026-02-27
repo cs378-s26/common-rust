@@ -203,7 +203,8 @@ impl FlanTermSink {
 impl CharSink for FlanTermSink {
     unsafe fn putc(&self, ch: u8) {
         unsafe {
-            flanterm_write(self.0, ptr::from_ref(&(ch as i8)), 1);
+            let cch = ch as core::ffi::c_char;
+            flanterm_write(self.0, ptr::from_ref(&cch), 1);
 
             if ch == b'\n' {
                 flanterm_flush(self.0);

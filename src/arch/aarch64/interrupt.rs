@@ -2,6 +2,8 @@
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
 
+const DAIF_IRQ_BIT: u64 = 1 << 7;
+
 unsafe fn disable() {
     unsafe { core::arch::asm!("msr daifset, #2", options(nomem, nostack, preserves_flags)) }
 }
@@ -20,15 +22,15 @@ impl IrqState {
                 lateout(reg) daif,
             )
         };
-        IrqState((daif & 0b0010) == 0)
+        IrqState((daif & DAIF_IRQ_BIT) == 0)
     }
 
     #[inline(always)]
     pub fn restore(self) {
         if self.0 {
-            unsafe { disable() };
-        } else {
             unsafe { enable() };
+        } else {
+            unsafe { disable() };
         }
     }
 

@@ -1,10 +1,11 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
+    kernel_main,
     mp::{core_local, get_cpu_local_pointer_for, init_cpu_local_table, CoreId, CORE_ID},
-    print::{kprint, kprintln},
+    print::kprintln,
 };
 use core::arch::asm;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 use limine::{mp::Cpu, request::MpRequest};
 
 #[used]
@@ -12,14 +13,25 @@ use limine::{mp::Cpu, request::MpRequest};
 static MP_REQUEST: MpRequest = MpRequest::new();
 
 core_local! {
-    pub MPDIR_ID: AtomicU32 = AtomicU32::new(0);
-    IST: Once<InterruptStackTable> = Once::new();
-    GDT: Once<GlobalDescriptorTable> = Once::new();
-    IDT: Once<InterruptDescriptorTable> = Once::new();
+    pub MPDIR_ID: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn core_count() -> usize {
     MP_REQUEST.get_response().unwrap().cpus().len()
+}
+
+fn enable_advsimd() {
+    // CPACR_EL1.FPEN[21:20] = 0b11: do not trap FP/AdvSIMD at EL0/EL1.
+    unsafe {
+        asm!(
+            "mrs x0, cpacr_el1",
+            "orr x0, x0, #(3 << 20)",
+            "msr cpacr_el1, x0",
+            "isb",
+            out("x0") _,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
 }
 
 fn init_cpu_local_ptr(core_id: CoreId) {
@@ -28,23 +40,23 @@ fn init_cpu_local_ptr(core_id: CoreId) {
         asm!(
             "msr tpidr_el1, {}",
             in(reg) ptr,
-            options(nostack, preserves_flags, pure),
+            options(nomem, nostack, preserves_flags),
         )
     };
 }
 
 pub fn get_cpu_local_pointer() -> u64 {
-    let mut val: u64;
+    let mut slot: u64;
 
     unsafe {
         asm!(
             "mrs {}, tpidr_el1",
-            lateout(reg) val,
-            options(nostack, preserves_flags, pure, readonly),
+            lateout(reg) slot,
+            options(nomem, nostack, preserves_flags),
         );
     }
 
-    val
+    unsafe { *(slot as *const u64) }
 }
 
 pub unsafe fn set_thread_local_pointer(base: *const u64) {
@@ -52,23 +64,23 @@ pub unsafe fn set_thread_local_pointer(base: *const u64) {
         asm!(
             "msr tpidr_el0, {}",
             in(reg) base as u64,
-            options(nostack, preserves_flags, pure),
+            options(nomem, nostack, preserves_flags),
         )
     };
 }
 
 pub unsafe fn get_thread_local_pointer() -> u64 {
-    let mut val: u64;
+    let mut slot: u64;
 
     unsafe {
         asm!(
             "mrs {} , tpidr_el0",
-            lateout(reg) val,
-            options(nostack, preserves_flags, pure, readonly),
+            lateout(reg) slot,
+            options(nomem, nostack, preserves_flags),
         );
     }
 
-    val
+    unsafe { *(slot as *const u64) }
 }
 
 pub fn initialize_mp() -> ! {
@@ -80,12 +92,12 @@ pub fn initialize_mp() -> ! {
     init_cpu_local_table(n_cores);
 
     let mut core_id: u64 = 1;
-    let bsp_id = response.bsp_mpdir();
+    let bsp_id = response.bsp_mpidr();
 
     let mut core_self = None;
 
     for cpu in response.cpus() {
-        if bsp_id != cpu.mpdir {
+        if bsp_id != cpu.mpidr {
             cpu.extra.store(core_id, Ordering::SeqCst);
             core_id += 1;
             cpu.goto_address.write(initialize_core);
@@ -98,25 +110,18 @@ pub fn initialize_mp() -> ! {
 }
 
 unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
-    // kprintln!("hello from x86::initialize_core");
+    enable_advsimd();
+
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
-    MPDIR_ID.store(cpu.lapic_id, Ordering::Relaxed);
+    MPDIR_ID.store(cpu.mpidr as u64, Ordering::Relaxed);
     kprintln!(
-        "done init core {}, CLS base={:x}, TPDIR_EL1={:x}",
+        "done init core {}, CLS base={:x}, TPIDR_EL1={:x}",
         id,
         get_cpu_local_pointer(),
         get_cpu_local_pointer_for(id)
     );
-
-    // let cpu_id = CpuId::new();
-
-    // CPU_ID_PRINT.call_once(|| kprint!("{}", Features(&cpu_id)));
-
-    fn allocate_sp(pages: usize) -> u64 {
-        slice_stack_pointer(unsafe { &*Box::into_raw(aligned_slice(pages * 4096, 4096)) })
-    }
 
     // TODO: handle interrupts
 

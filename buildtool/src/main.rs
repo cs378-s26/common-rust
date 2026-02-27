@@ -24,7 +24,7 @@ mod debug;
 const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";
 const LIMINE_AARCH64_URL: &str =
-    "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTAA64.EFI";
+    "https://codeberg.org/Limine/Limine/raw/tag/v10.5.1-binary/BOOTAA64.EFI";
 const OVMF_X86_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-x86_64.fd";
 const OVMF_AARCH64_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-aarch64.fd";
 const LIMINE_CONF: &str = "limine.conf";
@@ -40,6 +40,15 @@ struct Cli {
 enum Target {
     X86_64,
     Aarch64,
+}
+
+impl Target {
+    fn name(self) -> &'static str {
+        match self {
+            Target::X86_64 => "x86_64",
+            Target::Aarch64 => "aarch64",
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -96,7 +105,7 @@ fn run_dir() -> Result<PathBuf> {
 
 fn download_limine(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
-    let limine_path = root.join("limine.efi");
+    let limine_path = root.join(format!("limine-{}.efi", target.name()));
 
     if !limine_path.exists() {
         let url = match target {
@@ -114,7 +123,7 @@ fn download_limine(target: Target) -> Result<PathBuf> {
 
 fn download_ovmf(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
-    let ovmf_path = root.join("ovmf.fd");
+    let ovmf_path = root.join(format!("ovmf-{}.fd", target.name()));
 
     if !ovmf_path.exists() {
         let url = match target {
@@ -325,11 +334,13 @@ fn build_image(
     let limine_efi = download_limine(target)?;
     let limine_cfg = resources_dir()?.join(LIMINE_CONF);
     let output_img = cache_dir.join(format!(
-        "kernel-{}.img",
+        "kernel-{}-{}.img",
+        target.name(),
         if release { "release" } else { "debug" }
     ));
     let debug_mod = cache_dir.join(format!(
-        "kernel-debug_info-{}.mod",
+        "kernel-{}-debug_info-{}.mod",
+        target.name(),
         if release { "release" } else { "debug" }
     ));
 
@@ -386,9 +397,13 @@ fn build_image(
         fs.root_dir().create_dir("efi")?;
         fs.root_dir().create_dir("efi/boot")?;
 
+        let limine_efi_path = match target {
+            Target::X86_64 => "efi/boot/BOOTX64.EFI",
+            Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
+        };
         io::copy(
             &mut File::open(limine_efi)?,
-            &mut fs.root_dir().create_file("efi/boot/bootx64.efi")?,
+            &mut fs.root_dir().create_file(limine_efi_path)?,
         )?;
         io::copy(
             &mut File::open(limine_cfg)?,
@@ -432,7 +447,14 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
+    let machine = match target {
+        Target::X86_64 => "pc",
+        Target::Aarch64 => "virt",
+    };
+
     let mut args = vec![
+        "-machine".into(),
+        machine.into(),
         "-bios".into(),
         path_to_string(&download_ovmf(target)?)?,
         "-drive".into(),
@@ -446,26 +468,44 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Resul
         "qemu.log".into(),
         "-no-shutdown".into(),
         "-s".into(),
-        "-S".into(),
-        "-M".into(),
-        "smm=off".into(),
+        // "-S".into(),
+        // "-M".into(),
+        // "smm=off".into(),
         "-m".into(),
         format!("{}G", mem_g),
         "-smp".into(),
         format!("{}", cores),
-        "-vga".into(),
-        "std".into(),
         "-serial".into(),
         format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
     ];
+
+    match target {
+        Target::X86_64 => {
+            args.push("-vga".into());
+            args.push("std".into());
+        }
+        // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
+        Target::Aarch64 => {
+            args.push("-device".into());
+            args.push("ramfb".into());
+        }
+    }
 
     if kvm {
         args.push("-enable-kvm".into());
         args.push("-cpu".into());
         args.push("host".into());
+    } else if matches!(target, Target::Aarch64) {
+        // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
+        args.push("-cpu".into());
+        args.push("cortex-a72".into());
     }
 
-    exec("qemu-system-x86_64", args)
+    let qemu_binary = match target {
+        Target::X86_64 => "qemu-system-x86_64",
+        Target::Aarch64 => "qemu-system-aarch64",
+    };
+    exec(qemu_binary, args)
 }
 
 fn gdb(kvm: bool, release: bool, target: Target) -> Result<()> {

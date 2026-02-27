@@ -1,10 +1,14 @@
 use core::{
-    arch::naked_asm,
+    arch::{asm, naked_asm},
     mem::forget,
     ptr::{self},
 };
 
 use spin::MutexGuard;
+
+const SPSR_MODE_EL1H: u64 = 0x5;
+const SPSR_DAIF_MASK: u64 = 0b1111 << 6;
+const SPSR_IRQ_MASK: u64 = 1 << 7;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -26,7 +30,7 @@ impl const Default for Context {
             gp: GPRegisters { regs: [0; 31] },
             sp: Default::default(),
             pc: Default::default(),
-            spsr: 0x5, // default to EL1h
+            spsr: SPSR_MODE_EL1H | SPSR_IRQ_MASK, // EL1h with IRQ masked
         }
     }
 }
@@ -44,7 +48,7 @@ unsafe extern "C" fn jump_to_context(
 ) -> ! {
     naked_asm!(
         // AAPCS64 call ABI:
-        // x0 = buf, x1 = sp, x2 = spsr (unused here), x3 = pc
+        // x0 = buf, x1 = sp, x2 = spsr, x3 = pc
         "mov x16, x3",
         "mov sp, x1",
         // Restore callee-saved state + x0 argument register.
@@ -62,7 +66,6 @@ unsafe extern "C" fn jump_to_context(
         "ldr x30, [x0, #240]",
         "ldr x0, [x0, #0]",
         "br x16",
-        options(noreturn)
     )
 }
 
@@ -72,8 +75,7 @@ impl Context {
     }
 
     pub fn setup_kthread_context(&mut self) {
-        // EL1h thread context value; currently only stored, not consumed by jump_to_context.
-        self.spsr = 0x5;
+        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
     }
 
     pub fn setup_for_call<T>(
@@ -136,6 +138,15 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         ctx.gp.regs[30] = frame.x30;
         ctx.sp = frame.sp;
         ctx.pc = frame.x30;
+        let daif: u64;
+        unsafe {
+            asm!(
+                "mrs {}, daif",
+                lateout(reg) daif,
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+        ctx.spsr = SPSR_MODE_EL1H | (daif & SPSR_DAIF_MASK);
 
         drop(ctx);
         fwd();
@@ -166,7 +177,6 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
             "bl {save}",
             "brk #0",
             save = sym save_context_save::<T>,
-            options(noreturn)
         )
     }
 

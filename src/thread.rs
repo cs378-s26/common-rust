@@ -1,12 +1,14 @@
 extern crate alloc;
 
 use core::{
-    arch::naked_asm,
     cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
     ffi::c_void,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -308,17 +310,21 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         todo!()
     }
 
-    // need to push zero because of SysV abi:
-    // "the stack frame needs to be 16-byte aligned before a call, and 8 byte misaligned after the
-    // call"
+    #[cfg(target_arch = "x86_64")]
     #[unsafe(naked)]
     unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        // SysV ABI: emulate a call frame so the callee entry stack layout is what Rust expects.
         naked_asm!(
             "pushq $0",
             "jmp {0}",
             sym thread_entry::<T>,
             options(att_syntax)
         )
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        unsafe { thread_entry(task) }
     }
 
     let thread = Thread::new();
