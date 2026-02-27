@@ -6,32 +6,37 @@ use x86::{
     irq,
 };
 
-use crate::arch::{Arch, IrqStateTrait};
-
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
 
-impl IrqStateTrait for IrqState {
-    type Arch = Arch;
-
+impl IrqState {
     #[inline(always)]
-    fn save() -> IrqState {
+    pub fn save() -> IrqState {
         IrqState(rflags::read().contains(RFlags::FLAGS_IF))
     }
 
-    fn is_masked(&self) -> bool {
+    #[inline(always)]
+    pub fn restore(self) {
+        if self.0 {
+            unsafe { irq::disable() };
+        } else {
+            unsafe { irq::enable() };
+        }
+    }
+
+    pub fn is_masked(self) -> bool {
         !self.0
     }
 }
 
 #[inline(always)]
-pub unsafe fn disable() {
+pub fn irq_disable() {
     unsafe { irq::disable() };
 }
 
 #[inline(always)]
-pub unsafe fn enable() {
+pub fn irq_enable() {
     unsafe { irq::enable() };
 }
 

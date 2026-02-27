@@ -1,22 +1,6 @@
 use core::arch::asm;
 use core::arch::naked_asm;
 
-pub fn read_cycle_counter() -> u64 {
-    let lo: u32;
-    let hi: u32;
-
-    unsafe {
-        asm!(
-            "rdtsc",
-            out("eax") lo,
-            out("edx") hi,
-            options(nomem, nostack, preserves_flags),
-        );
-    }
-
-    ((hi as u64) << 32) | (lo as u64)
-}
-
 pub fn halt() -> ! {
     #[cfg(target_arch = "x86_64")]
     unsafe {

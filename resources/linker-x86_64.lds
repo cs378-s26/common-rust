@@ -13,7 +13,7 @@ PHDRS
 SECTIONS
 {
     . = 0xffffffff80000000;
-
+    
     _marker_kernel_start = .;
 
     /* limine */
@@ -36,19 +36,19 @@ SECTIONS
         *(.text .text.*)
     } :text
     _marker_text_end = .;
-
+ 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     /* rodata */
 
     _marker_rodata_start = .;
-    .rodata :
+    .rodata : 
     {
         *(.rodata .rodata.*)
     } :rodata
 
     /* got */
-
+    
     _marker_got_start = .;
     .got :
     {
@@ -59,10 +59,10 @@ SECTIONS
     /* cpu local template */
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
-
+    
     _marker_cpu_local_template_start = .;
 
-    .cpu_local_template :
+    .cpu_local_template : 
     {
         *(.cpu_local)
     } :rodata
@@ -74,10 +74,10 @@ SECTIONS
     /* thread local template */
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
-
+    
     _marker_thread_local_template_start = .;
 
-    .thread_local_template :
+    .thread_local_template : 
     {
         *(.thread_local)
     } :rodata
@@ -87,24 +87,24 @@ SECTIONS
     _marker_thread_local_template_end = .;
 
     _marker_rodata_end = .;
-
+ 
     /* data */
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     _marker_data_start = .;
 
-    .data :
+    .data : 
     {
         *(.data .data.*)
     } :data
 
-    .bss :
+    .bss : 
     {
         *(COMMON)
         *(.bss .bss.*)
     } :data
-
+    
     _marker_data_end = .;
     _marker_kernel_end = .;
 
@@ -114,3 +114,4 @@ SECTIONS
         *(.note .note.*)
     }
 }
+

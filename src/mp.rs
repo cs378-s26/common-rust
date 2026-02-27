@@ -10,7 +10,7 @@ use spin::Once;
 use alloc::boxed::Box;
 
 use crate::{
-    arch::{Arch, ArchTrait},
+    arch::get_cpu_local_pointer,
     local_storage::{LocalStorageHandler, impl_local_storage},
 };
 
@@ -58,7 +58,7 @@ impl LocalStorageHandler for CoreLocalStorageHandler {
     }
 
     fn get_base() -> u64 {
-        Arch::get_cpu_local_pointer()
+        get_cpu_local_pointer()
     }
 }
 

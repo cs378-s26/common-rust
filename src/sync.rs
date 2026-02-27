@@ -8,7 +8,7 @@ use core::{
 use spin::{Mutex, MutexGuard, lazy::Lazy};
 
 use crate::{
-    arch::{Arch, ArchTrait, IrqState, IrqStateTrait},
+    arch::{IrqState, irq_disable},
     thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
 };
 
@@ -72,7 +72,7 @@ impl<T> IntMutex<T> {
 
     #[inline(always)]
     fn attempt_acquire_lock(&self, state: IrqState) -> bool {
-        Arch::set_irq_enabled(false);
+        irq_disable();
 
         if !self.lock.swap(true, Ordering::Acquire) {
             // we got the lock
@@ -98,7 +98,7 @@ impl<T> IntMutex<T> {
             while self.lock.load(Ordering::Relaxed) {
                 // attempt to block
                 let queue = &*self.blocked;
-                Arch::set_irq_enabled(false);
+                irq_disable();
                 suspend_to_queue(queue);
             }
         }

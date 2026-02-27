@@ -1,6 +1,5 @@
 use core::cell::SyncUnsafeCell;
 
-use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
@@ -13,95 +12,36 @@ mod mp;
 mod tables;
 
 pub use asm::*;
-pub use context::Context;
-use context::save_context;
+pub use context::*;
 pub use interrupt::*;
-use interrupt::{disable, enable};
-use mp::{
-    get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
-    set_thread_local_pointer,
-};
+pub use mp::*;
 
-pub use crate::arch::{ArchTrait, UnwindContextTrait};
-use crate::mp::CoreId;
 use crate::print::CharSink;
-
-pub struct Arch;
-
-impl ArchTrait for Arch {
-    type Context = Context;
-    type IrqState = IrqState;
-
-    fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
-        let resp = req
-            .get_response()
-            .expect("Failed to get response from MpRequest.");
-        cpu.lapic_id == resp.bsp_lapic_id()
-    }
-
-    unsafe fn initialize_core(cpu: &Cpu) {
-        unsafe { initialize_core(cpu) };
-    }
-
-    fn set_irq_enabled(enabled: bool) {
-        unsafe {
-            if enabled {
-                enable();
-            } else {
-                disable();
-            }
-        }
-    }
-
-    unsafe fn save_context<T: FnOnce() -> !>(
-        temp_stack: &[u8],
-        ctx: spin::MutexGuard<'static, Self::Context>,
-        fwd: T,
-    ) {
-        unsafe { save_context(temp_stack, ctx, fwd) };
-    }
-
-    fn get_cpu_local_pointer() -> u64 {
-        get_cpu_local_pointer()
-    }
-
-    fn set_cpu_local_pointer(core_id: CoreId) {
-        init_cpu_local_ptr(core_id);
-    }
-
-    fn get_thread_local_pointer() -> u64 {
-        unsafe { get_thread_local_pointer() }
-    }
-
-    fn set_thread_local_pointer(base: *const u64) {
-        unsafe { set_thread_local_pointer(base) };
-    }
-
-    fn read_cycle_counter() -> u64 {
-        asm::read_cycle_counter()
-    }
-
-    fn halt() -> ! {
-        halt()
-    }
-}
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
     ptr: *const u64,
 }
 
-impl UnwindContextTrait for UnwindContext {
-    fn from_ptr(ptr: *const u64) -> UnwindContext {
-        UnwindContext { ptr }
-    }
-    fn get_ptr(&self) -> *const u64 {
-        self.ptr
-    }
+impl UnwindContext {
     #[inline(always)]
-    unsafe fn get() -> UnwindContext {
+    pub unsafe fn get() -> UnwindContext {
         UnwindContext {
             ptr: rbp() as *const u64,
+        }
+    }
+
+    pub unsafe fn valid(&self) -> bool {
+        (unsafe { self.return_address() }) != 0
+    }
+
+    pub unsafe fn return_address(&self) -> u64 {
+        unsafe { self.ptr.wrapping_add(1).read() }
+    }
+
+    pub unsafe fn next(&self) -> UnwindContext {
+        UnwindContext {
+            ptr: unsafe { self.ptr.read() } as *const u64,
         }
     }
 }
