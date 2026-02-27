@@ -8,37 +8,32 @@ use x86::{
 };
 use x86_64::structures::idt::PageFaultErrorCode;
 
+use crate::arch::{Arch, IrqStateTrait};
+
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
 
-impl IrqState {
+impl IrqStateTrait for IrqState {
+    type Arch = Arch;
+
     #[inline(always)]
-    pub fn save() -> IrqState {
+    fn save() -> IrqState {
         IrqState(rflags::read().contains(RFlags::FLAGS_IF))
     }
 
-    #[inline(always)]
-    pub fn restore(self) {
-        if self.0 {
-            unsafe { irq::disable() };
-        } else {
-            unsafe { irq::enable() };
-        }
-    }
-
-    pub fn is_masked(self) -> bool {
+    fn is_masked(&self) -> bool {
         !self.0
     }
 }
 
 #[inline(always)]
-pub fn irq_disable() {
+pub unsafe fn disable() {
     unsafe { irq::disable() };
 }
 
 #[inline(always)]
-pub fn irq_enable() {
+pub unsafe fn enable() {
     unsafe { irq::enable() };
 }
 

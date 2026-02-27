@@ -1,49 +1,39 @@
-use core::cell::SyncUnsafeCell;
+use core::arch::asm;
 
-use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
-use uart_16550::SerialPort;
-use x86::bits64::registers::rbp;
+
+use crate::print::CharSink;
 
 mod asm;
 mod context;
-mod cpuid;
-mod debug;
 mod interrupt;
 mod mp;
-mod tables;
-mod vmm;
 
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
-pub use interrupt::*;
+pub use interrupt::IrqState;
 use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
-pub use vmm::*;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
-use crate::mp::CoreId;
-use crate::print::CharSink;
 
-pub const PAGE_SIZE: usize = 4096;
 pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
     type IrqState = IrqState;
-
-    fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
+    fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()
             .expect("Failed to get response from MpRequest.");
-        cpu.lapic_id == resp.bsp_lapic_id()
+        cpu.mpidr == resp.bsp_mpidr()
     }
 
-    unsafe fn initialize_core(cpu: &Cpu) {
+    unsafe fn initialize_core(cpu: &limine::mp::Cpu) -> () {
         unsafe { initialize_core(cpu) };
     }
 
@@ -62,14 +52,16 @@ impl ArchTrait for Arch {
         ctx: spin::MutexGuard<'static, Self::Context>,
         fwd: T,
     ) {
-        unsafe { save_context(temp_stack, ctx, fwd) };
+        unsafe {
+            save_context(temp_stack, ctx, fwd);
+        }
     }
 
     fn get_cpu_local_pointer() -> u64 {
         get_cpu_local_pointer()
     }
 
-    fn set_cpu_local_pointer(core_id: CoreId) {
+    fn set_cpu_local_pointer(core_id: crate::mp::CoreId) {
         init_cpu_local_ptr(core_id);
     }
 
@@ -85,8 +77,9 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
-    fn shutdown(err_code: u16) {
-        debug::shutdown(err_code);
+    fn shutdown(_err_code: u16) {
+        // TODO implement this
+        halt();
     }
 
     fn halt() -> ! {
@@ -108,40 +101,35 @@ impl UnwindContextTrait for UnwindContext {
     }
     #[inline(always)]
     unsafe fn get() -> UnwindContext {
+        let fp: u64;
+        unsafe {
+            asm!(
+                "mov {}, x29",
+                out(reg) fp,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+
         UnwindContext {
-            ptr: rbp() as *const u64,
+            ptr: fp as *const u64,
         }
     }
 }
 
-fn slice_stack_pointer(slice: &[u8]) -> u64 {
-    slice.as_ptr_range().end as u64
-}
-
-pub struct SerialCharSink {
-    serial: SyncUnsafeCell<SerialPort>,
-}
+pub struct SerialCharSink;
 
 impl SerialCharSink {
-    pub fn open(port: u16) -> SerialCharSink {
-        let mut serial = unsafe { SerialPort::new(port) };
-        serial.init();
-        SerialCharSink {
-            serial: SyncUnsafeCell::new(serial),
-        }
+    pub fn open(_port: u16) -> SerialCharSink {
+        SerialCharSink
     }
 }
 
 impl CharSink for SerialCharSink {
-    unsafe fn putc(&self, ch: u8) {
-        unsafe { &mut *self.serial.get() }.send(ch);
-    }
+    unsafe fn putc(&self, _ch: u8) {}
 
-    unsafe fn flush(&self) {
-        // no-op
-    }
+    unsafe fn flush(&self) {}
 }
 
 pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0x3f8));
+    cell.call_once(|| SerialCharSink::open(0));
 }

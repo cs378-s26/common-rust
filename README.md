@@ -16,6 +16,7 @@ cargo buildtool qemu # runs qemu
 cargo buildtool gdb # runs gdb, and attaches to qemu
 cargo buildtool clean # cleans the buildtool cache
 cargo buildtool help # help message
+cargo buildtool test # runs unit tests. QEMU flags specified in run_qemu.sh
 ```
 
 The current configuration for `buildtool` only supports `x86_64` on a fairly generic processor.
@@ -25,6 +26,10 @@ pass in `-k` if and only if the `qemu` instance was started with `-k`. Use `--he
 amount of memory.
 
 **Note:** Your QEMU version **must** be new enough for compatibility with `ovmf.fd`, ideally at least 8.2 (the latest possible with Ubuntu 24.04). 
+
+## Testing
+
+QEMU command is specified in `run_qemu.sh`. Make sure to run `setup.sh` before running tests.
 
 ## TODO
 

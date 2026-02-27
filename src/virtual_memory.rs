@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use intrusive_collections::{RBTree, RBTreeLink, intrusive_adapter, KeyAdapter, Bound};
 use alloc::boxed::Box;
 use spin::{Mutex, Once};
-use crate::{arch::PAGE_SIZE, physical_memory::HHDM_REQUEST, print::kprintln, vmap, vunmap, get_address_space, frame_alloc};
+use crate::{physical_memory::{HHDM_REQUEST, frame_alloc}, print::kprintln, arch::{PAGE_SIZE, vmap, vunmap, get_address_space}};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
