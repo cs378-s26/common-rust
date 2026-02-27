@@ -1,6 +1,6 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
-    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for, init_cpu_local_table},
+    mp::{core_local, get_cpu_local_pointer_for, init_cpu_local_table, CoreId, CORE_ID},
     print::{kprint, kprintln},
 };
 use core::arch::asm;
@@ -120,5 +120,5 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
 
     // TODO: handle interrupts
 
-    kernel_main();
+    kernel_main()
 }
