@@ -36,6 +36,124 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug, Copy)]
+enum Target {
+    X86_64,
+    Aarch64,
+}
+
+impl Target {
+    fn name(self) -> &'static str {
+        match self {
+            Target::X86_64 => "x86_64",
+            Target::Aarch64 => "aarch64",
+        }
+    }
+
+    fn limine_url(self) -> &'static str {
+        match self {
+            Target::X86_64 => LIMINE_X86_URL,
+            Target::Aarch64 => LIMINE_AARCH64_URL,
+        }
+    }
+
+    fn ovmf_url(self) -> &'static str {
+        match self {
+            Target::X86_64 => OVMF_X86_URL,
+            Target::Aarch64 => OVMF_AARCH64_URL,
+        }
+    }
+
+    fn target_triple(self) -> &'static str {
+        match self {
+            Target::X86_64 => "x86_64-unknown-none",
+            Target::Aarch64 => "aarch64-unknown-none",
+        }
+    }
+
+    fn strip_tool(self) -> &'static str {
+        match self {
+            Target::X86_64 => "strip",
+            Target::Aarch64 => "aarch64-linux-gnu-strip",
+        }
+    }
+
+    fn limine_efi_path(self) -> &'static str {
+        match self {
+            Target::X86_64 => "efi/boot/BOOTX64.EFI",
+            Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
+        }
+    }
+
+    fn qemu_machine(self) -> &'static str {
+        match self {
+            Target::X86_64 => "pc",
+            Target::Aarch64 => "virt",
+        }
+    }
+
+    fn qemu_display_args(self) -> &'static [&'static str] {
+        match self {
+            Target::X86_64 => &["-vga", "std"],
+            // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
+            Target::Aarch64 => &["-device", "ramfb"],
+        }
+    }
+
+    fn qemu_binary(self) -> &'static str {
+        match self {
+            Target::X86_64 => "qemu-system-x86_64",
+            Target::Aarch64 => "qemu-system-aarch64",
+        }
+    }
+
+    fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
+        match self {
+            Target::X86_64 => None,
+            // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
+            Target::Aarch64 => Some("cortex-a72"),
+        }
+    }
+
+    fn requires_c_toolchain_config(self) -> bool {
+        matches!(self, Target::Aarch64)
+    }
+}
+
+fn require_tool(name: &str) -> Result<()> {
+    let status = Command::new("which")
+        .arg(name)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|_| Error::msg("which command not available"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!("{} not found in PATH", name)))
+    }
+}
+
+fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
+    if !target.requires_c_toolchain_config() {
+        return Ok(());
+    }
+
+    let target_triple = target.target_triple();
+
+    require_tool("clang")?;
+    require_tool("ar")?;
+
+    let cc_key = format!("CC_{}", target_triple.replace('-', "_"));
+    let ar_key = format!("AR_{}", target_triple.replace('-', "_"));
+    let cflags_key = format!("CFLAGS_{}", target_triple.replace('-', "_"));
+
+    cmd.env(cc_key, "clang");
+    cmd.env(ar_key, "ar");
+    cmd.env(cflags_key, format!("--target={}", target_triple));
+    Ok(())
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Image {
