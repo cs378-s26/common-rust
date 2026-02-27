@@ -49,6 +49,75 @@ impl Target {
             Target::Aarch64 => "aarch64",
         }
     }
+
+    fn limine_url(self) -> &'static str {
+        match self {
+            Target::X86_64 => LIMINE_X86_URL,
+            Target::Aarch64 => LIMINE_AARCH64_URL,
+        }
+    }
+
+    fn ovmf_url(self) -> &'static str {
+        match self {
+            Target::X86_64 => OVMF_X86_URL,
+            Target::Aarch64 => OVMF_AARCH64_URL,
+        }
+    }
+
+    fn target_triple(self) -> &'static str {
+        match self {
+            Target::X86_64 => "x86_64-unknown-none",
+            Target::Aarch64 => "aarch64-unknown-none",
+        }
+    }
+
+    fn strip_tool(self) -> &'static str {
+        match self {
+            Target::X86_64 => "strip",
+            Target::Aarch64 => "aarch64-linux-gnu-strip",
+        }
+    }
+
+    fn limine_efi_path(self) -> &'static str {
+        match self {
+            Target::X86_64 => "efi/boot/BOOTX64.EFI",
+            Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
+        }
+    }
+
+    fn qemu_machine(self) -> &'static str {
+        match self {
+            Target::X86_64 => "pc",
+            Target::Aarch64 => "virt",
+        }
+    }
+
+    fn qemu_display_args(self) -> &'static [&'static str] {
+        match self {
+            Target::X86_64 => &["-vga", "std"],
+            // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
+            Target::Aarch64 => &["-device", "ramfb"],
+        }
+    }
+
+    fn qemu_binary(self) -> &'static str {
+        match self {
+            Target::X86_64 => "qemu-system-x86_64",
+            Target::Aarch64 => "qemu-system-aarch64",
+        }
+    }
+
+    fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
+        match self {
+            Target::X86_64 => None,
+            // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
+            Target::Aarch64 => Some("cortex-a72"),
+        }
+    }
+
+    fn requires_c_toolchain_config(self) -> bool {
+        matches!(self, Target::Aarch64)
+    }
 }
 
 fn require_tool(name: &str) -> Result<()> {
@@ -65,10 +134,12 @@ fn require_tool(name: &str) -> Result<()> {
     }
 }
 
-fn configure_c_toolchain(target: Target, target_triple: &str, cmd: &mut Command) -> Result<()> {
-    if !matches!(target, Target::Aarch64) {
+fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
+    if !target.requires_c_toolchain_config() {
         return Ok(());
     }
+
+    let target_triple = target.target_triple();
 
     require_tool("clang")?;
     require_tool("ar")?;
@@ -140,10 +211,7 @@ fn download_limine(target: Target) -> Result<PathBuf> {
     let limine_path = root.join(format!("limine-{}.efi", target.name()));
 
     if !limine_path.exists() {
-        let url = match target {
-            Target::X86_64 => LIMINE_X86_URL,
-            Target::Aarch64 => LIMINE_AARCH64_URL,
-        };
+        let url = target.limine_url();
         let response = blocking::get(url)?;
         let mut dest = File::create(&limine_path)?;
         let content = response.bytes()?;
@@ -158,10 +226,7 @@ fn download_ovmf(target: Target) -> Result<PathBuf> {
     let ovmf_path = root.join(format!("ovmf-{}.fd", target.name()));
 
     if !ovmf_path.exists() {
-        let url = match target {
-            Target::X86_64 => OVMF_X86_URL,
-            Target::Aarch64 => OVMF_AARCH64_URL,
-        };
+        let url = target.ovmf_url();
         let response = blocking::get(url)?;
         let mut dest = File::create(&ovmf_path)?;
         let content = response.bytes()?;
@@ -256,10 +321,7 @@ fn build_kernel(release: bool) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
         "--target",
     ];
 
-    let target_triple = match target {
-        Target::X86_64 => "x86_64-unknown-none",
-        Target::Aarch64 => "aarch64-unknown-none",
-    };
+    let target_triple = target.target_triple();
     args.push(target_triple);
 
     if release {
@@ -310,7 +372,7 @@ fn build_kernel(release: bool) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
         )
         .stdout(Stdio::piped());
 
-    configure_c_toolchain(target, target_triple, &mut cmd)?;
+    configure_c_toolchain(target, &mut cmd)?;
 
     let mut cmd = cmd.spawn()?;
 
@@ -347,10 +409,7 @@ fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     let cache = cache_dir()?;
     let tmp_stripped = NamedTempFile::new_in(&cache)?;
 
-    let strip_tool = match target {
-        Target::X86_64 => "strip",
-        Target::Aarch64 => "aarch64-linux-gnu-strip",
-    };
+    let strip_tool = target.strip_tool();
 
     let status = Command::new(strip_tool)
         .args([
@@ -361,10 +420,7 @@ fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
         .status();
 
     if !matches!(status, Ok(s) if s.success()) {
-        eprintln!(
-            "warning: {} failed; using unstripped kernel",
-            strip_tool
-        );
+        eprintln!("warning: {} failed; using unstripped kernel", strip_tool);
         return Ok(fs::read(elf)?);
     }
 
@@ -445,10 +501,7 @@ fn build_image(
         fs.root_dir().create_dir("efi")?;
         fs.root_dir().create_dir("efi/boot")?;
 
-        let limine_efi_path = match target {
-            Target::X86_64 => "efi/boot/BOOTX64.EFI",
-            Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
-        };
+        let limine_efi_path = target.limine_efi_path();
         io::copy(
             &mut File::open(limine_efi)?,
             &mut fs.root_dir().create_file(limine_efi_path)?,
@@ -495,10 +548,7 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
-    let machine = match target {
-        Target::X86_64 => "pc",
-        Target::Aarch64 => "virt",
-    };
+    let machine = target.qemu_machine();
 
     let mut args = vec![
         "-machine".into(),
@@ -527,32 +577,23 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Resul
         format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
     ];
 
-    match target {
-        Target::X86_64 => {
-            args.push("-vga".into());
-            args.push("std".into());
-        }
-        // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
-        Target::Aarch64 => {
-            args.push("-device".into());
-            args.push("ramfb".into());
-        }
-    }
+    args.extend(
+        target
+            .qemu_display_args()
+            .iter()
+            .map(|arg| (*arg).to_string()),
+    );
 
     if kvm {
         args.push("-enable-kvm".into());
         args.push("-cpu".into());
         args.push("host".into());
-    } else if matches!(target, Target::Aarch64) {
-        // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
+    } else if let Some(cpu) = target.qemu_cpu_without_kvm() {
         args.push("-cpu".into());
-        args.push("cortex-a72".into());
+        args.push(cpu.into());
     }
 
-    let qemu_binary = match target {
-        Target::X86_64 => "qemu-system-x86_64",
-        Target::Aarch64 => "qemu-system-aarch64",
-    };
+    let qemu_binary = target.qemu_binary();
     exec(qemu_binary, args)
 }
 

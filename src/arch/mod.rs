@@ -102,5 +102,6 @@ pub trait ArchTrait {
     fn get_cpu_local_pointer() -> u64;
     fn set_thread_local_pointer(base: *const u64);
     fn get_thread_local_pointer() -> u64;
+    fn read_cycle_counter() -> u64;
     fn halt() -> !;
 }

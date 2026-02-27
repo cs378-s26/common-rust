@@ -142,7 +142,7 @@ impl ContextTrait for Context {
             .into();
     }
 
-    fn setup_for_call<T>(
+    fn setup_kthread_entry<T>(
         &mut self,
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,

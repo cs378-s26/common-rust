@@ -78,6 +78,10 @@ impl ArchTrait for Arch {
         unsafe { set_thread_local_pointer(base) };
     }
 
+    fn read_cycle_counter() -> u64 {
+        asm::read_cycle_counter()
+    }
+
     fn halt() -> ! {
         halt()
     }
