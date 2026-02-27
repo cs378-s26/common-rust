@@ -49,12 +49,11 @@ pub trait ContextTrait {
     /// basically a constructor -- give your thread the correct permissions
     fn setup_kthread_context(&mut self);
     fn jump_to(&self) -> !;
-    fn setup_kthread_entry<T>(
-        &mut self,
+    fn new_kthread<T>(
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
-    );
+    ) -> Self;
 }
 
 pub trait ArchTrait {

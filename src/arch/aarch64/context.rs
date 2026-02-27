@@ -40,17 +40,18 @@ impl ContextTrait for Context {
         unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
     }
 
-    fn setup_kthread_entry<T>(
-        &mut self,
+    fn new_kthread<T>(
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
-    ) {
-        self.setup_kthread_context();
+    ) -> Self {
+        let mut ctx = Self::default();
+        ctx.setup_kthread_context();
 
-        self.pc = function as usize as u64;
-        self.gp.regs[0] = data as u64;
-        self.sp = slice_stack_ptr(stack) & !0xF;
+        ctx.pc = function as usize as u64;
+        ctx.gp.regs[0] = data as u64;
+        ctx.sp = slice_stack_ptr(stack) & !0xF;
+        ctx
     }
 }
 

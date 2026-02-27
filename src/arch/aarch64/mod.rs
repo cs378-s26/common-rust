@@ -9,7 +9,7 @@ mod context;
 mod interrupt;
 mod mp;
 
-use asm::halt;
+pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::IrqState;
