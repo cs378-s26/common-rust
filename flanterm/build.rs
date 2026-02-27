@@ -3,8 +3,7 @@ use std::path::PathBuf;
 
 fn build_flanterm() {
     let target = env::var("TARGET").expect("TARGET not set");
-    let target_arch =
-        env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
 
     let mut build = cc::Build::new();
     build
