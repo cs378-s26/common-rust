@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-lto = "fat"
+# lto = "fat"
 
 [profile.dev]
 panic = "abort"
