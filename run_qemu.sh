@@ -13,4 +13,4 @@ qemu-system-x86_64 \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -serial $3 \
     # -enable-kvm \
-    -cpu host
+    # -cpu host

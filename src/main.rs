@@ -24,14 +24,12 @@ use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, sp
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use kernel_common::physical_memory::{init_physical_memory_allocator, THE_HEAP}; 
+use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
-use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
-};
+use limine::request::{BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker};
 use spin::{Barrier, Once};
 use talc::Span;
 
@@ -178,6 +176,9 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
 
+    init_physical_memory_allocator();
+    init_virtual_memory_allocator();
+
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
     // or just spam OnceCell
@@ -250,51 +251,6 @@ pub fn kernel_main() -> ! {
             }
         });
     }
-
-    init_virtual_memory_allocator();
-    let frame_1 : usize = frame_alloc();
-    kprintln!("frame 1: {:x}", frame_1);
-    let frame_2 : usize = frame_alloc();
-    kprintln!("frame 2: {:x}", frame_2);
-    frame_dealloc(frame_1);
-    let frame_3 : usize = frame_alloc();
-    assert!(frame_1 == frame_3); // implementation dependent!
-
-    let vaddr : u64 = 0x1000;
-    kprintln!("manually mapping vmem");
-    vmap(get_address_space(), vaddr, frame_2 as u64, false, true, true);
-    kprintln!("writing to manually mapped vmem");
-    for i in 0..4096 {
-        unsafe {*((vaddr + i) as *mut u8) = i as u8};
-    }
-    kprintln!("reading from manually mapped vmem");
-    for i in 0..4096 {
-        assert!(unsafe {*((vaddr + i) as *mut u8)} == i as u8);
-    }
-    kprintln!("manually unmapping vmem");
-    // unsafe {*((vaddr + 4096) as *mut u8) = 0xaa as u8}; 
-    vunmap(get_address_space(), vaddr);
-    frame_dealloc(frame_2);
-    frame_dealloc(frame_3);
-
-    kprintln!("properly mapping vmem");
-    let mmapped = virtual_alloc(0x3000);
-    kprintln!("writing to properly mapped vmem");
-    for i in 0..4096 {
-        unsafe {*((mmapped + i) as *mut u8) = i as u8};
-    }
-    for i in 0..4096 {
-        unsafe {*((mmapped + i) as *mut u8) = i as u8};
-    }
-    kprintln!("reading from properly mapped vmem");
-    for i in 8192..8192+4096 {
-        unsafe {*((mmapped + i) as *mut u8) = i as u8};
-    }
-    for i in 8192..8192+4096 {
-        unsafe {*((mmapped + i) as *mut u8) = i as u8};
-    }
-    kprintln!("properly unmapping vmem");
-    let mmapped = virtual_dealloc(mmapped);
     
     Arch::set_irq_enabled(true);
     poll_tasks()
