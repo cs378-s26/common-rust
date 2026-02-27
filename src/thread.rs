@@ -1,5 +1,6 @@
 extern crate alloc;
 
+use core::ops::DerefMut;
 use core::{
     arch::naked_asm,
     cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
@@ -270,6 +271,20 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     };
 
     irq_state.restore();
+}
+
+#[inline(always)]
+pub fn suspend_to_locked_queue<G>(mut guard: G)
+where
+    G: DerefMut<Target = ThreadQueue>,
+{
+    suspend_impl(
+        move |t| {
+            guard.push_back(t);
+            drop(guard);
+        },
+        IDLE.get().unwrap().clone(),
+    );
 }
 
 #[inline(always)]
