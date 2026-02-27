@@ -12,8 +12,8 @@
 extern crate alloc;
 
 mod arch;
-mod coroutine;
 mod cmdline;
+mod coroutine;
 mod heap;
 mod local_storage;
 mod mp;
@@ -21,7 +21,6 @@ mod print;
 mod sync;
 mod thread;
 
-use core::arch::asm;
 use core::sync::atomic::Ordering;
 
 // For coroutines.
@@ -29,22 +28,20 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
+use crate::arch::{Arch, ArchTrait};
+use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
+use crate::heap::init_malloc;
+use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+use crate::print::{init_tty, kprintln};
+use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use spin::{Barrier, Once};
 use talc::Span;
-use x86::time::rdtsc;
-
-use crate::arch::{core_count, initialize_mp, irq_enable};
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
-use crate::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
-use crate::heap::init_malloc;
-use crate::mp::{CORE_ID, MP_STAGE, MPStage};
-use crate::print::{init_tty, kprintln};
-use crate::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -58,6 +55,10 @@ static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::n
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+static MP_REQUEST: MpRequest = MpRequest::new();
 
 // ignore these
 #[used]
@@ -186,7 +187,11 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
-    initialize_mp();
+    let mp_res = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    init_cpu_local_table(mp_res.cpus().len());
+    Arch::initialize_mp(&MP_REQUEST)
 }
 
 static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
@@ -194,15 +199,19 @@ static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 
 pub fn kernel_main() -> ! {
     // kprintln!("we are the MPCorelings! please feed us!");
+    let mp_res = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    let core_count = mp_res.cpus().len();
 
     INIT_THREADING_BARRIER
         .call_once(|| {
             kprintln!("hii~");
             kprintln!("preparing common tasks on {}", CORE_ID.get());
-            kprintln!("there are {} cores total", core_count());
+            kprintln!("there are {} cores total", core_count);
             init_threading();
             init_coroutine_queue();
-            Barrier::new(core_count())
+            Barrier::new(core_count)
         })
         .wait();
 
@@ -214,7 +223,7 @@ pub fn kernel_main() -> ! {
     kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
-        .call_once(|| Barrier::new(core_count()))
+        .call_once(|| Barrier::new(core_count))
         .wait();
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
@@ -228,8 +237,8 @@ pub fn kernel_main() -> ! {
             kprintln!("hi, id={}, initial_core={}", i, initial_core);
 
             // bad sleep function :D
-            let tsc = unsafe { rdtsc() };
-            while unsafe { rdtsc() } < tsc + 10000000000 {
+            let tsc = Arch::read_cycle_counter();
+            while Arch::read_cycle_counter() < tsc + 10000000000 {
                 yield_thread();
             }
 
@@ -246,7 +255,7 @@ pub fn kernel_main() -> ! {
         });
     }
 
-    irq_enable();
+    Arch::set_irq_enabled(true);
     poll_tasks();
 }
 
