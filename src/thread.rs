@@ -327,9 +327,9 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = Thread::new();
 
     {
-        let mut ctx = CONTEXT.read_for(&thread).lock();
         let task = Box::into_raw(Box::new(task));
-        ctx.setup_kthread_entry(&STACK.read_for(&thread).0, thread_entry0, task);
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_kthread(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);

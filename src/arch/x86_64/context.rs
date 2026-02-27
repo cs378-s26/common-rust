@@ -142,17 +142,18 @@ impl ContextTrait for Context {
             .into();
     }
 
-    fn setup_kthread_entry<T>(
-        &mut self,
+    fn new_kthread<T>(
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
-    ) {
-        self.setup_kthread_context();
+    ) -> Self {
+        let mut ctx = Self::default();
+        ctx.setup_kthread_context();
 
-        self.rip = function as usize as u64;
-        self.gp.rdi = data as u64;
-        self.gp.rsp = slice_stack_pointer(stack);
+        ctx.rip = function as usize as u64;
+        ctx.gp.rdi = data as u64;
+        ctx.gp.rsp = slice_stack_pointer(stack);
+        ctx
     }
 }
 
