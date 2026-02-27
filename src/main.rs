@@ -204,7 +204,6 @@ pub fn kernel_main() -> ! {
 
     INIT_THREADING_BARRIER
         .call_once(|| {
-            kprintln!("hii~");
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count);
             init_threading();
@@ -215,10 +214,10 @@ pub fn kernel_main() -> ! {
 
     let idle = set_up_idle();
 
-    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+    kprintln!("init idle tid {} on core {}", idle.tid(), CORE_ID.get());
 
-    init_coroutine_executor();
-    kprintln!("Coroutine executor initialized.");
+    // init_coroutine_executor();
+    // kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count))
@@ -227,11 +226,16 @@ pub fn kernel_main() -> ! {
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
     if CORE_ID.get().0 == 0 {
-        spawn_coroutine(async_task(1624252));
+        // spawn_coroutine(async_task(1624252));
 
-        kprintln!("Spawning 20 test threads across {} cores", core_count);
+        let num_threads = 20;
+        kprintln!(
+            "Spawning {} test threads across {} cores",
+            num_threads,
+            core_count
+        );
 
-        for i in 0..20 {
+        for i in 0..num_threads {
             spawn_thread(move || {
                 let start_core = CORE_ID.get();
                 let start_tick = timer_ticks();

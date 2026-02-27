@@ -17,6 +17,7 @@ pub mod tsc;
 
 pub use asm::*;
 pub use context::Context;
+pub use context::{switch_stack, switch_stack_and_call};
 use context::save_context;
 pub use interrupt::*;
 use interrupt::{disable, enable};
@@ -54,6 +55,10 @@ impl ArchTrait for Arch {
                 disable();
             }
         }
+    }
+
+    fn irq_is_enabled() -> bool {
+        irq_is_enabled()
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

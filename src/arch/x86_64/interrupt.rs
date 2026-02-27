@@ -48,11 +48,12 @@ pub unsafe fn enable() {
 }
 
 /// Layout matches what irq_handler_t0 pushes onto the stack (low to high):
-/// r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbx, rdx, rcx, rax,
+/// r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbx, rdx, rcx, rax, rbp
 /// id, err, rip, cs, rflags, rsp, ss
 #[repr(C)]
 pub struct InterruptContext {
     pub regs: [u64; 14],
+    pub rbp: u64, // For preemptive context restore.
     pub id: u64,
     pub err: u64,
     pub rip: u64,
@@ -93,6 +94,7 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 #[unsafe(naked)]
 pub unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
+        "pushq %rbp",
         "pushq %rax",
         "pushq %rcx",
         "pushq %rdx",
@@ -110,8 +112,6 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
 
         // point to top of stack (1st arg: InterruptContext*)
         "movq %rsp, %rdi",
-        // 2nd arg: original rbp (not saved in regs[], needed for preemptive context restore)
-        "movq %rbp, %rsi",
 
         // simulate the call frame
         "pushq $0",
@@ -142,6 +142,7 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
         "popq %rdx",
         "popq %rcx",
         "popq %rax",
+        "popq %rbp",
 
         "addq $16, %rsp",
         "iretq",
@@ -150,18 +151,26 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
     );
 }
 
-pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext, rbp: u64) {
+pub const TIMER_INTERRUPT_VECTOR: u8 = 0x20;
+pub const IPI_WAKE_VECTOR: u8 = 0x21;
+
+pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
-    unsafe { crate::thread::preempt_from_interrupt(ctx, rbp) };
+    unsafe { crate::thread::preempt_from_interrupt(ctx) };
 }
 
-unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext, rbp: u64) {
+pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
+    apic::eoi();
+}
+
+unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
 
-    match context.id {
-        0x20 => timer_interrupt_handler(context, rbp),
+    match context.id as u8 {
+        TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
+        IPI_WAKE_VECTOR => ipi_wake_handler(context),
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
             context.id,

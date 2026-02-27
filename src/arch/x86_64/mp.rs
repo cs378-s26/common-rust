@@ -15,7 +15,7 @@ use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
-use crate::arch::{apic, tsc};
+use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
@@ -148,9 +148,9 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     });
 
     {
-        let timer_hz = 100;
+        let timer_hz = 1000;
         let initial_count = (apic_freq / timer_hz) as u32;
-        apic::setup_timer(0x20, initial_count, true);
+        apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
         kprintln!(
             "[Core {}] Timer configured: {} Hz ({}ms intervals)",
             CORE_ID.get(),

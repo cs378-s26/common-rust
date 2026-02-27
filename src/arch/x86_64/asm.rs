@@ -29,7 +29,7 @@ pub fn halt() -> ! {
 
 pub fn sleep_core() {
     unsafe {
-        asm!("hlt");
+        asm!("sti", "hlt", options(nomem, nostack));
     }
 }
 

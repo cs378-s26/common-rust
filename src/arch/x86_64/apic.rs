@@ -13,6 +13,7 @@ mod x2regs {
     pub const EOI: u32 = 0x0B;
     pub const SIVR: u32 = 0x0F;
     pub const ESR: u32 = 0x28;
+    pub const ICR: u32 = 0x30;
     pub const TIMER_LVT: u32 = 0x32;
     pub const TIMER_INITIAL_COUNT: u32 = 0x38;
     pub const TIMER_CURRENT_COUNT: u32 = 0x39;
@@ -157,4 +158,15 @@ pub fn calibrate_apic_timer_with_tsc(tsc_freq_hz: u64) -> Option<u64> {
             Some(apic_freq_hz)
         }
     }
+}
+
+pub fn send_ipi(dest_apic_id: u32, vector: u8) {
+    let icr = ((dest_apic_id as u64) << 32) | (1 << 14) | (vector as u64);
+    unsafe { x2apic_write(x2regs::ICR, icr) };
+}
+
+pub fn send_ipi_all_except_self(vector: u8) {
+    let icr = (0b11 << 18) | (1 << 14) | (vector as u64);
+
+    unsafe { x2apic_write(x2regs::ICR, icr) };
 }
