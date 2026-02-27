@@ -33,6 +33,10 @@ impl IrqStateTrait for IrqState {
     }
 }
 
+pub fn irq_is_enabled() -> bool {
+    rflags::read().contains(RFlags::FLAGS_IF)
+}
+
 #[inline(always)]
 pub unsafe fn disable() {
     unsafe { irq::disable() };
@@ -43,16 +47,19 @@ pub unsafe fn enable() {
     unsafe { irq::enable() };
 }
 
+/// Layout matches what irq_handler_t0 pushes onto the stack (low to high):
+/// r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbx, rdx, rcx, rax,
+/// id, err, rip, cs, rflags, rsp, ss
 #[repr(C)]
-struct InterruptContext {
-    regs: [u64; 14],
-    id: u64,
-    err: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
+pub struct InterruptContext {
+    pub regs: [u64; 14],
+    pub id: u64,
+    pub err: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
 }
 
 // IDT magic
@@ -101,8 +108,10 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
         "pushq %r14",
         "pushq %r15",
 
-        // point to top of stack
+        // point to top of stack (1st arg: InterruptContext*)
         "movq %rsp, %rdi",
+        // 2nd arg: original rbp (not saved in regs[], needed for preemptive context restore)
+        "movq %rbp, %rsi",
 
         // simulate the call frame
         "pushq $0",
@@ -141,18 +150,18 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
     );
 }
 
-pub extern "C" fn timer_interrupt_handler() {
+pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext, rbp: u64) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
-    crate::thread::preempt_if_needed();
+    unsafe { crate::thread::preempt_from_interrupt(ctx, rbp) };
 }
 
-unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
+unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext, rbp: u64) {
     let context = unsafe { &*addr };
 
     match context.id {
-        0x20 => timer_interrupt_handler(),
+        0x20 => timer_interrupt_handler(context, rbp),
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
             context.id,
