@@ -1,6 +1,7 @@
 {
     "is_unittest": true,
     "n_runs": 1,
+    "timeout_ms": 60000,
     "expected_output_path": "test_cfgs/unittest/unittest.x86_64.out",
     "target": "x86_64",
     "qemu_args": [
