@@ -61,7 +61,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, user_accessible: bool, executabl
     let toilet = {
         let _ = VMM_PROTECTOR.lock();
         unsafe {
-            mapper.map_to(vpage,pframe,flags, &mut FrameAllocatorWrapper{inner: frame_alloc})
+            mapper.map_to(vpage, pframe, flags, &mut FrameAllocatorWrapper{inner: frame_alloc})
         }}.unwrap_or_else(|_| panic!("mapping physical page {:x} at virtual address {:x} failed unexpectedly", paddr, vaddr));
     toilet.flush(); // terrific variable name i know
 }

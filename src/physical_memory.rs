@@ -75,6 +75,7 @@ pub fn frame_alloc() -> usize {
                     break 'outer;
                 }
             }
+            drop(end);
             return frame_alloc(); // god-awful mechanism for waiting for a physical page to be freed
         }
         let frame : usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;

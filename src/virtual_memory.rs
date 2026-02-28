@@ -128,59 +128,70 @@ pub fn virtual_dealloc(base: usize) {
     }
 }
 
+#[cfg(test)]
 mod test {
-    #[cfg(test)]
     use crate::physical_memory::{frame_alloc, frame_dealloc};
-    #[cfg(test)]
     use crate::virtual_memory::{virtual_alloc, virtual_dealloc};
-    #[cfg(test)]
     use crate::arch::{vmap, vunmap, get_address_space};
-    #[cfg(test)]
     use super::kprintln;
+    use crate::thread::{spawn_thread, yield_thread};
+    use spin::Barrier;
+    use alloc::sync::Arc;
+    use core::sync::atomic::{AtomicI64, Ordering};
 
     #[test_case]
     fn test_virtual_memory() {
-        let vaddr : u64 = 0x1000;
+        let barrier = Arc::new(AtomicI64::new(2));
+        for tid in 1..3 {
+            let b = barrier.clone();
+            kprintln!("creating thread");
+            spawn_thread(move || {
+                kprintln!("starting thread");
+                let vaddr : u64 = 0x10000000 * tid; // unsafe!
+                let frame_1 : usize = frame_alloc();
+                kprintln!("frame 1: {:x}", frame_1);
+                let frame_2 : usize = frame_alloc();
+                kprintln!("frame 2: {:x}", frame_2);
+                frame_dealloc(frame_1);
 
-        let frame_1 : usize = frame_alloc();
-        let frame_2 : usize = frame_alloc();
-        kprintln!("frame 1: {:x}", frame_1);
-        kprintln!("frame 2: {:x}", frame_2);
-        frame_dealloc(frame_1);
+                kprintln!("manually mapping vmem");
+                vmap(get_address_space(), vaddr, frame_2 as u64, false, true, true);
+                kprintln!("writing to manually mapped vmem");
+                for i in 0..4096 {
+                    unsafe {*((vaddr + i) as *mut u8) = i as u8};
+                }
+                kprintln!("reading from manually mapped vmem");
+                for i in 0..4096 {
+                    assert!(unsafe {*((vaddr + i) as *mut u8)} == i as u8);
+                }
+                kprintln!("manually unmapping vmem");
+                vunmap(get_address_space(), vaddr);
 
-        kprintln!("manually mapping vmem");
-        vmap(get_address_space(), vaddr, frame_2 as u64, false, true, true);
-        kprintln!("writing to manually mapped vmem");
-        for i in 0..4096 {
-            unsafe {*((vaddr + i) as *mut u8) = i as u8};
+                kprintln!("properly mapping vmem");
+                let mmapped = virtual_alloc(0x3000);
+                kprintln!("writing to properly mapped vmem");
+                for i in 0..4096 {
+                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                }
+                for i in 0..4096 {
+                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                }
+                kprintln!("reading from properly mapped vmem");
+                for i in 8192..8192+4096 {
+                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                }
+                for i in 8192..8192+4096 {
+                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                }
+                kprintln!("properly unmapping vmem");
+                virtual_dealloc(mmapped);
+                (*b).fetch_add(-1, Ordering::SeqCst);
+                loop {yield_thread();}
+            });
         }
-        kprintln!("reading from manually mapped vmem");
-        for i in 0..4096 {
-            assert!(unsafe {*((vaddr + i) as *mut u8)} == i as u8);
+        kprintln!("waiting at barrier");
+        while (*barrier).load(Ordering::SeqCst) > 0 {
+            yield_thread();
         }
-        kprintln!("manually unmapping vmem");
-        // unsafe {*((vaddr + 4096) as *mut u8) = 0xaa as u8}; 
-        vunmap(get_address_space(), vaddr);
-        frame_dealloc(frame_2);
-
-        kprintln!("properly mapping vmem");
-        let mmapped = virtual_alloc(0x3000);
-        kprintln!("writing to properly mapped vmem");
-        for i in 0..4096 {
-            unsafe {*((mmapped + i) as *mut u8) = i as u8};
-        }
-        for i in 0..4096 {
-            unsafe {*((mmapped + i) as *mut u8) = i as u8};
-        }
-        kprintln!("reading from properly mapped vmem");
-        for i in 8192..8192+4096 {
-            unsafe {*((mmapped + i) as *mut u8) = i as u8};
-        }
-        for i in 8192..8192+4096 {
-            unsafe {*((mmapped + i) as *mut u8) = i as u8};
-        }
-        kprintln!("properly unmapping vmem");
-        let mmapped = virtual_dealloc(mmapped);
-        frame_alloc();
     }
 }

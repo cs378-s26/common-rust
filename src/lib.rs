@@ -119,6 +119,7 @@ mod test_runtime {
 
     static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
     static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+    static MAKE_TEST_THREAD: Once<()> = Once::new();
 
     struct TestKernelEntry;
 
@@ -129,7 +130,7 @@ mod test_runtime {
     }
 
     pub fn kernel_main() -> ! {
-        // kprintln!("we are the MPCorelings! please feed us!");
+        kprintln!("we are the MPCorelings! please feed us!");
         let mp_res = MP_REQUEST
             .get_response()
             .expect("Expected to find MpResponse, found None.");
@@ -159,9 +160,12 @@ mod test_runtime {
 
         MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-        spawn_thread(move || {
-            crate::test_main();
-        });
+        MAKE_TEST_THREAD
+            .call_once(|| {
+                spawn_thread(move || {
+                    crate::test_main();
+                })
+            });
 
         Arch::set_irq_enabled(true);
         kprintln!("Polling for tasks...");
