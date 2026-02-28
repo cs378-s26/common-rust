@@ -3,6 +3,7 @@ extern crate alloc;
 use core::{
     cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
     ffi::c_void,
+    pin::Pin,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
@@ -26,7 +27,7 @@ use crate::{
 pub struct Thread {
     pub link: LinkedListAtomicLink,
     #[allow(unused)]
-    pub tls: Box<[u8]>,
+    pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
 }
 
@@ -37,7 +38,7 @@ impl Thread {
 
         let handle = Arc::new(Thread {
             link: LinkedListAtomicLink::new(),
-            tls,
+            tls: Pin::new(tls),
             tls_addr,
         });
 
@@ -247,7 +248,6 @@ pub fn can_yield() -> bool {
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
-// flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let irq_state = IrqState::save();
     Arch::set_irq_enabled(false);
@@ -273,8 +273,8 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    // we need to lock *before* suspend_impl, because interrupts are blocked there, and we
-    // shouldn't deal with that
+    // We need to lock *before* suspend_impl, because interrupts are blocked there, and we shouldn't deal with
+    // that when in the limbo state.
     let mut queue = queue.lock();
 
     suspend_impl(
@@ -304,6 +304,7 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
             task();
         }
 
+        // implement thread cleanup here
         todo!()
     }
 

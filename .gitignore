@@ -1,4 +1,5 @@
 .vim
+.zed/
 
 # rust source tree
 target

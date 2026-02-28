@@ -174,6 +174,11 @@ enum Commands {
         #[arg(short = 'r', long)]
         release: bool,
     },
+    QemuTest {
+        path_to_kernel: String,
+        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
+        target: Target,
+    },
     Gdb {
         #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
         target: Target,
@@ -185,6 +190,8 @@ enum Commands {
     Test {
         #[arg(short = 'r', long)]
         release: bool,
+        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
+        target: Target,
     },
     Clean,
 }
@@ -234,83 +241,6 @@ fn download_ovmf(target: Target) -> Result<PathBuf> {
     }
 
     Ok(ovmf_path)
-}
-
-fn test_kernel(release: bool) -> Result<()> {
-    let mut args = vec![
-        "test",
-        "--message-format=json-render-diagnostics",
-        "--target",
-        "x86_64-unknown-none",
-        "--lib",
-    ];
-
-    if release {
-        args.push("--release");
-    }
-
-    let mut crate_paths: Vec<(String, PathBuf)> = MetadataCommand::new()
-        .exec()?
-        .packages
-        .iter()
-        .filter_map(|pkg| {
-            let path = pkg.manifest_path.parent()?;
-            Some((format!("{}@{}", pkg.name, pkg.version), path.into()))
-        })
-        .collect();
-
-    let sys_root = PathBuf::from(
-        str::from_utf8(
-            &Command::new("rustc")
-                .arg("--print")
-                .arg("sysroot")
-                .output()?
-                .stdout,
-        )?
-        .trim(),
-    );
-
-    crate_paths.push((
-        "builtin::core".into(),
-        sys_root.join("lib/rustlib/src/rust/library/core"),
-    ));
-
-    crate_paths.push((
-        "builtin::alloc".into(),
-        sys_root.join("lib/rustlib/src/rust/library/alloc"),
-    ));
-
-    crate_paths.push((
-        "builtin::compiler-builtins".into(),
-        sys_root.join("lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins"),
-    ));
-
-    let mut cmd = Command::new("cargo")
-        .args(args)
-        .env(
-            "RUSTFLAGS",
-            "-C relocation-model=static -C force-frame-pointers=yes",
-        )
-        .stdout(Stdio::piped())
-        .spawn()?;
-
-    let stdout = cmd.stdout.take().expect("Failed to capture cargo stdout");
-    let reader = BufReader::new(stdout);
-
-    let mut res = None;
-
-    for message in Message::parse_stream(reader) {
-        // TODO: check package
-        if let Message::CompilerArtifact(artifact) = message?
-            && let Some(executable) = artifact.executable
-        {
-            res = Some(PathBuf::from(executable));
-        }
-    }
-
-    cmd.wait()?;
-
-    Ok(())
 }
 
 fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
@@ -616,14 +546,75 @@ fn gdb(kvm: bool, release: bool, target: Target) -> Result<()> {
     exec("rust-gdb", args)
 }
 
+// TODO: currently not doing ricky debug magic
+fn test_kernel(release: bool, target: Target) -> Result<()> {
+    let mut args = vec![
+        "test",
+        "--message-format=json-render-diagnostics",
+        // "-Zbuild-std=core,alloc",
+        "--lib",
+        "--target",
+    ];
+
+    let target_triple = target.target_triple();
+    args.push(target_triple);
+
+    if release {
+        args.push("--release");
+    }
+
+    let mut cmd = Command::new("cargo");
+    cmd.args(args)
+        .env(
+            "RUSTFLAGS",
+            "-C relocation-model=static -C force-frame-pointers=yes",
+        )
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    configure_c_toolchain(target, &mut cmd)?;
+
+    let status = cmd.status()?;
+    if !status.success() {
+        return Err(Error::msg(format!(
+            "cargo test failed with status {status}"
+        )));
+    }
+
+    Ok(())
+}
+
+fn qemu_test(path_to_kernel: String, target: Target) -> Result<()> {
+    let img_path = build_image(&(PathBuf::from(path_to_kernel), vec![]), false, target)?;
+    let args = vec![
+        path_to_string(&download_ovmf(target)?)?,
+        format!("{}", path_to_string(&img_path)?),
+        format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
+    ];
+    let qemu_str = format!("../run_qemu_{}.sh", target.name());
+    eprintln!("running: {} {:?}", qemu_str, args);
+    let res = Command::new(qemu_str)
+        .args(args)
+        .current_dir(run_dir()?)
+        .status()?;
+    println!("{:#?}", res);
+    match res.code() {
+        Some(code) => {
+            if code == 1 {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("bad"))
+            }
+        }
+        None => Err(anyhow::anyhow!("bad")),
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Test { release } => {
-            test_kernel(release)?
-        }
-        Commands::Image { release , target} => {
+        Commands::Image { target, release } => {
             build_image(&build_kernel(release, target)?, release, target)?;
         }
         Commands::Qemu {
@@ -638,6 +629,11 @@ fn main() -> Result<()> {
             kvm,
             release,
         } => gdb(kvm, release, target)?,
+        Commands::Test { release, target } => test_kernel(release, target)?,
+        Commands::QemuTest {
+            path_to_kernel,
+            target,
+        } => qemu_test(path_to_kernel, target)?,
         Commands::Clean => {
             fs::remove_dir_all(cache_dir()?)?;
             cache_dir()?;

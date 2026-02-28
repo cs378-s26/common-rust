@@ -148,7 +148,6 @@ mod test {
         kprintln!("frame 2: {:x}", frame_2);
         frame_dealloc(frame_1);
 
-        // let vaddr : u64 = 0x1000;
         kprintln!("manually mapping vmem");
         vmap(get_address_space(), vaddr, frame_2 as u64, false, true, true);
         kprintln!("writing to manually mapped vmem");

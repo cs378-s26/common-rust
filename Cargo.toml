@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-lto = "fat"
+# lto = "fat"
 
 [profile.dev]
 panic = "abort"
@@ -33,5 +33,4 @@ logos = { version = "0.16.1", default-features = false, features = ["export_deri
 x86 = "0.52.0"
 
 [workspace]
-members = ["run_kernel", "buildtool", "flanterm", "proc-macros"]
-
+members = ["buildtool", "flanterm", "proc-macros"]
