@@ -2,6 +2,7 @@
     "is_unittest": false,
     "test_name": "example_integration",
     "n_runs": 1,
+    "timeout_ms": 60000,
     "expected_output_path": "test_cfgs/example_integration/out.txt",
     "target": "x86_64",
     "qemu_args": [

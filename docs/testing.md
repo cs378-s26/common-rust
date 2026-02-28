@@ -14,6 +14,7 @@ Config json is responsible for:
 2. Outlining Qemu Fields
 3. Pointing to expected output
 4. Defining the number of runs needed to be successful
+5. Defining a per-run QEMU timeout in milliseconds
 
 Full model is below
 ```typescript
@@ -21,6 +22,7 @@ type TestConfig = {
     // for all integration tests, this value is false
     is_unittest: boolean,
     n_runs: int,
+    timeout_ms: int, // required, must be >= 1
     test_name?: string,
     expected_output_path: string,
     target: "x86_64" | "aarch64",

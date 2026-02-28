@@ -5,7 +5,8 @@ use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::time::SystemTime;
+use std::thread::sleep;
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::{
     Target, build_image_with_tag, cache_dir, configure_c_toolchain, download_ovmf, path_to_string,
@@ -15,6 +16,7 @@ use crate::{
 pub struct TestConfig {
     pub is_unittest: bool,
     pub n_runs: u32,
+    pub timeout_ms: u64,
     pub test_name: Option<String>,
     pub expected_output_path: String,
     pub target: TestTarget,
@@ -154,6 +156,12 @@ fn run_with_config(
     if test_cfg.n_runs == 0 {
         return Err(anyhow!("n_runs must be >= 1 in {}", config_path.display()));
     }
+    if test_cfg.timeout_ms == 0 {
+        return Err(anyhow!(
+            "timeout_ms must be >= 1 in {}",
+            config_path.display()
+        ));
+    }
 
     if test_cfg.qemu_args.iter().any(|arg| arg == "-serial") {
         return Err(anyhow!(
@@ -228,15 +236,16 @@ fn run_with_config(
             qemu_cmd,
             qemu_args
         );
-        let status = match Command::new(qemu_cmd)
-            .args(&qemu_args)
-            .current_dir(&cache_paths.root_dir)
-            .status()
-        {
+        let status = match run_qemu_with_timeout(
+            qemu_cmd,
+            &qemu_args,
+            &cache_paths.root_dir,
+            test_cfg.timeout_ms,
+        ) {
             Ok(status) => status,
             Err(err) => {
                 failed_at_run = Some(run_idx + 1);
-                failure_reason = Some(format!("failed to launch {}: {}", qemu_cmd, err));
+                failure_reason = Some(err.to_string());
                 break;
             }
         };
@@ -517,6 +526,39 @@ fn normalize_output(output: &str) -> String {
 
 fn qemu_status_ok(status: &ExitStatus) -> bool {
     status.success() || status.code() == Some(1)
+}
+
+fn run_qemu_with_timeout(
+    qemu_cmd: &str,
+    qemu_args: &[String],
+    current_dir: &Path,
+    timeout_ms: u64,
+) -> Result<ExitStatus> {
+    let mut child = Command::new(qemu_cmd)
+        .args(qemu_args)
+        .current_dir(current_dir)
+        .spawn()
+        .with_context(|| format!("failed to launch {}", qemu_cmd))?;
+
+    let timeout = Duration::from_millis(timeout_ms);
+    let start = Instant::now();
+
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .with_context(|| format!("failed to wait on {}", qemu_cmd))?
+        {
+            return Ok(status);
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(anyhow!("{} timed out after {} ms", qemu_cmd, timeout_ms));
+        }
+
+        sleep(Duration::from_millis(10));
+    }
 }
 
 fn artifact_matches_requested_test(
