@@ -11,6 +11,7 @@ mod context;
 mod interrupt;
 pub mod apic;
 mod mp;
+mod vmm;
 
 pub use asm::*;
 pub use context::Context;
@@ -22,7 +23,6 @@ use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
-mod vmm;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 
