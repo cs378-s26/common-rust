@@ -15,9 +15,11 @@ use acpi::{
         // srat::Srat,
     }
 };
-use x86::time::rdtsc;
+use x86::{io::{inb, outb, inw, outw, inl, outl}, time::rdtsc};
 use crate::print::kprintln;
-use crate::device::port::IoPort;
+use crate::device::{
+    pci::Pci,
+};
 
 pub struct KernelAcpiHandler {
     hhdm_offset: usize,
@@ -71,44 +73,43 @@ impl Handler for KernelAcpiHandler {
 
     // TODO: all of this.
     fn read_io_u8(&self, port: u16) -> u8 {
-        IoPort::inb(port)
+        unsafe { inb(port) }
     }
     fn read_io_u16(&self, port: u16) -> u16 {
-        IoPort::inw(port)
+        unsafe { inw(port) }
     }
     fn read_io_u32(&self, port: u16) -> u32 {
-        IoPort::inl(port)
+        unsafe { inl(port) }
     }
 
     fn write_io_u8(&self, port: u16, value: u8) {
-        IoPort::outb(port, value)
+        unsafe { outb(port, value) }
     }
     fn write_io_u16(&self, port: u16, value: u16) {
-        IoPort::outw(port, value)
+        unsafe { outw(port, value) }
     }
     fn write_io_u32(&self, port: u16, value: u32) {
-        IoPort::outl(port, value)
+        unsafe { outl(port, value) }
     }
 
-    // TODO.
     fn read_pci_u8(&self, address: acpi::PciAddress, offset: u16) -> u8 {
-        0
+        Pci::read_u8(address.bus(), address.device(), address.function(), offset as u8)
     }
     fn read_pci_u16(&self, address: acpi::PciAddress, offset: u16) -> u16 {
-        0
+        Pci::read_u16(address.bus(), address.device(), address.function(), offset as u8)
     }
     fn read_pci_u32(&self, address: acpi::PciAddress, offset: u16) -> u32 {
-        0
+        Pci::read_u32(address.bus(), address.device(), address.function(), offset as u8)
     }
 
     fn write_pci_u8(&self, address: acpi::PciAddress, offset: u16, value: u8) {
-
+        Pci::write_u8(address.bus(), address.device(), address.function(), offset as u8, value);
     }
     fn write_pci_u16(&self, address: acpi::PciAddress, offset: u16, value: u16) {
-
+        Pci::write_u16(address.bus(), address.device(), address.function(), offset as u8, value);
     }
     fn write_pci_u32(&self, address: acpi::PciAddress, offset: u16, value: u32) {
-
+        Pci::write_u32(address.bus(), address.device(), address.function(), offset as u8, value);
     }
 
     // TODO: find this with HPET probably.

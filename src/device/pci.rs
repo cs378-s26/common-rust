@@ -2,6 +2,7 @@ use acpi::{
     sdt::mcfg::Mcfg,
 };
 use spin::Once;
+use x86::io::{inl, outl};
 use crate::print::kprintln;
 use crate::device::acpi::get_acpi;
 
@@ -171,6 +172,68 @@ fn pci_address(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
         | (device as u32) << 11
         | (function as u32) << 8
         | (offset as u32 & 0xfc)
+}
+
+pub struct Pci;
+impl Pci {
+    pub fn read_u8(bus: u8, device: u8, function: u8, offset: u8) -> u8 {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            outl(0xCF8, address);
+            let value = inl(0xCFC);
+            ((value >> ((offset & 3) * 8)) & 0xFF) as u8
+        }
+    }
+
+    pub fn read_u16(bus: u8, device: u8, function: u8, offset: u8) -> u16 {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            outl(0xCF8, address);
+            let value = inl(0xCFC);
+            ((value >> ((offset & 2) * 8)) & 0xFFFF) as u16
+        }
+    }
+
+    pub fn read_u32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            outl(0xCF8, address);
+            inl(0xCFC)
+        }
+    }
+
+    pub fn write_u8(bus: u8, device: u8, function: u8, offset: u8, value: u8) {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            // TODO: this doesn't look very thread safe...
+            outl(0xCF8, address);
+            let mut value = inl(0xCFC);
+            value = (value & !(0xFF << ((offset & 3) * 8)))
+                | ((value as u32) << ((offset & 3) * 8));
+            outl(0xCF8, address); // In case someone changed.
+            outl(0xCFC, value);
+        }
+    }
+
+    pub fn write_u16(bus: u8, device: u8, function: u8, offset: u8, value: u16) {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            outl(0xCF8, address);
+            let mut value = inl(0xCFC);
+            value = (value & !(0xFFFF << ((offset & 2) * 8)))
+                | ((value as u32) << ((offset & 2) * 8));
+            outl(0xCF8, address);
+            outl(0xCFC, value);
+        }
+    }
+
+    pub fn write_u32(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
+        let address = pci_address(bus, device, function, offset);
+        unsafe {
+            outl(0xCF8, address);
+            outl(0xCFC, value);
+        }
+    }
 }
 
 fn pci_scan_bus(segment: u16, bus: u8, parent: Option<&'static DeviceNode>) {
