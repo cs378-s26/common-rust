@@ -236,17 +236,24 @@ impl Pci {
     }
 }
 
-fn pci_scan_bus(segment: u16, bus: u8, parent: Option<&'static DeviceNode>) {
-    for device in 0..32 {
-        for function in 0..8 {
-
+fn pci_scan_bus(bus: u8, parent: Option<&'static DeviceNode>) {
+    for device in 0..=31 {
+        for function in 0..=7 {
+            let header = Pci::read_u32(bus, device, function, 0);
+            let device_id = (header >> 16) as u16;
+            let vendor_id = (header & 0xFFFF) as u16;
+            if vendor_id == 0xFFFF {
+                continue; // No device.
+            }
+            kprintln!("Found PCI device: bus={}, device={}, function={}, vendor_id={:#x}, device_id={:#x}",
+                bus, device, function, vendor_id, device_id);
         }
     }
 }
 
 pub fn init_pci() {
     kprintln!("Initializing PCI.");
-    let root_node = DeviceNode::new("system", BusType::Platform, None);
+    let root_node = DEVICE_ROOT.call_once(|| DeviceNode::new("system", BusType::Platform, None));
 
     let acpi_info = get_acpi();
     if let Some(mcfg) = acpi_info.tables.find_table::<Mcfg>() {
@@ -262,6 +269,10 @@ pub fn init_pci() {
         // TODO: MCFG stuff.
     } else {
         kprintln!("PCI: MCFG table not found");
+        // Legacy PCI scanning.
+        for bus in 0..=255 {
+            pci_scan_bus(bus, Some(root_node));
+        }
     }
     kprintln!("PCI initialized.");
 }

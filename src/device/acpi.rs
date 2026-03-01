@@ -3,7 +3,7 @@ use core::{
 };
 use spin::Once;
 use acpi::{
-    AcpiTable, AcpiTables, Handle, Handler, PhysicalMapping, aml::AmlError, sdt::{
+    AcpiTables, Handler, PhysicalMapping, aml::AmlError, sdt::{
         // bgrt::Bgrt,
         // facs::Facs,
         // fadt::Fadt,
