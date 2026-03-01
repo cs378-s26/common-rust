@@ -34,6 +34,9 @@ use limine::request::{
 };
 use spin::{Barrier, Once};
 use talc::Span;
+mod device;
+use device::device::*;
+use device::page_table_utils::set_hhdm_offset;
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -100,6 +103,7 @@ fn dump_boot_info() {
             }
         );
     }
+
 }
 
 // For async/await testing. Move if/when we have a better testing setup.
@@ -160,27 +164,33 @@ unsafe extern "C" fn system_main() -> ! {
 
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {
-        kprintln!("limine rev: {}", rev);
+        // kprintln!("limine rev: {}", rev);
     }
 
     if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
-        kprintln!("bootloader: {} v{}", res.name(), res.version());
+        // kprintln!("bootloader: {} v{}", res.name(), res.version());
     }
 
     if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
-        kprintln!(
-            "fimrware: {}",
-            match res.firmware_type() {
-                FirmwareType::X86_BIOS => "bios",
-                FirmwareType::UEFI_32 => "uefi (32-bit)",
-                FirmwareType::UEFI_64 => "uefi (64-bit)",
-                FirmwareType::SBI => "sbi",
-                _ => "unknown",
-            }
-        )
+        // kprintln!(
+        //     "fimrware: {}",
+        //     match res.firmware_type() {
+        //         FirmwareType::X86_BIOS => "bios",
+        //         FirmwareType::UEFI_32 => "uefi (32-bit)",
+        //         FirmwareType::UEFI_64 => "uefi (64-bit)",
+        //         FirmwareType::SBI => "sbi",
+        //         _ => "unknown",
+        //     }
+        // )
     }
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
+
+    set_hhdm_offset();
+    
+    init_device_tree();
+    print_device_tree();
+    map_virtio_devices();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -206,9 +216,9 @@ pub fn kernel_main() -> ! {
 
     INIT_THREADING_BARRIER
         .call_once(|| {
-            kprintln!("hii~");
-            kprintln!("preparing common tasks on {}", CORE_ID.get());
-            kprintln!("there are {} cores total", core_count);
+            // kprintln!("hii~");
+            // kprintln!("preparing common tasks on {}", CORE_ID.get());
+            // kprintln!("there are {} cores total", core_count);
             init_threading();
             init_coroutine_queue();
             Barrier::new(core_count)
@@ -217,10 +227,10 @@ pub fn kernel_main() -> ! {
 
     let idle = set_up_idle();
 
-    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+    // kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
     init_coroutine_executor();
-    kprintln!("Coroutine executor initialized.");
+    // kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count))
@@ -234,7 +244,7 @@ pub fn kernel_main() -> ! {
 
     for i in 0..1000 {
         spawn_thread(move || {
-            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+            // kprintln!("hi, id={}, initial_core={}", i, initial_core);
 
             // bad sleep function :D
             let tsc = Arch::read_cycle_counter();
@@ -242,13 +252,13 @@ pub fn kernel_main() -> ! {
                 yield_thread();
             }
 
-            kprintln!(
-                "meow from {}, id={}, initial_core={}, tid={}",
-                CORE_ID.get(),
-                i,
-                initial_core,
-                Thread::this_tid()
-            );
+            // kprintln!(
+            //     "meow from {}, id={}, initial_core={}, tid={}",
+            //     CORE_ID.get(),
+            //     i,
+            //     initial_core,
+            //     Thread::this_tid()
+            // );
             loop {
                 yield_thread();
             }
