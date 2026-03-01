@@ -77,6 +77,14 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+        panic!("unimplemented virtual_map");
+    }
+
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+        panic!("unimplemented virtual_unmap");
+    }
+    
     fn shutdown(_err_code: u16) {
         // TODO implement this
         halt();

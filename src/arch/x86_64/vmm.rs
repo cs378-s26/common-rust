@@ -1,7 +1,7 @@
 use core::arch::asm;
 use spin::Mutex;
 use x86_64::{PhysAddr, VirtAddr, structures::paging::{FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB}}; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
-use crate::{physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc}};
+use crate::{physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc}, virtual_memory::PagingOptions};
 
 // ChatGPT told me how to do this trait impl'ing
 pub struct FrameAllocatorWrapper {
@@ -41,7 +41,7 @@ struct VMMProtector; // TODO make cr3-specific
 static VMM_PROTECTOR : Mutex<VMMProtector> = Mutex::new(VMMProtector{});
 
 // TODO use PAT/PCD/PWT bits?
-pub fn vmap(space: u64, vaddr: u64, paddr: u64, user_accessible: bool, executable: bool, writable: bool) {
+pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     // TODO avoid doing this every time somehow?
     let hhdm_offset : u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper = unsafe {OffsetPageTable::new(
@@ -51,9 +51,9 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, user_accessible: bool, executabl
 
     let mut flags = PageTableFlags::empty();
     flags.insert(PageTableFlags::PRESENT);
-    if user_accessible {flags.insert(PageTableFlags::USER_ACCESSIBLE)}
-    if writable {flags.insert(PageTableFlags::WRITABLE)}
-    if !executable {flags.insert(PageTableFlags::NO_EXECUTE)}
+    if options.contains(PagingOptions::USER_ACCESSIBLE) {flags.insert(PageTableFlags::USER_ACCESSIBLE)}
+    if options.contains(PagingOptions::WRITABLE) {flags.insert(PageTableFlags::WRITABLE)}
+    if !options.contains(PagingOptions::EXECUTABLE) {flags.insert(PageTableFlags::NO_EXECUTE)}
 
     // there has to be a better way of error handling...
     let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr)).unwrap_or_else(|_| panic!("misaligned virtual address {:x} to vmap", vaddr));
