@@ -32,10 +32,12 @@ use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RsdpRequest,
+    RequestsEndMarker, RequestsStartMarker,
 };
 use spin::{Barrier, Once};
 use talc::Span;
+use kernel_common::device::{init_acpi, init_pci};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -49,6 +51,10 @@ static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::n
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]

@@ -23,18 +23,23 @@ pub mod print;
 pub mod sync;
 pub mod thread;
 pub mod virtual_memory;
+pub mod device;
 
 extern crate alloc;
 
-#[cfg(test)]
-mod test_runtime {
-    use alloc::sync::Arc;
-    use core::sync::atomic::Ordering;
+
+use core::sync::atomic::Ordering;
+
+// For coroutines.
+use core::future::Future;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 
     use limine::BaseRevision;
     use limine::firmware_type::FirmwareType;
     use limine::request::{
-        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
+        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RsdpRequest, HhdmRequest,
+    RequestsEndMarker,
         RequestsStartMarker,
     };
     use spin::{Barrier, Once};
@@ -49,6 +54,7 @@ mod test_runtime {
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
     use crate::virtual_memory::init_virtual_memory_allocator;
+use crate::device::{init_acpi, init_pci, acpi_tables};
 
     // some sample limine requests, for no particular reason
     #[used]
