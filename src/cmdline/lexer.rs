@@ -231,6 +231,8 @@ impl<'a> CmdlineLexer<'a> {
 
 #[cfg(test)]
 mod test {
+    use crate::print::kprintln;
+
     use super::*;
 
     #[test_case]
@@ -343,6 +345,11 @@ mod test {
         let data = "cmd1 : cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
+        assert_eq!(
+            lexer.next().unwrap().0,
+            CmdlineTokenData::Identifier("cmd1")
+        );
+
         lexer.expect(CmdlineTokenData::Colon).unwrap();
 
         assert_eq!(
@@ -359,33 +366,15 @@ mod test {
         assert_eq!(
             lexer.expect(CmdlineTokenData::Comma).unwrap_err().0,
             CmdlineErrorCode::ExpectedToken {
-                actual: CmdlineTokenData::Colon,
+                actual: CmdlineTokenData::Identifier("cmd1"),
                 expected: CmdlineTokenData::Comma
             }
         );
     }
 
     #[test_case]
-    fn test_parse_block_with_delimiter() {
-        let data = "{cmd1, cmd2, cmd3}";
-        let mut lexer = CmdlineLexer::new(data).unwrap();
-
-        lexer
-            .parse_block(
-                CmdlineTokenData::ClosedBrace,
-                CmdlineTokenData::Comma,
-                |lexer| {
-                    let ident = lexer.next().unwrap();
-                    assert!(matches!(ident.0, CmdlineTokenData::Identifier(_)));
-                    Ok(())
-                },
-            )
-            .unwrap();
-    }
-
-    #[test_case]
-    fn test_parse_block_end_token() {
-        let data = "{cmd1 cmd2}";
+    fn test_parse_block() {
+        let data = "cmd1, cmd2, cmd3}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
         lexer

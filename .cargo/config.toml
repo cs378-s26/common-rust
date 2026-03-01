@@ -3,6 +3,8 @@ buildtool = "run -r --package buildtool --"
 
 [target.x86_64-unknown-none]
 rustflags = ["-C", "relocation-model=static"]
+runner = ["target/release/buildtool", "qemu-test", "--target", "x86-64"]
 
-[target.'cfg(target_os = "none")']
-runner = "target/release/run_kernel"
+[target.aarch64-unknown-none]
+rustflags = ["-C", "relocation-model=static"]
+runner = ["target/release/buildtool", "qemu-test", "--target", "aarch64"]

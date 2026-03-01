@@ -8,7 +8,9 @@ use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
 use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
+use crate::arch::{Arch, ContextTrait};
 
+/// Represents the general-purpose registers of an x86 CPU.
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GPRegisters {
@@ -35,8 +37,6 @@ pub struct Context {
     pub gp: GPRegisters,
     pub rip: u64,
     pub rflags: RFlags,
-
-    // 16 bit, extended to 64
     pub cs: u64,
     pub ss: u64,
 }
@@ -71,34 +71,52 @@ impl const Default for Context {
 }
 
 #[unsafe(naked)]
-// rdi, rsi, rdx, rcx, r8, r9
 unsafe extern "C" fn jump_to_context(
+    // %rdi
     buf: *const GPRegisters,
+    // %rsi
     ss: u64,
+    // %rdx
     rsp: u64,
+    // %rcx
     rflags: u64,
+    // %r8
     cs: u64,
+    // %r9
     rip: u64,
 ) -> ! {
-    // TODO: we need to switch ds here
-    // maybe also fs
-    // and maybe everything else
-    // oh well it's up to John Userspace to do this
+    // TODO: we need to switch segmentation registers here, as well as fs and gs (for userspace)
     naked_asm!(
+        // Prepare the stack frame for iretq
+        // We use iretq here to switch, because it is possible the target context is userspace
+        // See:
+        // - Intel SDM Volume 2, Chapter 3, Section 1.3, IRET/IRETD/IRETQ—Interrupt Return
+        // - INtel SDM Volume 3a, Chapter 7, Section 7.14.3 "IRET in IA-32e Mode"
+        //
+        // In essence, iretq will pop the following from the stack
+        // SS
+        // RSP
+        // RFLAGS
+        // CS
+        // RIP <- current %rsp
+        //
+        // Basically this is a fused stack-switch + long jump.
         "pushq %rsi",
         "pushq %rdx",
         "pushq %rcx",
         "pushq %r8",
         "pushq %r9",
-        // oh god this routine gives me flashbacks
+        // Restore registers
         "movq (0 * 8)(%rdi), %rax",
         "movq (1 * 8)(%rdi), %rbx",
         "movq (2 * 8)(%rdi), %rcx",
         "movq (3 * 8)(%rdi), %rdx",
         "movq (4 * 8)(%rdi), %rsi",
-        // "movq (5 * 8)(%rdi), %rdi", MOVED
+        // "movq (5 * 8)(%rdi), %rdi" - avoid restoring %rdi here, because it still holds the
+        // context struct pointer.
         "movq (6 * 8)(%rdi), %rbp",
-        // "movq (7 * 8)(%rdi), %rsp", BAD BAD BAD don't load sp
+        // "movq (7 * 8)(%rdi), %rsp" - avoid loading SP, comment here to help the reader remember
+        // that we haven't forgot about %rsp
         "movq (8 * 8)(%rdi), %r8",
         "movq (9 * 8)(%rdi), %r9",
         "movq (10 * 8)(%rdi), %r10",
@@ -107,16 +125,19 @@ unsafe extern "C" fn jump_to_context(
         "movq (13 * 8)(%rdi), %r13",
         "movq (14 * 8)(%rdi), %r14",
         "movq (15 * 8)(%rdi), %r15",
-        // don't clobber registers!
+        // %rdi needs to be the last thing restored, because we don't want to clobber our context
+        // strict pointer
         "movq (5 * 8)(%rdi), %rdi",
-        // why use iretq? because of the woke left. just kidding. it makes handling DPL easier once you get userspace :D
+        // Go to the context
         "iretq",
         options(att_syntax)
     )
 }
 
-impl Context {
-    pub fn jump_to(&self) -> ! {
+impl ContextTrait for Context {
+    type Arch = Arch;
+
+    fn jump_to(&self) -> ! {
         unsafe {
             jump_to_context(
                 &raw const self.gp,
@@ -129,7 +150,7 @@ impl Context {
         }
     }
 
-    pub fn setup_kthread_context(&mut self) {
+    fn setup_kthread_context(&mut self) {
         self.cs = SegmentSelector::new(GlobalDescriptorTable::CS, Ring::Ring0)
             .bits()
             .into();
@@ -139,17 +160,18 @@ impl Context {
             .into();
     }
 
-    pub fn setup_for_call<T>(
-        &mut self,
+    fn new_kthread<T>(
         stack: &[u8],
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
-    ) {
-        self.setup_kthread_context();
+    ) -> Self {
+        let mut ctx = Self::default();
+        ctx.setup_kthread_context();
 
-        self.rip = function as usize as u64;
-        self.gp.rdi = data as u64;
-        self.gp.rsp = slice_stack_pointer(stack);
+        ctx.rip = function as usize as u64;
+        ctx.gp.rdi = data as u64;
+        ctx.gp.rsp = slice_stack_pointer(stack);
+        ctx
     }
 }
 
@@ -166,8 +188,20 @@ struct StackContextFrame {
     rbx: u64,
 }
 
-// TODO: this routine is most definitely NOT SAFE and has a bunch of undefined behavior
-// I should attempt to reduce the amount of UB here, but this is a nontrivial question
+/// This function saves the current context (CPU registers, stack pointer, etc.) of a thread
+/// (or CPU state) onto a separate stack. After saving the context, the provided callback
+/// function `fwd` is invoked. The callback will be executed in a "limbo" state, where no active
+/// thread is running, interrupts are disabled, and no preemption occurs. This should only be
+/// called by thread-internal logic.
+///
+/// # Safety
+/// The callback function (`fwd`) is executed after the context is saved. The consumer of this
+/// function must ensure that the callback does not assume that any thread-specific data is still
+/// valid once the context is saved, as this function operates in a limbo state where no active thread
+/// is running. The callback should also avoid performing any operations that could block, schedule, or
+/// modify thread-local state, as this could lead to undefined behavior or deadlock. It is almost
+/// impossible to use safely outside of the very specific callsite in `thread.rs`, because some
+/// extra (undocumented) bookkeeping is required.
 #[allow(unused_assignments)]
 pub unsafe fn save_context<T: FnOnce() -> !>(
     stack: &[u8],
@@ -180,6 +214,7 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         fwd: *mut T,
     ) -> ! {
         let frame = unsafe { &*frame };
+        // Read and move these arguments into local - these are on the temp stack now.
         let fwd: T = unsafe { ptr::read(fwd) };
         let mut ctx: MutexGuard<'static, Context> = unsafe { ptr::read(ctx) };
 
@@ -193,8 +228,8 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
         ctx.rip = frame.rip;
         ctx.rflags = RFlags::from_bits(frame.rflags).unwrap();
 
-        // at this point, it is safe to resume the current thread on any other core
-        // all relevant context variables are moved onto the new temporary stack
+        // At this point, it is safe to resume the current thread on any other core.
+        // All relevant context variables are moved onto the new temporary stack.
         drop(ctx);
 
         fwd();
@@ -202,24 +237,36 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
 
     #[unsafe(naked)]
     unsafe extern "C" fn save_context_impl<T: FnOnce() -> !>(
+        // %rdi
         stack: u64,
+        // %rsi
         ctx: *mut MutexGuard<'static, Context>,
+        // %rdx
         fwd: *mut T,
     ) {
-        // Functions preserve the registers rbx, rsp, rbp, r12, r13, r14, and r15
-        // so we should store them in the context, and jump to the handler
+        // SysV ABI: "Functions preserve the registers rbx, rsp, rbp, r12, r13, r14, and r15"
+        // We should store them in the context, and jump to the rust handler implementation.
         //
-        // strictly speaking, this is probably not ABI compliant
+        // Strictly speaking, this is probably not ABI compliant.
         naked_asm!(
+            // Fake a frame - used for restoring some stuff.
             "pushq %rbp",
             "movq %rsp, %rbp",
 
-            // use r11 as a scratch register to hold rsp
+            // Here, we have to switch stacks and save the callee-saved registers. We need to do
+            // this without the help of x86's interrupt handler facilities (which automatically
+            // switch stack for us on interrupt), since this is not an interrupt handler.
+
+            // Use r11 as a scratch register to hold rsp
             "movq %rsp, %r11",
-            // set rsp = stack, switch off the main call stack
+
+            // Set rsp = stack, switch off the main call stack
             "movq %rdi, %rsp",
 
-            // push things onto the *new* stack
+            // Push things onto the *new* stack
+            // Technically, we could just push this on the kernel's stack, but then we would lose
+            // observability when returning.
+            // Note this is in the same order as the StackContextFrame` struct.
             "pushq %rbx",
             "pushq %r11", // in lieu of rsp, push r11
             "pushq %rbp",
@@ -228,17 +275,26 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
             "pushq %r14",
             "pushq %r15",
             "pushfq",
+            // Load the address of the exit label.
             "leaq 1f(%rip), %rax",
             "pushq %rax",
 
+            // The stack is the base pointer of the StackContextFrame struct, so we can move it to
+            // rdi so that the rust handler treats it as the first parameter.
             "movq %rsp, %rdi",
 
             // stack frame setup
             "andq $~15, %rsp",
+            // Call the rust handler:
+            // - %rdi holds the first argument, the context pointer (moved from %rsp)
+            // - %rsi, %rdx holds the 2nd/3rd argument of this function (and is not clobbered), so it's
+            //   forwarded by default.
             "call {0}",
-            "ud2",
+            "ud2", // save_context_save is noreturn; insert ud2 here for safety
             "1:",
 
+            // rbp is restored here...
+            // TODO: consider saving/restoring rbp in same way as the other callee saved regs
             "popq %rbp",
             "ret",
             sym save_context_save::<T>,
@@ -248,8 +304,8 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
 
     unsafe { save_context_impl(slice_stack_pointer(stack), &raw mut ctx, &raw mut fwd) };
 
-    // need to forget here because they were moved into save_context_impl, despite the semantics
-    // being a bit weird
+    // Need to forget here because they were moved into save_context_impl, despite the semantics
+    // being a bit weird.
     forget(ctx);
     forget(fwd);
 }
