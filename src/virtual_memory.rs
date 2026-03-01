@@ -17,7 +17,7 @@ bitflags! {
 struct VirtualMemoryEntry {
     base: usize,
     length: usize,
-    link: RBTreeLink
+    link: RBTreeLink,
 }
 // https://docs.rs/intrusive-collections/latest/intrusive_collections/
 intrusive_adapter!(ActiveTreeAdapter = Box<VirtualMemoryEntry>: VirtualMemoryEntry { link => RBTreeLink });
@@ -69,73 +69,85 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
     }
 }
 
-// brainstormed with ChatGPT for the complementary-tree design, but the code is mine
-
-pub fn virtual_alloc(length: usize) -> usize {
-    assert!(length & 0xFFF == 0);
-    let mut vmes = VMES.get().expect("virtual allocation attempted before virtual memory allocator was initialized").lock();
-    let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
-    let mut chosen = cursor.remove().expect("free VME collection error during allocation"); // best-fit allocation
-    assert!(chosen.length >= length); // can remove once we're confident in this data structure lol
-    vmes.active.insert(Box::new(VirtualMemoryEntry{base: chosen.base, length: length, link: RBTreeLink::new()}));
-    let result = chosen.base;
-    if chosen.length != length { // don't reinsert duds
-        chosen.base += length;
-        chosen.length -= length;
-        vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
-    }
-    result
+pub struct VirtualMemoryAllocation {
+    base: usize,
+    length: usize,
 }
 
-pub fn virtual_dealloc(base: usize) {
-    assert!(base & 0xFFF == 0);
-    let mut vmes = VMES.get().expect("Virtual deallocation attempted before virtual memory allocator was initialized").lock();
-    let inner = &mut *vmes; // borrow checker lol lmao
-    let (active, free) = (&mut inner.active, &mut inner.free);
-    let mut cursor = active.find_mut(&base);
-    let mut found = cursor.remove().expect("deallocating unallocated virtual address");
-    let mut length = found.length;
-    // cursor automatically moves to next element
-    if let Some(next) = cursor.get() {
-        if next.base != found.base + found.length { // remove, automagically drop (free), and merge with entry [found.base + found.length, next.base) in free tree
-            let above = free.find(&(next.base - found.base - found.length, found.base + found.length)).get().expect("tree mismatch 1");
-            found.length += above.length
+// brainstormed with ChatGPT for the complementary-tree design, but the code is mine
+impl VirtualMemoryAllocation {
+    pub fn new(length: usize, backing: Option<usize>) -> VirtualMemoryAllocation {
+        assert!(length & 0xFFF == 0);
+        let mut vmes = VMES.get().expect("virtual allocation attempted before virtual memory allocator was initialized").lock();
+        let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
+        let mut chosen = cursor.remove().expect("free VME collection error during allocation"); // best-fit allocation
+        assert!(chosen.length >= length); // can remove once we're confident in this data structure lol
+        vmes.active.insert(Box::new(VirtualMemoryEntry{base: chosen.base, length: length, link: RBTreeLink::new()}));
+        let base = chosen.base;
+        if chosen.length != length { // don't reinsert duds
+            chosen.base += length;
+            chosen.length -= length;
+            vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
         }
-    } else if let Some(back) = free.back().get() {
-        if back.base > found.base {
-            assert!(found.base + found.length == back.base);
-            found.length += back.length // merge with topmost free region
+        if let Some(physical) = backing {
+            let mut i = 0;
+            while i < length {
+                vmap(get_address_space(), (base + i) as u64, (physical + i) as u64, false, false, true);
+                i += PAGE_SIZE;
+            } 
         }
+        VirtualMemoryAllocation{base, length}
     }
-    cursor.move_prev();
-    if let Some(prev) = cursor.get() {
-        if prev.base + prev.length != found.base { // remove, automagically drop (free), and merge with entry [prev.base + prev.length, found.base) in free tree
-            let below = free.find(&(found.base - prev.base - prev.length, prev.base + prev.length)).get().expect("tree mismatch 2");
-            found.base = below.base;
-            found.length += below.length;
+}
+
+impl Drop for VirtualMemoryAllocation {
+    fn drop(&mut self) {
+        // remove any mapped pages from the page table
+        while self.length > 0 {
+            vunmap(get_address_space(), (self.base + self.length) as u64);
+            self.length -= PAGE_SIZE;
         }
-    } else if let Some(front) = free.front().get() {
-        if front.base < found.base {
-            assert!(front.base + front.length == found.base);
-            found.base = front.base;
-            found.length += front.length;
+        let mut vmes = VMES.get().expect("Virtual deallocation attempted before virtual memory allocator was initialized").lock();
+        let inner = &mut *vmes; // borrow checker lol lmao
+        let (active, free) = (&mut inner.active, &mut inner.free);
+        let mut cursor = active.find_mut(&self.base);
+        let mut found = cursor.remove().expect("deallocating unallocated virtual address");
+        // cursor automatically moves to next element
+        if let Some(next) = cursor.get() {
+            if next.base != found.base + found.length { // remove, automagically drop (free), and merge with entry [found.base + found.length, next.base) in free tree
+                let above = free.find(&(next.base - found.base - found.length, found.base + found.length)).get().expect("tree mismatch 1");
+                found.length += above.length
+            }
+        } else if let Some(back) = free.back().get() {
+            if back.base > found.base {
+                assert!(found.base + found.length == back.base);
+                found.length += back.length // merge with topmost free region
+            }
         }
-    }
-    // remove any mapped pages from the page table
-    while length > 0 {
-        vunmap(get_address_space(), (base + length) as u64);
-        length -= PAGE_SIZE;
+        cursor.move_prev();
+        if let Some(prev) = cursor.get() {
+            if prev.base + prev.length != found.base { // remove, automagically drop (free), and merge with entry [prev.base + prev.length, found.base) in free tree
+                let below = free.find(&(found.base - prev.base - prev.length, prev.base + prev.length)).get().expect("tree mismatch 2");
+                found.base = below.base;
+                found.length += below.length;
+            }
+        } else if let Some(front) = free.front().get() {
+            if front.base < found.base {
+                assert!(front.base + front.length == found.base);
+                found.base = front.base;
+                found.length += front.length;
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::physical_memory::{frame_alloc, frame_dealloc};
-    use crate::virtual_memory::{virtual_alloc, virtual_dealloc};
+    use crate::virtual_memory::VirtualMemoryAllocation;
     use crate::arch::{vmap, vunmap, get_address_space};
     use super::kprintln;
     use crate::thread::{spawn_thread, yield_thread};
-    use spin::Barrier;
     use alloc::sync::Arc;
     use core::sync::atomic::{AtomicI64, Ordering};
 
@@ -168,23 +180,23 @@ mod test {
                 vunmap(get_address_space(), vaddr);
 
                 kprintln!("properly mapping vmem");
-                let mmapped = virtual_alloc(0x3000);
+                let mmapped = VirtualMemoryAllocation::new(0x3000, None);
                 kprintln!("writing to properly mapped vmem");
                 for i in 0..4096 {
-                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                    unsafe {*((mmapped.base + i) as *mut u8) = i as u8};
                 }
                 for i in 0..4096 {
-                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                    unsafe {*((mmapped.base + i) as *mut u8) = i as u8};
                 }
                 kprintln!("reading from properly mapped vmem");
                 for i in 8192..8192+4096 {
-                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                    unsafe {*((mmapped.base + i) as *mut u8) = i as u8};
                 }
                 for i in 8192..8192+4096 {
-                    unsafe {*((mmapped + i) as *mut u8) = i as u8};
+                    unsafe {*((mmapped.base + i) as *mut u8) = i as u8};
                 }
                 kprintln!("properly unmapping vmem");
-                virtual_dealloc(mmapped);
+                drop(mmapped);
                 (*b).fetch_add(-1, Ordering::SeqCst);
                 loop {yield_thread();}
             });
