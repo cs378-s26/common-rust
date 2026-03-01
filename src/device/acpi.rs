@@ -71,23 +71,23 @@ impl Handler for KernelAcpiHandler {
 
     // TODO: all of this.
     fn read_io_u8(&self, port: u16) -> u8 {
-        IoPort::in_u8(port)
+        IoPort::inb(port)
     }
     fn read_io_u16(&self, port: u16) -> u16 {
-        IoPort::in_u16(port)
+        IoPort::inw(port)
     }
     fn read_io_u32(&self, port: u16) -> u32 {
-        IoPort::in_u32(port)
+        IoPort::inl(port)
     }
 
     fn write_io_u8(&self, port: u16, value: u8) {
-        IoPort::out_u8(port, value)
+        IoPort::outb(port, value)
     }
     fn write_io_u16(&self, port: u16, value: u16) {
-        IoPort::out_u16(port, value)
+        IoPort::outw(port, value)
     }
     fn write_io_u32(&self, port: u16, value: u32) {
-        IoPort::out_u32(port, value)
+        IoPort::outl(port, value)
     }
 
     // TODO.
