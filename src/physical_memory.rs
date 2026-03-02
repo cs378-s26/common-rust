@@ -7,7 +7,7 @@ use spin::{Mutex, Once}; // operations are quite short
 use alloc::string::{String, ToString};
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{MemoryMapRequest, HhdmRequest};
-use crate::arch::PAGE_SIZE;
+use crate::arch::{Arch, ArchTrait};
 use crate::print::kprintln;
 
 // the below Limine-related code is partially from ChatGPT
@@ -68,7 +68,7 @@ pub fn frame_alloc() -> usize {
     if *head == usize::MAX {
         drop(head); // not using this anymore
         let mut end = END.lock();
-        'outer: while end.offset + PAGE_SIZE > unwrap(&REGIONS)[end.region].length as usize {
+        'outer: while end.offset + Arch::PAGE_SIZE > unwrap(&REGIONS)[end.region].length as usize {
             for region in (end.region+1)..unwrap(&REGIONS).len() {
                 if unwrap(&REGIONS)[region].entry_type == EntryType::USABLE {
                     *end = FrameLocation{region: region, offset: 0};
@@ -79,7 +79,7 @@ pub fn frame_alloc() -> usize {
             return frame_alloc(); // god-awful mechanism for waiting for a physical page to be freed
         }
         let frame : usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
-        end.offset += PAGE_SIZE;
+        end.offset += Arch::PAGE_SIZE;
         frame
     } else {
         let first : usize = *head;

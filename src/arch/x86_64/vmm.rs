@@ -50,10 +50,10 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     )};
 
     let mut flags = PageTableFlags::empty();
-    flags.insert(PageTableFlags::PRESENT);
-    if options.contains(PagingOptions::USER_ACCESSIBLE) {flags.insert(PageTableFlags::USER_ACCESSIBLE)}
-    if options.contains(PagingOptions::WRITABLE) {flags.insert(PageTableFlags::WRITABLE)}
-    if !options.contains(PagingOptions::EXECUTABLE) {flags.insert(PageTableFlags::NO_EXECUTE)}
+    if options.contains(PagingOptions::PRESENT) {flags.insert(PageTableFlags::PRESENT)};
+    if options.contains(PagingOptions::USER_ACCESSIBLE) {flags.insert(PageTableFlags::USER_ACCESSIBLE)};
+    if options.contains(PagingOptions::WRITABLE) {flags.insert(PageTableFlags::WRITABLE)};
+    if !options.contains(PagingOptions::EXECUTABLE) {flags.insert(PageTableFlags::NO_EXECUTE)};
 
     // there has to be a better way of error handling...
     let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr)).unwrap_or_else(|_| panic!("misaligned virtual address {:x} to vmap", vaddr));

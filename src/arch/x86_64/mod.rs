@@ -29,8 +29,6 @@ pub use crate::arch::{ArchTrait, UnwindContextTrait};
 use crate::mp::CoreId;
 use crate::virtual_memory::PagingOptions;
 use crate::print::CharSink;
-
-pub const PAGE_SIZE: usize = 4096;
 pub struct Arch;
 
 impl ArchTrait for Arch {
@@ -85,6 +83,8 @@ impl ArchTrait for Arch {
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
     }
+
+    const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
         get_address_space()

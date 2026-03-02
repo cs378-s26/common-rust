@@ -130,7 +130,7 @@ mod test_runtime {
     }
 
     pub fn kernel_main() -> ! {
-        kprintln!("we are the MPCorelings! please feed us!");
+        // kprintln!("we are the MPCorelings! please feed us!");
         let mp_res = MP_REQUEST
             .get_response()
             .expect("Expected to find MpResponse, found None.");

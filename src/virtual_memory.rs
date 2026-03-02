@@ -1,10 +1,10 @@
-use core::panic::PanicMessage;
-
 use bitflags::bitflags;
-use intrusive_collections::{RBTree, RBTreeLink, intrusive_adapter, KeyAdapter, Bound};
+use intrusive_collections::{RBTree, RBTreeLink, intrusive_adapter, KeyAdapter, Bound, LinkedList, LinkedListAtomicLink};
 use alloc::boxed::Box;
+use core::cell::OnceCell;
 use spin::{Mutex, Once};
-use crate::{physical_memory::{HHDM_REQUEST, frame_alloc}, print::kprintln, arch::{PAGE_SIZE, Arch, ArchTrait}};
+use alloc::sync::Arc;
+use crate::{arch::{Arch, ArchTrait}, mp::core_local, physical_memory::{HHDM_REQUEST, frame_alloc}, print::kprintln, thread::Thread};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -59,8 +59,8 @@ pub fn init_virtual_memory_allocator() {
     VMES.call_once(|| {
         let mut free = RBTree::new(FreeTreeAdapter::new());
         free.insert(Box::new(VirtualMemoryEntry{
-            base: PAGE_SIZE, 
-            length: HHDM_REQUEST.get_response().unwrap().offset() as usize - PAGE_SIZE, 
+            base: Arch::PAGE_SIZE, 
+            length: HHDM_REQUEST.get_response().unwrap().offset() as usize - Arch::PAGE_SIZE, 
             options: PagingOptions::empty(),
             link: RBTreeLink::new()}));
         Mutex::new(VirtualMemoryEntryContainer { 
@@ -91,13 +91,14 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
 }
 
 pub struct VirtualMemoryAllocation {
+    space: u64,
     base: usize,
     length: usize,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
 impl VirtualMemoryAllocation {
-    pub fn new(length: usize, backing: Option<usize>, options: PagingOptions) -> VirtualMemoryAllocation {
+    pub fn new(space: u64, length: usize, backing: Option<usize>, options: PagingOptions) -> VirtualMemoryAllocation {
         assert!(length & 0xFFF == 0);
         let mut vmes = VMES.get().expect("virtual allocation attempted before virtual memory allocator was initialized").lock();
         let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
@@ -113,11 +114,11 @@ impl VirtualMemoryAllocation {
         if let Some(physical) = backing {
             let mut i = 0;
             while i < length {
-                Arch::virtual_map(Arch::get_address_space(), (base + i) as u64, (physical + i) as u64, options);
-                i += PAGE_SIZE;
+                Arch::virtual_map(space, (base + i) as u64, (physical + i) as u64, options);
+                i += Arch::PAGE_SIZE;
             } 
         }
-        VirtualMemoryAllocation{base, length}
+        VirtualMemoryAllocation{space, base, length}
     }
 }
 
@@ -125,8 +126,8 @@ impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
         while self.length > 0 {
-            Arch::virtual_unmap(Arch::get_address_space(), (self.base + self.length) as u64);
-            self.length -= PAGE_SIZE;
+            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
+            self.length -= Arch::PAGE_SIZE;
         }
         let mut vmes = VMES.get().expect("Virtual deallocation attempted before virtual memory allocator was initialized").lock();
         let inner = &mut *vmes; // borrow checker lol lmao
@@ -202,7 +203,7 @@ mod test {
                 Arch::virtual_unmap(Arch::get_address_space(), vaddr);
 
                 kprintln!("properly mapping vmem");
-                let mmapped = VirtualMemoryAllocation::new(0x3000, None, 
+                let mmapped = VirtualMemoryAllocation::new(Arch::get_address_space(), 0x3000, None, 
                     PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE | PagingOptions::GLOBAL);
                 kprintln!("writing to properly mapped vmem");
                 for i in 0..4096 {

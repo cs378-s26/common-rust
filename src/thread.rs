@@ -297,7 +297,7 @@ pub fn yield_thread() {
     suspend_to_queue(queue);
 }
 
-pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
@@ -334,6 +334,10 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()    
+}
 
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+    kprintln!("spawning thread...");
+    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(make_thread(task));
 }
