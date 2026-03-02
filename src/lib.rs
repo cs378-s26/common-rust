@@ -23,7 +23,8 @@ pub mod print;
 pub mod sync;
 pub mod thread;
 pub mod virtual_memory;
-pub mod fs;
+pub mod ext2;
+pub mod ramdisk;
 
 extern crate alloc;
 
