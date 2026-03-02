@@ -12,3 +12,5 @@ qemu.log
 .direnv/
 .vscode/
 .zed/settings.json
+
+*.img
