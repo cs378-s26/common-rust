@@ -155,10 +155,10 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
+static GLOBAL_WORK_QUEUE: Once<Mutex<ThreadQueue>> = Once::new();
 
 pub fn init_threading() {
-    GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
+    GLOBAL_WORK_QUEUE.call_once(|| Mutex::new(new_thread_queue()));
 }
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
@@ -338,6 +338,5 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
-    kprintln!("spawning thread...");
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(make_thread(task));
 }
