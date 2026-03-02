@@ -3,7 +3,6 @@ use core::arch::naked_asm;
 use x86::{
     bits64::rflags::{self, RFlags},
     controlregs::cr2,
-    irq,
 };
 
 use crate::arch::{Arch, IrqStateTrait};
@@ -23,16 +22,6 @@ impl IrqStateTrait for IrqState {
     fn is_masked(&self) -> bool {
         !self.0
     }
-}
-
-#[inline(always)]
-pub unsafe fn disable() {
-    unsafe { irq::disable() };
-}
-
-#[inline(always)]
-pub unsafe fn enable() {
-    unsafe { irq::enable() };
 }
 
 #[repr(C)]
@@ -76,7 +65,7 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn irq_handler_t0() -> ! {
+unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
         "pushq %rax",
         "pushq %rcx",

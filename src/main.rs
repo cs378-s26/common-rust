@@ -65,43 +65,6 @@ static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 // TODO: use virtual memory herez
 static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
-fn dump_boot_info() {
-    if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
-        kprintln!("bootloader: {} v{}", res.name(), res.version());
-    }
-
-    if let Some(res) = get_cmdline_text() {
-        kprintln!("cmdline: \"{}\"", res);
-    }
-
-    if let Some(err) = get_cmdline_error() {
-        match err {
-            kernel_common::cmdline::CmdlineError::NoResponse => {
-                kprintln!("warn: no response received for cmdline request")
-            }
-            kernel_common::cmdline::CmdlineError::Utf8Error(err) => {
-                kprintln!("warn: failed to convert cmdline to utf8: {}", err)
-            }
-            kernel_common::cmdline::CmdlineError::ParseError(err) => {
-                kprintln!("warn: failed to parse cmdline: {}", err)
-            }
-        }
-    }
-
-    if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
-        kprintln!(
-            "firmware: {}",
-            match res.firmware_type() {
-                FirmwareType::X86_BIOS => "bios",
-                FirmwareType::UEFI_32 => "efi_32",
-                FirmwareType::UEFI_64 => "efi_64",
-                FirmwareType::SBI => "sbi",
-                _ => "unknown",
-            }
-        );
-    }
-}
-
 // For async/await testing. Move if/when we have a better testing setup.
 struct IntFuture {
     value: u64,
@@ -178,6 +141,24 @@ unsafe extern "C" fn system_main() -> ! {
                 _ => "unknown",
             }
         )
+    }
+
+    if let Some(err) = get_cmdline_error() {
+        match err {
+            kernel_common::cmdline::CmdlineError::NoResponse => {
+                kprintln!("warn: no response received for cmdline request")
+            }
+            kernel_common::cmdline::CmdlineError::Utf8Error(err) => {
+                kprintln!("warn: failed to convert cmdline to utf8: {}", err)
+            }
+            kernel_common::cmdline::CmdlineError::ParseError(err) => {
+                kprintln!("warn: failed to parse cmdline: {}", err)
+            }
+        }
+    }
+
+    if let Some(res) = get_cmdline_text() {
+        kprintln!("cmdline: \"{}\"", res);
     }
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));

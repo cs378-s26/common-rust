@@ -17,11 +17,11 @@ pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
-use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
+use x86::irq;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 use crate::mp::CoreId;
@@ -47,9 +47,9 @@ impl ArchTrait for Arch {
     fn set_irq_enabled(enabled: bool) {
         unsafe {
             if enabled {
-                enable();
+                irq::enable();
             } else {
-                disable();
+                irq::disable();
             }
         }
     }
@@ -70,11 +70,11 @@ impl ArchTrait for Arch {
         init_cpu_local_ptr(core_id);
     }
 
-    fn get_thread_local_pointer() -> u64 {
+    unsafe fn get_thread_local_pointer() -> u64 {
         unsafe { get_thread_local_pointer() }
     }
 
-    fn set_thread_local_pointer(base: *const u64) {
+    unsafe fn set_thread_local_pointer(base: *const u64) {
         unsafe { set_thread_local_pointer(base) };
     }
 
