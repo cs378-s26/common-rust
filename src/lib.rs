@@ -21,6 +21,8 @@ pub mod mp;
 pub mod print;
 pub mod sync;
 pub mod thread;
+pub mod physical_memory;
+pub mod virtual_memory;
 
 extern crate alloc;
 
@@ -43,8 +45,10 @@ mod test_runtime {
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+    use crate::physical_memory::{init_physical_memory_allocator};
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+    use crate::virtual_memory::init_virtual_memory_allocator;
 
     // some sample limine requests, for no particular reason
     #[used]
@@ -115,6 +119,7 @@ mod test_runtime {
 
     static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
     static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+    static MAKE_TEST_THREAD: Once<()> = Once::new();
 
     struct TestKernelEntry;
 
@@ -155,11 +160,15 @@ mod test_runtime {
 
         MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-        spawn_thread(move || {
-            crate::test_main();
-        });
+        MAKE_TEST_THREAD
+            .call_once(|| {
+                spawn_thread(move || {
+                    crate::test_main();
+                })
+            });
 
         Arch::set_irq_enabled(true);
+        kprintln!("Polling for tasks...");
         poll_tasks();
     }
 
@@ -197,6 +206,9 @@ mod test_runtime {
         // note we don't need to do anything special here because rust doesn't have init_array
         // if we wanted once-initialized data, we would either provide our custom mechanism,
         // or just spam OnceCell
+
+        init_physical_memory_allocator();
+        init_virtual_memory_allocator();
 
         // handle SSE/FSGSBASE/etc in initialize_mp
         let mp_res = MP_REQUEST
@@ -238,9 +250,11 @@ mod test_runtime {
     // also copy-pasted from the tutorial
     pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
         let _barrier = Arc::new(Barrier::new(tests.len()));
+        kprintln!("Running tests...");
         for test in tests {
             test();
         }
+        kprintln!("Done running tests.");
         Arch::shutdown(0);
     }
 }
