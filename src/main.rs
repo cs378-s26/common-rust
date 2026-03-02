@@ -24,14 +24,12 @@ use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, sp
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use kernel_common::physical_memory::{init_physical_memory_allocator, THE_HEAP}; 
+use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
-use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
-};
+use limine::request::{BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker};
 use spin::{Barrier, Once};
 use talc::Span;
 
@@ -60,10 +58,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 // For async/await testing. Move if/when we have a better testing setup.
 struct IntFuture {
@@ -163,6 +157,9 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
 
+    init_physical_memory_allocator();
+    init_virtual_memory_allocator();
+
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
     // or just spam OnceCell
@@ -235,7 +232,7 @@ pub fn kernel_main() -> ! {
             }
         });
     }
-
+    
     Arch::set_irq_enabled(true);
     poll_tasks()
 }

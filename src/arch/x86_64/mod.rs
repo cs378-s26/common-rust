@@ -12,6 +12,7 @@ mod debug;
 mod interrupt;
 mod mp;
 mod tables;
+mod vmm;
 
 pub use asm::*;
 pub use context::Context;
@@ -21,12 +22,13 @@ use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
+pub use vmm::*;
 use x86::irq;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 use crate::mp::CoreId;
 use crate::print::CharSink;
-
+use crate::virtual_memory::PagingOptions;
 pub struct Arch;
 
 impl ArchTrait for Arch {
@@ -80,6 +82,20 @@ impl ArchTrait for Arch {
 
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
+    }
+
+    const PAGE_SIZE: usize = 4096;
+
+    fn get_address_space() -> u64 {
+        get_address_space()
+    }
+
+    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+        vmap(space, vaddr, paddr, options);
+    }
+
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap(space, vaddr)
     }
 
     fn shutdown(err_code: u16) {
