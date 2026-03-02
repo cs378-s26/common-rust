@@ -71,6 +71,10 @@ struct IntFuture {
     has_been_polled: bool,
 }
 
+pub unsafe fn bad() {
+
+}
+
 impl Future for IntFuture {
     type Output = u64;
 
