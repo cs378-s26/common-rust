@@ -98,7 +98,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         rsp2: 0,
         reserved1: 0,
         // allocate interrupt stacks
-        ist1: allocate_sp(32), 
+        ist1: allocate_sp(32),
         ist2: allocate_sp(32),
         ist3: allocate_sp(32),
         ist4: allocate_sp(32),

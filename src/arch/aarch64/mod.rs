@@ -90,7 +90,7 @@ impl ArchTrait for Arch {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
         panic!("unimplemented virtual_unmap");
     }
-    
+
     fn shutdown(_err_code: u16) {
         // TODO implement this
         halt();

@@ -18,10 +18,10 @@ pub mod coroutine;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
+pub mod physical_memory;
 pub mod print;
 pub mod sync;
 pub mod thread;
-pub mod physical_memory;
 pub mod virtual_memory;
 
 extern crate alloc;
@@ -45,7 +45,7 @@ mod test_runtime {
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-    use crate::physical_memory::{init_physical_memory_allocator};
+    use crate::physical_memory::init_physical_memory_allocator;
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
     use crate::virtual_memory::init_virtual_memory_allocator;
@@ -160,12 +160,11 @@ mod test_runtime {
 
         MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-        MAKE_TEST_THREAD
-            .call_once(|| {
-                spawn_thread(move || {
-                    crate::test_main();
-                })
-            });
+        MAKE_TEST_THREAD.call_once(|| {
+            spawn_thread(move || {
+                crate::test_main();
+            })
+        });
 
         Arch::set_irq_enabled(true);
         kprintln!("Polling for tasks...");

@@ -184,7 +184,8 @@ fn handle_enum(variants: &Punctuated<Variant, Token![,]>) -> TokenStream {
                         let ty = &f.ty;
                         let init = f
                             .attrs
-                            .iter().find(|f| f.path.to_token_stream().to_string() == "default_value")
+                            .iter()
+                            .find(|f| f.path.to_token_stream().to_string() == "default_value")
                             .map(|f| f.tokens.clone())
                             .unwrap_or(quote! { std::default::Default::default() });
 

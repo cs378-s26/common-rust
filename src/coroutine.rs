@@ -80,7 +80,10 @@ struct CoroutineWaker {
 }
 
 impl CoroutineWaker {
-    fn new_waker(task_node: Arc<CoroutineTaskNode>, ready_queue: Arc<IntMutex<CoroutineQueue>>) -> Waker {
+    fn new_waker(
+        task_node: Arc<CoroutineTaskNode>,
+        ready_queue: Arc<IntMutex<CoroutineQueue>>,
+    ) -> Waker {
         Waker::from(Arc::new(CoroutineWaker {
             task_node,
             ready_queue,

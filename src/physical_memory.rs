@@ -2,13 +2,13 @@
 // TODO: use virtual memory herez
 pub static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
-use core::mem::drop;
-use spin::{Mutex, Once}; // operations are quite short
-use alloc::string::{String, ToString};
-use limine::memory_map::{Entry, EntryType};
-use limine::request::{MemoryMapRequest, HhdmRequest};
 use crate::arch::{Arch, ArchTrait};
 use crate::print::kprintln;
+use alloc::string::{String, ToString};
+use core::mem::drop;
+use limine::memory_map::{Entry, EntryType};
+use limine::request::{HhdmRequest, MemoryMapRequest};
+use spin::{Mutex, Once}; // operations are quite short
 
 // the below Limine-related code is partially from ChatGPT
 
@@ -19,13 +19,16 @@ static MEMMAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 struct FrameLocation {
-    region : usize,
-    offset : usize,
+    region: usize,
+    offset: usize,
 }
 
 // TODO add per-core cached lists of some sort?
 static HEAD: Mutex<usize> = Mutex::new(usize::MAX);
-static END: Mutex<FrameLocation> = Mutex::new(FrameLocation{region: 0, offset: 0});
+static END: Mutex<FrameLocation> = Mutex::new(FrameLocation {
+    region: 0,
+    offset: 0,
+});
 
 static REGIONS: Once<&[&Entry]> = Once::new();
 static HHDM_OFFSET: Once<usize> = Once::new();
@@ -40,19 +43,23 @@ fn display_entry_type(et: EntryType) -> String {
         EntryType::BOOTLOADER_RECLAIMABLE => "Reclaimable from Limine",
         EntryType::EXECUTABLE_AND_MODULES => "Reserved for kernel code",
         EntryType::FRAMEBUFFER => "Reserved for frame buffer",
-        _ => panic!("Unexpected Limine memory map entry type")
-    }.to_string()
+        _ => panic!("Unexpected Limine memory map entry type"),
+    }
+    .to_string()
 }
 
 pub fn init_physical_memory_allocator() {
-    HHDM_OFFSET.call_once(||
-        HHDM_REQUEST.get_response().unwrap().offset() as usize
-    );
+    HHDM_OFFSET.call_once(|| HHDM_REQUEST.get_response().unwrap().offset() as usize);
     REGIONS.call_once(|| {
         let entries = MEMMAP_REQUEST.get_response().unwrap().entries();
         kprintln!("\nLimine Memory Map:");
         for entry in entries {
-            kprintln!("{:016x}-{:016x} ({})", entry.base, entry.base + entry.length, display_entry_type(entry.entry_type));
+            kprintln!(
+                "{:016x}-{:016x} ({})",
+                entry.base,
+                entry.base + entry.length,
+                display_entry_type(entry.entry_type)
+            );
         }
         kprintln!("");
         entries
@@ -85,12 +92,12 @@ pub fn frame_alloc() -> usize {
             return frame_alloc(); // waits for a physical page to be freed
         }
 
-        let frame : usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
+        let frame: usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
         end.offset += Arch::PAGE_SIZE;
         frame
     } else {
-        let first : usize = *head;
-        *head = unsafe {*((unwrap(&HHDM_OFFSET) + first) as *const usize)};
+        let first: usize = *head;
+        *head = unsafe { *((unwrap(&HHDM_OFFSET) + first) as *const usize) };
         first
     }
 }
