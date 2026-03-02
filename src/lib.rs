@@ -208,6 +208,24 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
 
         init_malloc(Span::from_slice(&raw mut THE_HEAP));
 
+        let hhdm_offset = if let Some(hhdm) = HHDM_REQUEST.get_response() {
+            hhdm.offset()
+        } else {
+            kprintln!("No HHDM?");
+            0
+        };
+
+        // TODO: initialize virtual memory for memory-mapped I/O with HHDM offset.
+
+        if let Some(rsdp) = RSDP_REQUEST.get_response() {
+            kprintln!("RSDP revision {}: {:#x}", rsdp.revision(), rsdp.address());
+            init_acpi(rsdp.address(), hhdm_offset as usize);
+            acpi_tables();
+        } else {
+            kprintln!("No RSDP?");
+        }
+        init_pci();
+
         // note we don't need to do anything special here because rust doesn't have init_array
         // if we wanted once-initialized data, we would either provide our custom mechanism,
         // or just spam OnceCell
