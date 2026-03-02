@@ -156,11 +156,10 @@ impl Pci {
         let address = pci_address(bus, device, function, offset);
         unsafe {
             outl(0xCF8, address);
-            let mut value = inl(0xCFC);
-            value =
-                (value & !(0xFF << ((offset & 3) * 8))) | ((value as u32) << ((offset & 3) * 8));
-            outl(0xCF8, address); // In case someone changed.
-            outl(0xCFC, value);
+            let mut old_value = inl(0xCFC);
+            old_value &= !(0xFF << ((offset & 3) * 8));
+            old_value |= (value as u32) << ((offset & 3) * 8);
+            outl(0xCFC, old_value);
         }
     }
 
@@ -168,11 +167,10 @@ impl Pci {
         let address = pci_address(bus, device, function, offset);
         unsafe {
             outl(0xCF8, address);
-            let mut value = inl(0xCFC);
-            value =
-                (value & !(0xFFFF << ((offset & 2) * 8))) | ((value as u32) << ((offset & 2) * 8));
-            outl(0xCF8, address);
-            outl(0xCFC, value);
+            let mut old_value = inl(0xCFC);
+            old_value &= !(0xFFFF << ((offset & 2) * 8));
+            old_value |= (value as u32) << ((offset & 2) * 8);
+            outl(0xCFC, old_value);
         }
     }
 
