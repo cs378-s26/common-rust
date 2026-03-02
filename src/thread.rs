@@ -155,10 +155,10 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
+static GLOBAL_WORK_QUEUE: Once<Mutex<ThreadQueue>> = Once::new();
 
 pub fn init_threading() {
-    GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
+    GLOBAL_WORK_QUEUE.call_once(|| Mutex::new(new_thread_queue()));
 }
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
@@ -297,7 +297,7 @@ pub fn yield_thread() {
     suspend_to_queue(queue);
 }
 
-pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
@@ -334,6 +334,9 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()    
+}
 
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(make_thread(task));
 }
