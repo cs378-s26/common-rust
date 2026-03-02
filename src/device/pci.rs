@@ -1,12 +1,10 @@
+use crate::device::acpi::get_acpi;
+use crate::print::kprintln;
 use acpi::platform::pci;
-use acpi::{
-    sdt::mcfg::Mcfg,
-};
+use acpi::sdt::mcfg::Mcfg;
+use alloc::boxed::Box;
 use spin::Once;
 use x86::io::{inl, outl};
-use crate::print::kprintln;
-use crate::device::acpi::get_acpi;
-use alloc::boxed::Box;
 
 const MAX_RESOURCES: usize = 8;
 const MAX_CHILDREN: usize = 64;
@@ -20,7 +18,7 @@ const SECONDARY_BUS_OFFSET: u8 = 0x1A;
 
 pub enum BusType {
     Platform,
-    PCI
+    PCI,
 }
 
 #[derive(Copy, Clone)]
@@ -80,7 +78,11 @@ impl DeviceNode {
             prog_if: 0,
             revision_id: 0,
             header_type: 0,
-            resources: [Resource { resource_type: ResourceType::MMIO, base: 0, length: 0 }; MAX_RESOURCES],
+            resources: [Resource {
+                resource_type: ResourceType::MMIO,
+                base: 0,
+                length: 0,
+            }; MAX_RESOURCES],
             resource_count: 0,
             children: [core::ptr::null_mut(); MAX_CHILDREN],
             child_count: 0,
@@ -96,16 +98,26 @@ impl DeviceNode {
             self.child_count += 1;
             child_ptr
         } else {
-            panic!("Maximum number of children reached for device {}.", self.name);
+            panic!(
+                "Maximum number of children reached for device {}.",
+                self.name
+            );
         }
     }
 
     pub fn add_resource(&mut self, resource_type: ResourceType, base: u64, length: u64) {
         if self.resource_count < MAX_RESOURCES {
-            self.resources[self.resource_count] = Resource { resource_type, base, length };
+            self.resources[self.resource_count] = Resource {
+                resource_type,
+                base,
+                length,
+            };
             self.resource_count += 1;
         } else {
-            panic!("Maximum number of resources reached for device {}.", self.name);
+            panic!(
+                "Maximum number of resources reached for device {}.",
+                self.name
+            );
         }
     }
 }
@@ -145,8 +157,8 @@ impl Pci {
         unsafe {
             outl(0xCF8, address);
             let mut value = inl(0xCFC);
-            value = (value & !(0xFF << ((offset & 3) * 8)))
-                | ((value as u32) << ((offset & 3) * 8));
+            value =
+                (value & !(0xFF << ((offset & 3) * 8))) | ((value as u32) << ((offset & 3) * 8));
             outl(0xCF8, address); // In case someone changed.
             outl(0xCFC, value);
         }
@@ -157,8 +169,8 @@ impl Pci {
         unsafe {
             outl(0xCF8, address);
             let mut value = inl(0xCFC);
-            value = (value & !(0xFFFF << ((offset & 2) * 8)))
-                | ((value as u32) << ((offset & 2) * 8));
+            value =
+                (value & !(0xFFFF << ((offset & 2) * 8))) | ((value as u32) << ((offset & 2) * 8));
             outl(0xCF8, address);
             outl(0xCFC, value);
         }
@@ -179,17 +191,29 @@ fn pci_scan_function(bus: u8, device: u8, function: u8, parent: *mut DeviceNode,
     if vendor_id == INVALID_VENDOR_ID {
         return; // In case didn't check.
     }
-    kprintln!("Found PCI device: bus={}, device={}, function={}, vendor_id={:#x}, device_id={:#x}",
-        bus, device, function, vendor_id, device_id);
-    
+    kprintln!(
+        "Found PCI device: bus={}, device={}, function={}, vendor_id={:#x}, device_id={:#x}",
+        bus,
+        device,
+        function,
+        vendor_id,
+        device_id
+    );
+
     let register1 = Pci::read_u32(bus, device, function, 0x4);
     let register2 = Pci::read_u32(bus, device, function, 0x8);
     let register3 = Pci::read_u32(bus, device, function, 0xC);
 
     // TODO: what name?
     // TODO: this also also seems terribly unnecessary and unsafe.
-    let child = unsafe { (*parent).add_child(pci_address(bus, device, function, 0), "PCI Device", BusType::PCI) };
-    
+    let child = unsafe {
+        (*parent).add_child(
+            pci_address(bus, device, function, 0),
+            "PCI Device",
+            BusType::PCI,
+        )
+    };
+
     let status = (register1 >> 16) as u16;
     let command = (register1 & 0xFFFF) as u16;
     let class_code = (register2 >> 24) as u8;
@@ -206,8 +230,16 @@ fn pci_scan_function(bus: u8, device: u8, function: u8, parent: *mut DeviceNode,
         (*child).revision_id = revision_id;
         (*child).header_type = header_type;
     }
-    kprintln!("  status={:#x}, command={:#x}, class_code={:#x}, subclass={:#x}, prog_if={:#x}, revision_id={:#x}, header_type={:#x}",
-        status, command, class_code, subclass, prog_if, revision_id, header_type);
+    kprintln!(
+        "  status={:#x}, command={:#x}, class_code={:#x}, subclass={:#x}, prog_if={:#x}, revision_id={:#x}, header_type={:#x}",
+        status,
+        command,
+        class_code,
+        subclass,
+        prog_if,
+        revision_id,
+        header_type
+    );
 
     if class_code == 0x06 && subclass == 0x04 {
         // PCI-to-PCI bridge. Scan secondary bus.
@@ -215,7 +247,6 @@ fn pci_scan_function(bus: u8, device: u8, function: u8, parent: *mut DeviceNode,
         kprintln!("PCI-to-PCI bridge found: secondary bus {}", secondary_bus);
         pci_scan_bus(secondary_bus, child);
     }
-    
 }
 
 fn pci_scan_bus(bus: u8, parent: *mut DeviceNode) {
@@ -253,8 +284,13 @@ pub fn init_pci() {
             let bus_start = entry.bus_number_start;
             let bus_end = entry.bus_number_end;
 
-            kprintln!("PCI: base={:#x}, segment_group={:#x}, bus_start={:#x}, bus_end={:#x}",
-                base_address, segment_group, bus_start, bus_end);
+            kprintln!(
+                "PCI: base={:#x}, segment_group={:#x}, bus_start={:#x}, bus_end={:#x}",
+                base_address,
+                segment_group,
+                bus_start,
+                bus_end
+            );
         }
         // TODO: MCFG stuff.
     } else {
@@ -274,11 +310,16 @@ pub fn init_pci() {
                 if (register0 & 0xFFFF) as u16 == INVALID_VENDOR_ID {
                     break; // Done.
                 }
-                let pci_host = unsafe { (*root_ptr).add_child(pci_address(0, 0, function, 0), "PCI Host Controller", BusType::PCI) };
+                let pci_host = unsafe {
+                    (*root_ptr).add_child(
+                        pci_address(0, 0, function, 0),
+                        "PCI Host Controller",
+                        BusType::PCI,
+                    )
+                };
                 pci_scan_bus(function, pci_host);
             }
         }
     }
     kprintln!("PCI initialized.");
 }
-

@@ -15,6 +15,7 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
+pub mod device;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -48,6 +49,7 @@ use core::task::{Context, Poll};
     use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
     use crate::cmdline::{self, get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+    use crate::device::{acpi_tables, init_acpi, init_pci};
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
     use crate::physical_memory::init_physical_memory_allocator;

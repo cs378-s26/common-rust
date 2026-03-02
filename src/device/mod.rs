@@ -1,6 +1,6 @@
-pub mod device;
 pub mod acpi;
+pub mod device;
 pub mod pci;
 
-pub use acpi::{init_acpi, acpi_tables, get_acpi};
+pub use acpi::{acpi_tables, get_acpi, init_acpi};
 pub use pci::init_pci;

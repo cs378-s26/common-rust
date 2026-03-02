@@ -1,9 +1,9 @@
-use core::{
-    hint::spin_loop, pin::Pin, ptr::{NonNull, read_volatile, write_volatile}
-};
-use spin::Once;
+use crate::device::pci::Pci;
+use crate::print::kprintln;
 use acpi::{
-    AcpiTables, Handler, PhysicalMapping, aml::AmlError, sdt::{
+    AcpiTables, Handler, PhysicalMapping,
+    aml::AmlError,
+    sdt::{
         // bgrt::Bgrt,
         // facs::Facs,
         // fadt::Fadt,
@@ -13,12 +13,17 @@ use acpi::{
         // slit::Slit,
         // spcr::Spcr,
         // srat::Srat,
-    }
+    },
 };
-use x86::{io::{inb, outb, inw, outw, inl, outl}, time::rdtsc};
-use crate::print::kprintln;
-use crate::device::{
-    pci::Pci,
+use core::{
+    hint::spin_loop,
+    pin::Pin,
+    ptr::{NonNull, read_volatile, write_volatile},
+};
+use spin::Once;
+use x86::{
+    io::{inb, inl, inw, outb, outl, outw},
+    time::rdtsc,
 };
 
 pub struct KernelAcpiHandler {
@@ -26,7 +31,11 @@ pub struct KernelAcpiHandler {
 }
 
 impl Handler for KernelAcpiHandler {
-    unsafe fn map_physical_region<T>(&self, physical_address: usize, size: usize) -> PhysicalMapping<Self, T> {
+    unsafe fn map_physical_region<T>(
+        &self,
+        physical_address: usize,
+        size: usize,
+    ) -> PhysicalMapping<Self, T> {
         // Add if < HHDM offset (haven't already added).
         let hhdm_offset = HHDM_OFFSET.get().expect("HHDM offset not set.");
         let virtual_address = if physical_address < *hhdm_offset {
@@ -36,10 +45,11 @@ impl Handler for KernelAcpiHandler {
         };
         PhysicalMapping {
             physical_start: physical_address,
-            virtual_start: NonNull::new(virtual_address as *mut T).expect("Failed to get virtual address."),
+            virtual_start: NonNull::new(virtual_address as *mut T)
+                .expect("Failed to get virtual address."),
             region_length: size,
             mapped_length: size,
-            handler: self.clone()
+            handler: self.clone(),
         }
     }
 
@@ -93,23 +103,56 @@ impl Handler for KernelAcpiHandler {
     }
 
     fn read_pci_u8(&self, address: acpi::PciAddress, offset: u16) -> u8 {
-        Pci::read_u8(address.bus(), address.device(), address.function(), offset as u8)
+        Pci::read_u8(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+        )
     }
     fn read_pci_u16(&self, address: acpi::PciAddress, offset: u16) -> u16 {
-        Pci::read_u16(address.bus(), address.device(), address.function(), offset as u8)
+        Pci::read_u16(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+        )
     }
     fn read_pci_u32(&self, address: acpi::PciAddress, offset: u16) -> u32 {
-        Pci::read_u32(address.bus(), address.device(), address.function(), offset as u8)
+        Pci::read_u32(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+        )
     }
 
     fn write_pci_u8(&self, address: acpi::PciAddress, offset: u16, value: u8) {
-        Pci::write_u8(address.bus(), address.device(), address.function(), offset as u8, value);
+        Pci::write_u8(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+            value,
+        );
     }
     fn write_pci_u16(&self, address: acpi::PciAddress, offset: u16, value: u16) {
-        Pci::write_u16(address.bus(), address.device(), address.function(), offset as u8, value);
+        Pci::write_u16(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+            value,
+        );
     }
     fn write_pci_u32(&self, address: acpi::PciAddress, offset: u16, value: u32) {
-        Pci::write_u32(address.bus(), address.device(), address.function(), offset as u8, value);
+        Pci::write_u32(
+            address.bus(),
+            address.device(),
+            address.function(),
+            offset as u8,
+            value,
+        );
     }
 
     // TODO: find this with HPET probably.
@@ -117,7 +160,8 @@ impl Handler for KernelAcpiHandler {
         0
     }
 
-    fn stall(&self, microseconds: u64) { // Busy wait.
+    fn stall(&self, microseconds: u64) {
+        // Busy wait.
         let start = unsafe { rdtsc() };
         // TODO: actually calculate this.
         while unsafe { rdtsc() } - start < microseconds * 1000 {
@@ -136,9 +180,7 @@ impl Handler for KernelAcpiHandler {
     fn acquire(&self, mutex: acpi::Handle, timeout: u16) -> Result<(), AmlError> {
         Err(AmlError::LibUnimplemented)
     }
-    fn release(&self, mutex: acpi::Handle) {
-
-    }
+    fn release(&self, mutex: acpi::Handle) {}
 }
 
 impl Clone for KernelAcpiHandler {
@@ -157,7 +199,11 @@ static ACPI: Once<AcpiInfo> = Once::new();
 static HHDM_OFFSET: Once<usize> = Once::new();
 
 pub fn init_acpi(rsdp_address: usize, hhdm_offset: usize) {
-    kprintln!("Initializing ACPI with RSDP at {:#x} and HHDM offset {:#x}.", rsdp_address, hhdm_offset);
+    kprintln!(
+        "Initializing ACPI with RSDP at {:#x} and HHDM offset {:#x}.",
+        rsdp_address,
+        hhdm_offset
+    );
     HHDM_OFFSET.call_once(|| hhdm_offset);
     let tables = unsafe {
         AcpiTables::from_rsdp(KernelAcpiHandler { hhdm_offset }, rsdp_address)
@@ -173,9 +219,15 @@ pub fn get_acpi() -> &'static AcpiInfo {
 
 pub fn acpi_tables() {
     let acpi_info = get_acpi();
-    let madt = acpi_info.tables.find_table::<Madt>().expect("Failed to find MADT.");
-    let hpet = acpi_info.tables.find_table::<HpetTable>().expect("Failed to find HPET.");
-    
+    let madt = acpi_info
+        .tables
+        .find_table::<Madt>()
+        .expect("Failed to find MADT.");
+    let hpet = acpi_info
+        .tables
+        .find_table::<HpetTable>()
+        .expect("Failed to find HPET.");
+
     // TODO: probably do something with this information.
     dump_acpi_info(acpi_info, madt.get(), hpet.get());
 }
@@ -188,42 +240,68 @@ fn dump_acpi_info(acpi_info: &AcpiInfo, madt: Pin<&Madt>, hpet: Pin<&HpetTable>)
         match entry {
             MadtEntry::LocalApic(local_apic) => {
                 let local_apic_flags = local_apic.flags;
-                kprintln!("Local APIC: processor_id={}, apic_id={}, flags={:#x}",
-                    local_apic.processor_id, local_apic.apic_id, local_apic_flags);
+                kprintln!(
+                    "Local APIC: processor_id={}, apic_id={}, flags={:#x}",
+                    local_apic.processor_id,
+                    local_apic.apic_id,
+                    local_apic_flags
+                );
             }
             MadtEntry::IoApic(io_apic) => {
                 let io_apic_address = io_apic.io_apic_address;
                 let global_system_interrupt_base = io_apic.global_system_interrupt_base;
-                kprintln!("IO APIC: id={}, address={:#x}, global_system_interrupt_base={}",
-                    io_apic.io_apic_id, io_apic_address, global_system_interrupt_base);
+                kprintln!(
+                    "IO APIC: id={}, address={:#x}, global_system_interrupt_base={}",
+                    io_apic.io_apic_id,
+                    io_apic_address,
+                    global_system_interrupt_base
+                );
             }
             MadtEntry::InterruptSourceOverride(iso) => {
                 let global_system_interrupt = iso.global_system_interrupt;
                 let flags = iso.flags;
-                kprintln!("Interrupt Source Override: bus={}, source={}, global_system_interrupt={}, flags={:#x}",
-                    iso.bus, iso.irq, global_system_interrupt, flags);
+                kprintln!(
+                    "Interrupt Source Override: bus={}, source={}, global_system_interrupt={}, flags={:#x}",
+                    iso.bus,
+                    iso.irq,
+                    global_system_interrupt,
+                    flags
+                );
             }
             MadtEntry::NmiSource(nmi_source) => {
                 let nmi_source_flags = nmi_source.flags;
                 let global_system_interrupt = nmi_source.global_system_interrupt;
-                kprintln!("NMI Source: flags={:#x}, global_system_interrupt={}",
-                    nmi_source_flags, global_system_interrupt);
+                kprintln!(
+                    "NMI Source: flags={:#x}, global_system_interrupt={}",
+                    nmi_source_flags,
+                    global_system_interrupt
+                );
             }
             MadtEntry::LocalApicNmi(local_apic_nmi) => {
                 let local_apic_nmi_flags = local_apic_nmi.flags;
-                kprintln!("Local APIC NMI: processor_id={}, flags={:#x}, nmi_line={}",
-                    local_apic_nmi.processor_id, local_apic_nmi_flags, local_apic_nmi.nmi_line);
+                kprintln!(
+                    "Local APIC NMI: processor_id={}, flags={:#x}, nmi_line={}",
+                    local_apic_nmi.processor_id,
+                    local_apic_nmi_flags,
+                    local_apic_nmi.nmi_line
+                );
             }
             MadtEntry::LocalApicAddressOverride(local_apic_address_override) => {
                 let local_apic_address = local_apic_address_override.local_apic_address;
-                kprintln!("Local APIC Address Override: local_apic_address={:#x}",
-                    local_apic_address);
+                kprintln!(
+                    "Local APIC Address Override: local_apic_address={:#x}",
+                    local_apic_address
+                );
             }
             MadtEntry::IoSapic(io_sapic) => {
                 let io_sapic_address = io_sapic.io_sapic_address;
                 let global_system_interrupt_base = io_sapic.global_system_interrupt_base;
-                kprintln!("IO SAPIC: id={}, address={:#x}, global_system_interrupt_base={}",
-                    io_sapic.io_apic_id, io_sapic_address, global_system_interrupt_base);
+                kprintln!(
+                    "IO SAPIC: id={}, address={:#x}, global_system_interrupt_base={}",
+                    io_sapic.io_apic_id,
+                    io_sapic_address,
+                    global_system_interrupt_base
+                );
             }
             MadtEntry::LocalSapic(local_sapic) => {
                 kprintln!("Local SAPIC.");
@@ -235,14 +313,22 @@ fn dump_acpi_info(acpi_info: &AcpiInfo, madt: Pin<&Madt>, hpet: Pin<&HpetTable>)
                 let local_x2apic_id = local_x2apic.x2apic_id;
                 let local_x2apic_flags = local_x2apic.flags;
                 let local_x2apic_processor_uid = local_x2apic.processor_uid;
-                kprintln!("Local x2APIC: id={}, flags={:#x}, processor_uid={}",
-                    local_x2apic_id, local_x2apic_flags, local_x2apic_processor_uid);
+                kprintln!(
+                    "Local x2APIC: id={}, flags={:#x}, processor_uid={}",
+                    local_x2apic_id,
+                    local_x2apic_flags,
+                    local_x2apic_processor_uid
+                );
             }
             MadtEntry::X2ApicNmi(x2apic_nmi) => {
                 let x2apic_nmi_flags = x2apic_nmi.flags;
                 let x2apic_nmi_processor_uid = x2apic_nmi.processor_uid;
-                kprintln!("x2APIC NMI: flags={:#x}, processor_uid={}, nmi_line={}",
-                    x2apic_nmi_flags, x2apic_nmi_processor_uid, x2apic_nmi.nmi_line);
+                kprintln!(
+                    "x2APIC NMI: flags={:#x}, processor_uid={}, nmi_line={}",
+                    x2apic_nmi_flags,
+                    x2apic_nmi_processor_uid,
+                    x2apic_nmi.nmi_line
+                );
             }
             MadtEntry::Gicc(gicc) => {
                 kprintln!("GICC.");
@@ -269,12 +355,24 @@ fn dump_acpi_info(acpi_info: &AcpiInfo, madt: Pin<&Madt>, hpet: Pin<&HpetTable>)
     let event_timer_block_id = hpet.event_timer_block_id;
     let base_address = hpet.base_address.address;
     let clock_tick_unit = hpet.clock_tick_unit;
-    kprintln!("HPET: event_timer_block_id={}, base_address={:#x}, hpet_number={}, clock_tick_unit={:#x}",
-        event_timer_block_id, base_address, hpet.hpet_number, clock_tick_unit);
+    kprintln!(
+        "HPET: event_timer_block_id={}, base_address={:#x}, hpet_number={}, clock_tick_unit={:#x}",
+        event_timer_block_id,
+        base_address,
+        hpet.hpet_number,
+        clock_tick_unit
+    );
     let hpet_info = HpetInfo::new(&acpi_info.tables).expect("Failed to parse HPET info.");
-    kprintln!("HPET info: hardware_rev={}, num_comparators={}, main_counter_is_64bits={}, pci_vendor_id={:#x}, base_address={:#x}, hpet_number={}, clock_tick_unit={:#x}",
-        hpet_info.hardware_rev, hpet_info.num_comparators, hpet_info.main_counter_is_64bits,
-        hpet_info.pci_vendor_id, hpet_info.base_address, hpet_info.hpet_number, hpet_info.clock_tick_unit);
+    kprintln!(
+        "HPET info: hardware_rev={}, num_comparators={}, main_counter_is_64bits={}, pci_vendor_id={:#x}, base_address={:#x}, hpet_number={}, clock_tick_unit={:#x}",
+        hpet_info.hardware_rev,
+        hpet_info.num_comparators,
+        hpet_info.main_counter_is_64bits,
+        hpet_info.pci_vendor_id,
+        hpet_info.base_address,
+        hpet_info.hpet_number,
+        hpet_info.clock_tick_unit
+    );
 
     // MCFG.
     if let Some(mcfg) = acpi_info.tables.find_table::<Mcfg>() {
@@ -282,12 +380,15 @@ fn dump_acpi_info(acpi_info: &AcpiInfo, madt: Pin<&Madt>, hpet: Pin<&HpetTable>)
         for entry in mcfg.entries() {
             let base_address = entry.base_address;
             let segment_group = entry.pci_segment_group;
-            kprintln!("MCFG entry: base={:#x}, segment_group={:#x}, bus_start={:#x}, bus_end={:#x}",
-                base_address, segment_group, entry.bus_number_start, entry.bus_number_end);
+            kprintln!(
+                "MCFG entry: base={:#x}, segment_group={:#x}, bus_start={:#x}, bus_end={:#x}",
+                base_address,
+                segment_group,
+                entry.bus_number_start,
+                entry.bus_number_end
+            );
         }
     } else {
         kprintln!("No MCFG table found.");
     }
 }
-
-
