@@ -229,7 +229,7 @@ pub fn kernel_main() -> ! {
 
     spawn_coroutine(async_task(1624252));
 
-    for i in 0..1000 {
+    for i in 0..8 {
         spawn_thread(move || {
             kprintln!("hi, id={}, initial_core={}", i, initial_core);
 

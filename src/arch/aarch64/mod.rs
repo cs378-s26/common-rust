@@ -2,7 +2,7 @@ use core::arch::asm;
 
 use spin::Once;
 
-use crate::print::CharSink;
+use crate::{print::CharSink, virtual_memory::PagingOptions};
 
 mod asm;
 mod context;
