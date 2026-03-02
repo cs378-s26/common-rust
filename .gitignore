@@ -11,3 +11,5 @@ Cargo.lock
 qemu.log
 .vscode/
 .zed/settings.json
+
+*.img

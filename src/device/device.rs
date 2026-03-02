@@ -54,8 +54,14 @@ pub fn map_virtio_devices() {
             if node.name.contains("virtio") {
                 if let Some(mut reg) = node.reg() {
                     let base = reg.next().unwrap().starting_address as usize;
+                    let size = reg.next().unwrap().size;
+                    if let Some(s) = size {
+                         kprintln!("virtio device at {:#x}, size: {:#x}", base, s);
+                    } else {
+                        kprintln!("virtio device at {:#x}, size unknown", base);
+                    } 
                     create_mapping_for_phys_address(base);
-                    let id = unsafe { core::ptr::read_volatile((base + hhdm_offset ) as *const u32)}; // test read
+                    let id = unsafe { core::ptr::read_volatile((base + hhdm_offset +0x8) as *const u32)}; // test read
                     kprintln!("Mapped virtio device at {:#x}, magic num: {:#x}", base, id);
                     
                 }
