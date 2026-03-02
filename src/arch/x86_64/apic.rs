@@ -1,5 +1,4 @@
-use core::arch::asm;
-
+use x86::cpuid::CpuId;
 use x86::io::outb;
 use x86::msr::{rdmsr, wrmsr};
 
@@ -30,20 +29,10 @@ const SIVR_APIC_ENABLED: u64 = 0x100;
 const SPURIOUS_VECTOR: u64 = 0xFF;
 
 pub fn x2apic_supported() -> bool {
-    let ecx: u32;
-    unsafe {
-        asm!(
-            "push rbx",
-            "mov eax, 1",
-            "xor ecx, ecx",
-            "cpuid",
-            "pop rbx",
-            out("ecx") ecx,
-            out("eax") _,
-            out("edx") _,
-        );
-    }
-    (ecx & (1 << 21)) != 0
+    let cpu_id = CpuId::new();
+
+    let feature_info = cpu_id.get_feature_info();
+    matches!(feature_info , Some(info) if info.has_x2apic())
 }
 
 pub fn x2apic_enabled() -> bool {

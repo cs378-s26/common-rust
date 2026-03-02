@@ -33,6 +33,21 @@ impl IrqStateTrait for IrqState {
     }
 }
 
+impl IrqState {
+    #[inline(always)]
+    pub fn restore(self) {
+        if self.0 {
+            unsafe { irq::enable() };
+        } else {
+            unsafe { irq::disable() };
+        }
+    }
+
+    pub fn is_irq_enabled(self) -> bool {
+        self.0
+    }
+}
+
 pub fn irq_is_enabled() -> bool {
     rflags::read().contains(RFlags::FLAGS_IF)
 }

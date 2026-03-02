@@ -22,8 +22,7 @@ use crate::{
         IPI_WAKE_VECTOR, apic, sleep_core, switch_stack,
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
-    print::kprintln,
+    mp::{MP_STAGE, MPStage, core_local},
     sync::{IntMutex, MutexLike},
 };
 

@@ -216,8 +216,8 @@ pub fn kernel_main() -> ! {
 
     kprintln!("init idle tid {} on core {}", idle.tid(), CORE_ID.get());
 
-    // init_coroutine_executor();
-    // kprintln!("Coroutine executor initialized.");
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count))
@@ -226,7 +226,7 @@ pub fn kernel_main() -> ! {
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
     if CORE_ID.get().0 == 0 {
-        // spawn_coroutine(async_task(1624252));
+        spawn_coroutine(async_task(1624252));
 
         let num_threads = 20;
         kprintln!(
@@ -247,22 +247,18 @@ pub fn kernel_main() -> ! {
                     start_tick
                 );
 
-                let mut iterations = 0u64;
-                let tsc_start = Arch::read_cycle_counter();
-                while Arch::read_cycle_counter() < tsc_start + 100_000_000 {
-                    iterations += 1;
-                }
+                let cycle_start = Arch::read_cycle_counter();
+                while Arch::read_cycle_counter() < cycle_start + 100_000_000 {}
 
                 let end_core = CORE_ID.get();
                 let end_tick = Arch::read_cycle_counter();
 
                 kprintln!(
-                    "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed, {}M iterations",
+                    "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed",
                     i,
                     start_core.0,
                     end_core.0,
                     end_tick - start_tick,
-                    iterations / 1_000_000
                 );
             });
         }

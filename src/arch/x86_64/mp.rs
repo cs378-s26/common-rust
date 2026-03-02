@@ -148,7 +148,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     });
 
     {
-        let timer_hz = 1000;
+        let timer_hz = 500;
         let initial_count = (apic_freq / timer_hz) as u32;
         apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
         kprintln!(
