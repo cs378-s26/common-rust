@@ -16,10 +16,10 @@ cargo buildtool qemu # runs qemu
 cargo buildtool gdb # runs gdb, and attaches to qemu
 cargo buildtool clean # cleans the buildtool cache
 cargo buildtool help # help message
-cargo buildtool test # runs unit tests. QEMU flags specified in run_qemu.sh
+cargo buildtool test # runs unit tests. QEMU flags specified in run_qemu_{arch_string}.sh
 ```
 
-The current configuration for `buildtool` only supports `x86_64` on a fairly generic processor.
+The current buildtool supports both aarch64 & x86-64, though some qemu args may be funky depending on your system.
 
 Use the `-k` flag to enable KVM, which is fairly close to real hardware as far as the processor is concerned. When running `gdb`, you **must**
 pass in `-k` if and only if the `qemu` instance was started with `-k`. Use `--help` for more options. You can configure the number of cores and
@@ -29,8 +29,10 @@ amount of memory.
 
 ## Testing
 
-QEMU command is specified in `run_qemu.sh`. Make sure to run `setup.sh` before running tests.
+QEMU command is specified in `run_qemu_{arch_string}.sh`.
 
 ## TODO
-
-- fix kernel symbol module generation
+### Testing
+- [ ] Support integration tests. Each test should define a qemu run script for each arch & expected serial output files.
+### Misc
+- [ ] fix kernel symbol module generation

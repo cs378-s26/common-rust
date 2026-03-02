@@ -1,6 +1,7 @@
 /build/
 
 .vim
+.zed/
 
 target/
 buildtool-cache/
@@ -8,3 +9,7 @@ run/
 Cargo.lock
 
 qemu.log
+
+.direnv/
+.vscode/
+.zed/settings.json

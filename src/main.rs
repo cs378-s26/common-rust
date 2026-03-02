@@ -11,30 +11,29 @@
 
 extern crate alloc;
 
+use core::sync::atomic::Ordering;
+
 // For coroutines.
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::*;
-
+use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
+use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
+use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
+use kernel_common::heap::init_malloc;
+use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+use kernel_common::print::{init_tty, kprintln};
+use kernel_common::thread::{
+    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
+};
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use spin::{Barrier, Once};
 use talc::Span;
-use x86::time::rdtsc;
-
-use core::sync::atomic::Ordering;
-use kernel_common::arch::{core_count, initialize_mp, irq_enable};
-use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
-use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
-use kernel_common::heap::init_malloc;
-use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
-use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -48,6 +47,10 @@ static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::n
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+static MP_REQUEST: MpRequest = MpRequest::new();
 
 // ignore these
 #[used]
@@ -73,13 +76,13 @@ fn dump_boot_info() {
 
     if let Some(err) = get_cmdline_error() {
         match err {
-            cmdline::CmdlineError::NoResponse => {
+            kernel_common::cmdline::CmdlineError::NoResponse => {
                 kprintln!("warn: no response received for cmdline request")
             }
-            cmdline::CmdlineError::Utf8Error(err) => {
+            kernel_common::cmdline::CmdlineError::Utf8Error(err) => {
                 kprintln!("warn: failed to convert cmdline to utf8: {}", err)
             }
-            cmdline::CmdlineError::ParseError(err) => {
+            kernel_common::cmdline::CmdlineError::ParseError(err) => {
                 kprintln!("warn: failed to parse cmdline: {}", err)
             }
         }
@@ -99,72 +102,53 @@ fn dump_boot_info() {
     }
 }
 
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-
-
-
-pub fn kernel_main() -> ! {
-    // kprintln!("we are the MPCorelings! please feed us!");
-
-    INIT_THREADING_BARRIER
-        .call_once(|| {
-            kprintln!("hii~");
-            kprintln!("preparing common tasks on {}", CORE_ID.get());
-            kprintln!("there are {} cores total", core_count());
-            init_threading();
-            init_coroutine_queue();
-            Barrier::new(core_count())
-        })
-        .wait();
-
-    let idle = set_up_idle();
-
-    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
-
-    init_coroutine_executor();
-    kprintln!("Coroutine executor initialized.");
-
-    MP_PREEMPT_ENTER_BARRIER
-        .call_once(|| Barrier::new(core_count()))
-        .wait();
-
-    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-    let initial_core = CORE_ID.get();
-
-    /*
-    for i in 0..1000 {
-        spawn_thread(move || {
-            kprintln!("hi, id={}, initial_core={}", i, initial_core);
-
-            // bad sleep function :D
-            let tsc = unsafe { rdtsc() };
-            while unsafe { rdtsc() } < tsc + 10000000000 {
-                yield_thread();
-            }
-
-            kprintln!(
-                "meow from {}, id={}, initial_core={}, tid={}",
-                CORE_ID.get(),
-                i,
-                initial_core,
-                Thread::this_tid()
-            );
-            loop {
-                yield_thread();
-            }
-        });
-    }
-    */
-
-    irq_enable();
-    poll_tasks();
+// For async/await testing. Move if/when we have a better testing setup.
+struct IntFuture {
+    value: u64,
+    has_been_polled: bool,
 }
 
+impl Future for IntFuture {
+    type Output = u64;
 
-unsafe extern "C" fn go_to_kern_main() -> ! {
-    kernel_main()
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Randomly pend.
+        if self.has_been_polled {
+            Poll::Ready(self.value)
+        } else {
+            self.get_mut().has_been_polled = true;
+            cx.waker().wake_by_ref(); // Theoretically, something else wakes this when ready.
+            Poll::Pending
+        }
+    }
+}
+
+async fn async_int(number: u64) -> u64 {
+    IntFuture {
+        value: number,
+        has_been_polled: false,
+    }
+    .await
+}
+
+async fn async_task(argument: u64) {
+    for i in 0..4 {
+        let n = async_int(i).await;
+        kprintln!("Core {} async loop {}: {}", CORE_ID.get(), i, n);
+    }
+    kprintln!(
+        "Core {} async task complete with argument: {}",
+        CORE_ID.get(),
+        argument
+    );
+}
+
+struct MainKernelEntry;
+
+impl KernelEntryTrait for MainKernelEntry {
+    fn kernel_main() -> ! {
+        kernel_main()
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -203,7 +187,76 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
-    initialize_mp(go_to_kern_main);
+    let mp_res = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    init_cpu_local_table(mp_res.cpus().len());
+    Arch::initialize_mp::<MainKernelEntry>(&MP_REQUEST)
+}
+
+static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+
+pub fn kernel_main() -> ! {
+    // kprintln!("we are the MPCorelings! please feed us!");
+    let mp_res = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    let core_count = mp_res.cpus().len();
+
+    INIT_THREADING_BARRIER
+        .call_once(|| {
+            kprintln!("hii~");
+            kprintln!("preparing common tasks on {}", CORE_ID.get());
+            kprintln!("there are {} cores total", core_count);
+            init_threading();
+            init_coroutine_queue();
+            Barrier::new(core_count)
+        })
+        .wait();
+
+    let idle = set_up_idle();
+
+    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
+
+    MP_PREEMPT_ENTER_BARRIER
+        .call_once(|| Barrier::new(core_count))
+        .wait();
+
+    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+    let initial_core = CORE_ID.get();
+
+    spawn_coroutine(async_task(1624252));
+
+    for i in 0..1000 {
+        spawn_thread(move || {
+            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+
+            // bad sleep function :D
+            let tsc = Arch::read_cycle_counter();
+            while Arch::read_cycle_counter() < tsc + 10000000000 {
+                yield_thread();
+            }
+
+            kprintln!(
+                "meow from {}, id={}, initial_core={}, tid={}",
+                CORE_ID.get(),
+                i,
+                initial_core,
+                Thread::this_tid()
+            );
+            loop {
+                yield_thread();
+            }
+        });
+    }
+
+    Arch::set_irq_enabled(true);
+    poll_tasks()
 }
 
 // workaround for rust-analyzer being stupid
@@ -233,6 +286,7 @@ fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
     halt()
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     rust_panic_impl(info);
