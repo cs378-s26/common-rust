@@ -180,6 +180,7 @@ static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 
 pub fn kernel_main() -> ! {
+    while true {}
     // kprintln!("we are the MPCorelings! please feed us!");
     let mp_res = MP_REQUEST
         .get_response()
