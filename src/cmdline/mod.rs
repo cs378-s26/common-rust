@@ -16,7 +16,7 @@ pub struct KernelCmdline {}
 impl CmdlineParsable for KernelCmdline {
     fn parse<'a>(&mut self, lexer: &mut CmdlineLexer<'a>) -> Result<(), CmdlineParseError<'a>> {
         lexer.parse_block(CmdlineTokenData::Eof, CmdlineTokenData::Comma, |lexer| {
-            let tok = lexer.next()?;
+            let tok = lexer.next_tok()?;
             tok.unwrap_ident()?;
             Err(tok.make_error(CmdlineErrorCode::UnknownField(&[])))
         })

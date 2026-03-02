@@ -21,7 +21,7 @@ use crate::{
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     print::kprintln,
-    sync::{IntMutex, MutexLike},
+    sync::MutexLike,
 };
 
 pub struct Thread {
@@ -85,7 +85,7 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
 
     fn get_base() -> u64 {
         assert!(is_on_thread());
-        Arch::get_thread_local_pointer()
+        unsafe { Arch::get_thread_local_pointer() }
     }
 }
 
@@ -166,13 +166,13 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
 }
 
 fn thread_enter(thread: Arc<Thread>) {
-    Arch::set_thread_local_pointer(&thread.tls_addr);
+    unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
     CURRENT_THREAD.set(None);
-    Arch::set_thread_local_pointer(ptr::null());
+    unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
@@ -334,9 +334,14 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
-    thread.clone()    
+    thread.clone()
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(make_thread(task));
+    GLOBAL_WORK_QUEUE
+        .get()
+        .unwrap()
+        .lock()
+        .push_back(make_thread(task));
 }
+

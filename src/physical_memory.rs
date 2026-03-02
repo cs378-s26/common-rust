@@ -60,7 +60,7 @@ pub fn init_physical_memory_allocator() {
 }
 
 fn unwrap<T>(o: &Once<T>) -> &T {
-    &o.get().expect("")
+    o.get().unwrap()
 }
 
 pub fn frame_alloc() -> usize {
@@ -68,16 +68,23 @@ pub fn frame_alloc() -> usize {
     if *head == usize::MAX {
         drop(head); // not using this anymore
         let mut end = END.lock();
-        'outer: while end.offset + Arch::PAGE_SIZE > unwrap(&REGIONS)[end.region].length as usize {
-            for region in (end.region+1)..unwrap(&REGIONS).len() {
-                if unwrap(&REGIONS)[region].entry_type == EntryType::USABLE {
-                    *end = FrameLocation{region: region, offset: 0};
-                    break 'outer;
-                }
+
+        let regions = unwrap(&REGIONS);
+
+        while end.offset + Arch::PAGE_SIZE > regions[end.region].length as usize {
+            // try to find the next usable region
+            if let Some(region) = ((end.region + 1)..regions.len())
+                .find(|&r| regions[r].entry_type == EntryType::USABLE)
+            {
+                *end = FrameLocation { region, offset: 0 };
+                continue;
             }
+
+            // no usable region found — retry allocation
             drop(end);
-            return frame_alloc(); // god-awful mechanism for waiting for a physical page to be freed
+            return frame_alloc(); // waits for a physical page to be freed
         }
+
         let frame : usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
         end.offset += Arch::PAGE_SIZE;
         frame

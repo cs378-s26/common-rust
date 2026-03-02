@@ -35,7 +35,7 @@ pub fn sleep_core() {
 
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *mut u8 {
+unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *mut u8 {
     naked_asm!(
         "mov rax, rdi",
         "mov rcx, rdx",
@@ -50,7 +50,7 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *m
 
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memset(dest: *mut u8, byte: i32, len: usize) -> *mut u8 {
+unsafe extern "C" fn memset(dest: *mut u8, byte: i32, len: usize) -> *mut u8 {
     naked_asm!(
         "mov r11, rdi",
         "mov rcx, rdx",

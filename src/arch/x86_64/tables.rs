@@ -136,6 +136,7 @@ impl InterruptDescriptorTable {
         InterruptDescriptorTable { entries }
     }
 
+    #[allow(dead_code)]
     pub unsafe fn load(&self) {
         unsafe {
             lidt(&DescriptorTablePointer::new(self));

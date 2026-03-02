@@ -1,10 +1,8 @@
 use bitflags::bitflags;
-use intrusive_collections::{RBTree, RBTreeLink, intrusive_adapter, KeyAdapter, Bound, LinkedList, LinkedListAtomicLink};
+use intrusive_collections::{RBTree, RBTreeLink, intrusive_adapter, KeyAdapter, Bound};
 use alloc::boxed::Box;
-use core::cell::OnceCell;
 use spin::{Mutex, Once};
-use alloc::sync::Arc;
-use crate::{arch::{Arch, ArchTrait}, mp::core_local, physical_memory::{HHDM_REQUEST, frame_alloc}, print::kprintln, thread::Thread};
+use crate::{arch::{Arch, ArchTrait}, physical_memory::{HHDM_REQUEST, frame_alloc}, print::kprintln};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -32,6 +30,8 @@ bitflags! {
 struct VirtualMemoryEntry {
     base: usize,
     length: usize,
+    // future proofing
+    #[allow(unused)]
     options: PagingOptions,
     link: RBTreeLink,
 }
@@ -65,7 +65,7 @@ pub fn init_virtual_memory_allocator() {
             link: RBTreeLink::new()}));
         Mutex::new(VirtualMemoryEntryContainer { 
             active: RBTree::new(ActiveTreeAdapter::new()),
-            free: free, // one big-ass free block
+            free, // one big-ass free block
         })
     });
 }
@@ -140,11 +140,9 @@ impl Drop for VirtualMemoryAllocation {
                 let above = free.find(&(next.base - found.base - found.length, found.base + found.length)).get().expect("tree mismatch 1");
                 found.length += above.length
             }
-        } else if let Some(back) = free.back().get() {
-            if back.base > found.base {
-                assert!(found.base + found.length == back.base);
-                found.length += back.length // merge with topmost free region
-            }
+        } else if let Some(back) = free.back().get() && back.base > found.base{
+            assert!(found.base + found.length == back.base);
+            found.length += back.length // merge with topmost free region
         }
         cursor.move_prev();
         if let Some(prev) = cursor.get() {
@@ -153,12 +151,10 @@ impl Drop for VirtualMemoryAllocation {
                 found.base = below.base;
                 found.length += below.length;
             }
-        } else if let Some(front) = free.front().get() {
-            if front.base < found.base {
-                assert!(front.base + front.length == found.base);
-                found.base = front.base;
-                found.length += front.length;
-            }
+        } else if let Some(front) = free.front().get() && front.base < found.base {
+            assert!(front.base + front.length == found.base);
+            found.base = front.base;
+            found.length += front.length;
         }
     }
 }

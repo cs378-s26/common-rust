@@ -10,7 +10,7 @@ pub struct FrameAllocatorWrapper {
 unsafe impl FrameAllocator<Size4KiB> for FrameAllocatorWrapper {
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
         // if our physmem allocator starts returning misaligned frames, we're in big trouble...
-        Some(PhysFrame::from_start_address(PhysAddr::new((self.inner)() as u64)).ok()?)
+        PhysFrame::from_start_address(PhysAddr::new((self.inner)() as u64)).ok()
     }
 }
 pub struct FrameDeallocatorWrapper {
