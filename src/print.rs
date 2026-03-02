@@ -127,11 +127,11 @@ impl_for!(LowerExp);
 impl_for!(UpperExp);
 
 pub trait CharSink: Send + Sync {
-    /// # Safety 
+    /// # Safety
     /// Not thread safe, must be locked.
     unsafe fn putc(&self, ch: u8);
 
-    /// # Safety 
+    /// # Safety
     /// Not thread safe, must be locked.
     unsafe fn flush(&self);
 }

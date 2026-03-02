@@ -98,12 +98,12 @@ pub trait ArchTrait {
     /// 1. setting up the cpu local ptr
     /// 2. setting up tables and interrupts
     /// 3. turning on needed features
-    /// # Safety 
+    /// # Safety
     /// Should only be called from bootstrap processor during kernel initialization
     unsafe fn initialize_core(cpu: &Cpu) -> ();
 
     /// wrapper around initalize core that goes to kernel main
-    /// # Safety 
+    /// # Safety
     /// Should only be called from bootstrap processor during kernel initialization
     unsafe extern "C" fn start_core<E: KernelEntryTrait>(cpu: &Cpu) -> ! {
         unsafe { Self::initialize_core(cpu) };
@@ -112,7 +112,7 @@ pub trait ArchTrait {
     fn set_irq_enabled(enabled: bool);
 
     /// save the current context and switch on to the provided temp stack & call fwd()
-    /// # Safety 
+    /// # Safety
     /// Internal, do not call outside of thread module.
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
@@ -122,11 +122,11 @@ pub trait ArchTrait {
     fn set_cpu_local_pointer(core_id: CoreId);
     fn get_cpu_local_pointer() -> u64;
 
-    /// # Safety 
+    /// # Safety
     /// Internal, do not call outside of thread module.
     unsafe fn set_thread_local_pointer(base: *const u64);
 
-    /// # Safety 
+    /// # Safety
     /// Internal, do not call outside of thread module.
     unsafe fn get_thread_local_pointer() -> u64;
 

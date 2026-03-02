@@ -344,4 +344,3 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         .lock()
         .push_back(make_thread(task));
 }
-
