@@ -274,6 +274,9 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
 }
 
 #[inline(always)]
+// Queue must already be locked.
+// adds the current thread to the queue, unlocks it, then switches to idle
+// may combine with suspend to queue later
 pub fn suspend_to_locked_queue<G>(mut guard: G)
 where
     G: DerefMut<Target = ThreadQueue>,
