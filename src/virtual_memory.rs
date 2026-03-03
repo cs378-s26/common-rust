@@ -106,9 +106,9 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
 }
 
 pub struct VirtualMemoryAllocation {
-    space: u64,
-    base: usize,
-    length: usize,
+    pub space: u64,
+    pub base: usize,
+    pub length: usize,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine

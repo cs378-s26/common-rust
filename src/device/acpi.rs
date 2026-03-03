@@ -1,5 +1,10 @@
 use crate::device::pci::Pci;
 use crate::print::kprintln;
+//PRESENT, GLOBAL are bitflags.
+
+use crate::virtual_memory::{VirtualMemoryAllocation, PagingOptions};
+use crate::physical_memory::HHDM_OFFSET;
+use crate::arch::{Arch, ArchTrait};
 use acpi::{
     AcpiTables, Handler, PhysicalMapping,
     aml::AmlError,
@@ -26,8 +31,8 @@ use x86::{
     time::rdtsc,
 };
 
+use alloc::vec::Vec;
 pub struct KernelAcpiHandler {
-    hhdm_offset: usize,
 }
 
 impl Handler for KernelAcpiHandler {
@@ -37,48 +42,48 @@ impl Handler for KernelAcpiHandler {
         size: usize,
     ) -> PhysicalMapping<Self, T> {
         // Add if < HHDM offset (haven't already added).
-        let hhdm_offset = HHDM_OFFSET.get().expect("HHDM offset not set.");
-        let virtual_address = if physical_address < *hhdm_offset {
-            physical_address + hhdm_offset
+        let vaddr = if physical_address < *HHDM_OFFSET.get().unwrap() {
+            physical_address + HHDM_OFFSET.get().unwrap()
         } else {
             physical_address
         };
         PhysicalMapping {
             physical_start: physical_address,
-            virtual_start: NonNull::new(virtual_address as *mut T)
+            virtual_start: NonNull::new(vaddr as *mut T)
                 .expect("Failed to get virtual address."),
             region_length: size,
             mapped_length: size,
-            handler: self.clone(),
+            handler: KernelAcpiHandler {}
         }
     }
 
+    //Drop should handle things for us question mark?
     fn unmap_physical_region<T>(region: &PhysicalMapping<Self, T>) {} // Nothing to unmap.
 
     fn read_u8(&self, address: usize) -> u8 {
-        unsafe { read_volatile((address + self.hhdm_offset) as *const u8) }
+        unsafe { read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u8) }
     }
     fn read_u16(&self, address: usize) -> u16 {
-        unsafe { read_volatile((address + self.hhdm_offset) as *const u16) }
+        unsafe { read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u16) }
     }
     fn read_u32(&self, address: usize) -> u32 {
-        unsafe { read_volatile((address + self.hhdm_offset) as *const u32) }
+        unsafe { read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u32) }
     }
     fn read_u64(&self, address: usize) -> u64 {
-        unsafe { read_volatile((address + self.hhdm_offset) as *const u64) }
+        unsafe { read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u64) }
     }
 
     fn write_u8(&self, address: usize, value: u8) {
-        unsafe { write_volatile((address + self.hhdm_offset) as *mut u8, value) }
+        unsafe { write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u8, value) }
     }
     fn write_u16(&self, address: usize, value: u16) {
-        unsafe { write_volatile((address + self.hhdm_offset) as *mut u16, value) }
+        unsafe { write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u16, value) }
     }
     fn write_u32(&self, address: usize, value: u32) {
-        unsafe { write_volatile((address + self.hhdm_offset) as *mut u32, value) }
+        unsafe { write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u32, value) }
     }
     fn write_u64(&self, address: usize, value: u64) {
-        unsafe { write_volatile((address + self.hhdm_offset) as *mut u64, value) }
+        unsafe { write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u64, value) }
     }
 
     // TODO: all of this.
@@ -186,7 +191,6 @@ impl Handler for KernelAcpiHandler {
 impl Clone for KernelAcpiHandler {
     fn clone(&self) -> Self {
         Self {
-            hhdm_offset: self.hhdm_offset,
         }
     }
 }
@@ -196,17 +200,14 @@ pub struct AcpiInfo {
 }
 
 static ACPI: Once<AcpiInfo> = Once::new();
-static HHDM_OFFSET: Once<usize> = Once::new();
 
-pub fn init_acpi(rsdp_address: usize, hhdm_offset: usize) {
+pub fn init_acpi(rsdp_address: usize) {
     kprintln!(
-        "Initializing ACPI with RSDP at {:#x} and HHDM offset {:#x}.",
+        "Initializing ACPI with RSDP at {:#x}.",
         rsdp_address,
-        hhdm_offset
     );
-    HHDM_OFFSET.call_once(|| hhdm_offset);
     let tables = unsafe {
-        AcpiTables::from_rsdp(KernelAcpiHandler { hhdm_offset }, rsdp_address)
+        AcpiTables::from_rsdp(KernelAcpiHandler {}, rsdp_address)
             .expect("Failed to parse ACPI tables from RSDP.")
     };
     ACPI.call_once(|| AcpiInfo { tables });

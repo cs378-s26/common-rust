@@ -17,31 +17,26 @@ pub mod cmdline;
 pub mod coroutine;
 pub mod heap;
 pub mod local_storage;
-pub mod device;
 pub mod mp;
-pub mod physical_memory;
 pub mod print;
 pub mod sync;
 pub mod thread;
+pub mod physical_memory;
 pub mod virtual_memory;
 pub mod device;
 
 extern crate alloc;
 
-
-use core::sync::atomic::Ordering;
-
-// For coroutines.
-use core::future::Future;
-use core::pin::Pin;
-use core::task::{Context, Poll};
+#[cfg(test)]
+mod test_runtime {
+    use alloc::sync::Arc;
+    use core::sync::atomic::Ordering;
 
     use limine::BaseRevision;
     use limine::firmware_type::FirmwareType;
     use limine::request::{
-        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RsdpRequest, HhdmRequest,
-    RequestsEndMarker,
-        RequestsStartMarker,
+        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
+        RequestsStartMarker, RsdpRequest
     };
     use spin::{Barrier, Once};
     use talc::Span;
@@ -51,11 +46,11 @@ use core::task::{Context, Poll};
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-    use crate::physical_memory::init_physical_memory_allocator;
+    use crate::physical_memory::{init_physical_memory_allocator};
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
     use crate::virtual_memory::init_virtual_memory_allocator;
-use crate::device::{init_acpi, init_pci, acpi_tables};
+    use crate::device::{init_acpi, init_pci, acpi_tables};
 
     // some sample limine requests, for no particular reason
     #[used]
@@ -171,11 +166,12 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
 
         MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-        MAKE_TEST_THREAD.call_once(|| {
-            spawn_thread(move || {
-                crate::test_main();
-            })
-        });
+        MAKE_TEST_THREAD
+            .call_once(|| {
+                spawn_thread(move || {
+                    crate::test_main();
+                })
+            });
 
         Arch::set_irq_enabled(true);
         kprintln!("Polling for tasks...");
@@ -220,21 +216,12 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
         init_physical_memory_allocator();
         init_virtual_memory_allocator();
 
-        if let Some(rsdp) = RSDP_REQUEST.get_response() {
-            kprintln!("RSDP revision {}: {:#x}", rsdp.revision(), rsdp.address());
-            init_acpi(rsdp.address(), hhdm_offset as usize);
-            acpi_tables();
+        if let Some(res) = RSDP_REQUEST.get_response() {
+            init_acpi(res.address() as usize);
         } else {
-            kprintln!("No RSDP?");
+            kprintln!("warn: no response received for RSDP request");
         }
         init_pci();
-
-        // note we don't need to do anything special here because rust doesn't have init_array
-        // if we wanted once-initialized data, we would either provide our custom mechanism,
-        // or just spam OnceCell
-
-        init_physical_memory_allocator();
-        init_virtual_memory_allocator();
 
         // handle SSE/FSGSBASE/etc in initialize_mp
         let mp_res = MP_REQUEST

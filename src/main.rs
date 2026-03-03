@@ -18,28 +18,20 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-
-use kernel_common::device::{acpi_tables, init_acpi, init_pci};
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use kernel_common::physical_memory::{init_physical_memory_allocator, THE_HEAP}; 
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
-use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RsdpRequest,
-    RequestsEndMarker, RequestsStartMarker,
-};
+use limine::request::{BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker};
 use spin::{Barrier, Once};
 use talc::Span;
-use kernel_common::device::{init_acpi, init_pci};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -53,10 +45,6 @@ static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::n
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
-
-#[used]
-#[unsafe(link_section = ".limine_requests")]
-static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]

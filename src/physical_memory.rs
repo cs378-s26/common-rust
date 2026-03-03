@@ -31,7 +31,7 @@ static END: Mutex<FrameLocation> = Mutex::new(FrameLocation {
 });
 
 static REGIONS: Once<&[&Entry]> = Once::new();
-static HHDM_OFFSET: Once<usize> = Once::new();
+pub static HHDM_OFFSET: Once<usize> = Once::new();
 
 fn display_entry_type(et: EntryType) -> String {
     match et {
