@@ -22,6 +22,7 @@ use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
+mod vmm;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 
@@ -92,11 +93,11 @@ impl ArchTrait for Arch {
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-        vmm::vmap(space, vaddr, paddr, options);
+        vmm::vmap(space, vaddr, paddr, options)
     }
 
     fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
-        vmm::vunmap(_space, _vaddr);
+        vmm::vunmap(_space, _vaddr)
     }
 
     fn shutdown(_err_code: u16) {

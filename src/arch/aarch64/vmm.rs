@@ -42,15 +42,15 @@ pub fn get_address_space() -> u64 {
 
 // map a virtual address to a physical address in the given address space, with the given paging options
 pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-    let hhdm_offset = HHDM_REQUEST.get().unwrap().offset;
+    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
     // back in my day, we didn't have no fancy x86 crate to parse our pages, we did it 
     // manually with bit shifts and masks, and we liked it that way
     // TODO add a helper struct/function to make this less ugly
-    let index_0 = (vaddr >> 39) & 0x1FF;
-    let index_1 = (vaddr >> 30) & 0x1FF;
-    let index_2 = (vaddr >> 21) & 0x1FF;
-    let index_3 = (vaddr >> 12) & 0x1FF;
+    let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
+    let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
+    let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
+    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
 
 
     let pt_base = (space & !0xFFF) + hhdm_offset as u64;  
@@ -80,6 +80,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
 fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     let mut attr = 0;
 
+    attr |= PageTableEntryFlags::AF.bits(); // set Access Flag, so we don't get a permission fault on access before we set it in the page tables
     if options.contains(PagingOptions::PRESENT) {
         attr |= PageTableEntryFlags::VALID.bits();
     }
@@ -128,12 +129,12 @@ fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
 
 // unmap a virtual address in the given address space, returning the physical address that was mapped there if it was mapped
 pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
-    let hhdm_offset = HHDM_REQUEST.get().unwrap().offset;
+    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
-    let index_0 = (vaddr >> 39) & 0x1FF;
-    let index_1 = (vaddr >> 30) & 0x1FF;
-    let index_2 = (vaddr >> 21) & 0x1FF;
-    let index_3 = (vaddr >> 12) & 0x1FF;
+    let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
+    let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
+    let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
+    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
 
     let pt_base = (space & !0xFFF) + hhdm_offset as u64;
     unsafe {
@@ -163,19 +164,19 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         let paddr = l3[index_3] & !0xFFF;
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
-        free_unused_tables(vaddr, l0, l1, l2, l3);
+        // free_unused_tables(vaddr, l0, l1, l2, l3);
         frame_dealloc(paddr as usize);
         Some(paddr)
     }
 }
 
 fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64], l3: &mut [u64]) {
-    let hhdm_offset = HHDM_REQUEST.get().unwrap().offset;
+    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
-    let index_0 = (vaddr >> 39) & 0x1FF;
-    let index_1 = (vaddr >> 30) & 0x1FF;
-    let index_2 = (vaddr >> 21) & 0x1FF;
-    let index_3 = (vaddr >> 12) & 0x1FF;
+    let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
+    let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
+    let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
+    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
 
     for i in 0..512 {
         if (l3[i] & 0b11) != 0 {
@@ -183,7 +184,7 @@ fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64]
         }
     }
     l2[index_2] = 0;
-    frame_dealloc((l2 as usize) - hhdm_offset);
+    frame_dealloc((l3.as_mut_ptr() as usize) - hhdm_offset);
 
     for i in 0..512 {
         if (l2[i] & 0b11) != 0 {
@@ -191,7 +192,7 @@ fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64]
         }
     }
     l1[index_1] = 0;
-    frame_dealloc((l1 as usize) - hhdm_offset);
+    frame_dealloc((l2.as_mut_ptr() as usize) - hhdm_offset);
 
     for i in 0..512 {
         if (l1[i] & 0b11) != 0 {
@@ -199,6 +200,6 @@ fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64]
         }
     }
     l0[index_0] = 0;
-    frame_dealloc((l0 as usize) - hhdm_offset);
+    frame_dealloc((l1.as_mut_ptr() as usize) - hhdm_offset);
     
 }

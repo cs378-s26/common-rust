@@ -245,10 +245,9 @@ mod test {
                 kprintln!("starting thread");
                 let vaddr: u64 = 0x10000000 * tid; // unsafe!
                 let frame_1: usize = frame_alloc();
-                kprintln!("frame 1: {:x}", frame_1);
+                frame_dealloc(frame_1);
                 let frame_2: usize = frame_alloc();
                 kprintln!("frame 2: {:x}", frame_2);
-                frame_dealloc(frame_1);
 
                 kprintln!("manually mapping vmem");
                 Arch::virtual_map(

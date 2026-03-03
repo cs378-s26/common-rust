@@ -5,6 +5,7 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
@@ -12,14 +13,15 @@ mod debug;
 mod interrupt;
 mod mp;
 mod tables;
-pub mod apic;
 pub mod tsc;
 mod vmm;
 
+use crate::arch::IrqStateTrait;
+
 pub use asm::*;
 pub use context::Context;
-pub use context::{switch_stack, switch_stack_and_call};
 use context::save_context;
+pub use context::{switch_stack, switch_stack_and_call};
 pub use interrupt::*;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
@@ -60,7 +62,7 @@ impl ArchTrait for Arch {
     }
 
     fn irq_is_enabled() -> bool {
-        irq_is_enabled()
+        !IrqState::save().is_masked()
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
