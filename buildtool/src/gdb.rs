@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use buildtool::{Target, build_kernel, exec, path_to_string};
+use crate::util::{Target, build_kernel, exec, path_to_string};
 
 pub fn run(kvm: bool, release: bool, target: Target) -> Result<()> {
     let (kernel_elf, _) = build_kernel(release, target)?;

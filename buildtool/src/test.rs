@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use buildtool::Target;
+use crate::util::Target;
 use std::path::PathBuf;
 
 use crate::qemu_test;
