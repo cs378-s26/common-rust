@@ -177,6 +177,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                     cr2()
                 });
             }
+        },
         TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
         IPI_WAKE_VECTOR => ipi_wake_handler(context),
         _ => panic!(

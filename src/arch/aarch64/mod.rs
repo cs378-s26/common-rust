@@ -88,15 +88,15 @@ impl ArchTrait for Arch {
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
-        panic!("unimplemented get_address_space");
+        vmm::get_address_space()
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-        panic!("unimplemented virtual_map");
+        vmm::vmap(space, vaddr, paddr, options);
     }
 
     fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
-        panic!("unimplemented virtual_unmap");
+        vmm::vunmap(_space, _vaddr);
     }
 
     fn shutdown(_err_code: u16) {

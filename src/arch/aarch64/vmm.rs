@@ -1,23 +1,25 @@
 use core::arch::asm;
 use crate::virtual_memory::PagingOptions;
-use crate::physical_memory::HHDM_REQUEST;
-
+use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
+use spin::Mutex;
 use bitflags::bitflags;
 
+static VMM_PROTECTOR: Mutex<()> = Mutex::new(()); // TODO make this address space specific
+
+// TODO allow for shared mappings and write-through caching
 bitflags! {
     pub struct PageTableEntryFlags: u64 {
         const VALID = 1 << 0;
         const TABLE = 1 << 1; // for levels 0-2 this means entry points to valid page table, for level 3 this means valid page mapping
-        const ATTR_INDEX_MASK = 0b111 << 2; // Attribute Index for memory type, used in conjunction with MAIR_EL1
 
         const DEVICE_MEMORY = 0b11 << 2; // MAIR_EL1 attr index for device memory, specifically nGnRnE
         const NORMAL_MEMORY = 0b00 << 2; // MAIR_EL1 attr index for normal memory
 
         // access permission (AP) bits:
-        const RW_EL0 = 0b00 << 6; // Read/Write at EL0
-        const RW_EL1 = 0b01 << 6; // Read/Write at EL1, no access at EL0
-        const RO_EL0 = 0b10 << 6; // Read-Only at EL0
-        const RO_EL1 = 0b11 << 6; // Read-Only at EL1, no access at EL0
+        const RW_EL1 = 0b00 << 6; // Read/Write at EL1, no access for EL0
+        const RW_EL0 = 0b01 << 6; // Read/Write at EL0
+        const RO_EL1 = 0b10 << 6; // Read-Only at EL1, no access for EL0
+        const RO_EL0 = 0b11 << 6; // Read-Only at EL0
 
         const AF = 1 << 10;   // Access Flag
         const UXN = 1 << 54;  // Unprivileged Execute Never
@@ -53,6 +55,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
 
     let pt_base = (space & !0xFFF) + hhdm_offset as u64;  
         unsafe {
+        let _ = VMM_PROTECTOR.lock();
         let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, 512);
 
         let l1_phys = ensure_next_table(&mut l0[index_0], hhdm_offset);
@@ -71,6 +74,9 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     }
 }
 
+// create the attribute bits for a page table entry based on the given paging options
+// Translations here are a bit coarse grained, we may want to change PagingOptions 
+// later to give more control
 fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     let mut attr = 0;
 
@@ -90,9 +96,9 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
         attr |= PageTableEntryFlags::UXN.bits() | PageTableEntryFlags::PXN.bits(); // Unprivileged and Privileged Execute Never
     }
     if options.contains(PagingOptions::CACHEABLE) {
-        attr |= PageTableEntryFlags::NORMAL.bits();
+        attr |= PageTableEntryFlags::NORMAL_MEMORY.bits();
     } else {
-        attr |= PageTableEntryFlags::DEVICE.bits();
+        attr |= PageTableEntryFlags::DEVICE_MEMORY.bits();
     }
 
     attr
@@ -118,4 +124,81 @@ fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
     }
 
     (*entry as usize) & !0xfff
+}
+
+// unmap a virtual address in the given address space, returning the physical address that was mapped there if it was mapped
+pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+    let hhdm_offset = HHDM_REQUEST.get().unwrap().offset;
+
+    let index_0 = (vaddr >> 39) & 0x1FF;
+    let index_1 = (vaddr >> 30) & 0x1FF;
+    let index_2 = (vaddr >> 21) & 0x1FF;
+    let index_3 = (vaddr >> 12) & 0x1FF;
+
+    let pt_base = (space & !0xFFF) + hhdm_offset as u64;
+    unsafe {
+        let _ = VMM_PROTECTOR.lock();
+        let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, 512);
+        if (l0[index_0] & 0b11) != 0b11 {
+            return None; // entry not valid or not a table
+        }
+        let l1_phys = (l0[index_0] & !0xFFF) as usize;
+        let l1: &mut [u64] = core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, 512);
+
+        if (l1[index_1] & 0b11) != 0b11 {
+            return None; // entry not valid or not a table
+        }
+        let l2_phys = (l1[index_1] & !0xFFF) as usize;
+        let l2: &mut [u64] = core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, 512);
+
+        if (l2[index_2] & 0b11) != 0b11 {
+            return None; // entry not valid or not a table
+        }
+        let l3_phys = (l2[index_2] & !0xFFF) as usize;
+        let l3: &mut [u64] = core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
+        if (l3[index_3] & 0b11) == 0 {
+            return None; // entry not valid
+        }
+
+        let paddr = l3[index_3] & !0xFFF;
+        // Clear the page table entry to unmap it
+        l3[index_3] = 0;
+        free_unused_tables(vaddr, l0, l1, l2, l3);
+        frame_dealloc(paddr as usize);
+        Some(paddr)
+    }
+}
+
+fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64], l3: &mut [u64]) {
+    let hhdm_offset = HHDM_REQUEST.get().unwrap().offset;
+
+    let index_0 = (vaddr >> 39) & 0x1FF;
+    let index_1 = (vaddr >> 30) & 0x1FF;
+    let index_2 = (vaddr >> 21) & 0x1FF;
+    let index_3 = (vaddr >> 12) & 0x1FF;
+
+    for i in 0..512 {
+        if (l3[i] & 0b11) != 0 {
+            return; // valid entry in this table, can't free
+        }
+    }
+    l2[index_2] = 0;
+    frame_dealloc((l2 as usize) - hhdm_offset);
+
+    for i in 0..512 {
+        if (l2[i] & 0b11) != 0 {
+            return;
+        }
+    }
+    l1[index_1] = 0;
+    frame_dealloc((l1 as usize) - hhdm_offset);
+
+    for i in 0..512 {
+        if (l1[i] & 0b11) != 0 {
+            return;
+        }
+    }
+    l0[index_0] = 0;
+    frame_dealloc((l0 as usize) - hhdm_offset);
+    
 }
