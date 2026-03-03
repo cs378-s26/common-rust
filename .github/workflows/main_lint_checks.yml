@@ -2,7 +2,7 @@ name: Main Lint Checks
 on:
   push:
     branches:
-      - master
+      - main 
 jobs:
   checks:
     name: Run Lint Checks
