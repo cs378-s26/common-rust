@@ -5,7 +5,7 @@ use limine::request::DeviceTreeBlobRequest;
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 use spin::Once;
-use kernel_common::print::kprintln;
+use kernel_common::print::{self, kprintln};
 use alloc::vec::Vec;
 use kernel_common::physical_memory::HHDM_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait};
