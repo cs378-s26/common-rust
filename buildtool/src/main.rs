@@ -501,7 +501,12 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Resul
         "-drive".into(),
         format!("file={},format=raw,if=none,id=hd", path_to_string(&block_path)?),
         "-device".into(),
-        "virtio-blk,drive=hd".into(),
+        // Use the MMIO transport on aarch64 so the device shows up in the FDT.
+        // On x86_64 we still want the PCI variant ("virtio-blk"/virtio-blk-pci).
+        match target {
+            Target::X86_64 => "virtio-blk,drive=hd".into(),
+            Target::Aarch64 => "virtio-blk-device,drive=hd".into(),
+        },
         // "-S".into(),
         // "-M".into(),
         // "smm=off".into(),

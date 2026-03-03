@@ -5,7 +5,7 @@ use limine::request::DeviceTreeBlobRequest;
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 use spin::Once;
-use kernel_common::print::kprintln;
+use kernel_common::print::{self, kprintln};
 use alloc::vec::Vec;
 use crate::device::page_table_utils::{create_mapping_for_phys_address, HHDM_OFFSET};
 
@@ -52,17 +52,16 @@ pub fn map_virtio_devices() {
         for node in dt.all_nodes() {
             // map virtio devices, use mmio
             if node.name.contains("virtio") {
-                if let Some(mut reg) = node.reg() {
-                    let base = reg.next().unwrap().starting_address as usize;
-                    let size = reg.next().unwrap().size;
-                    if let Some(s) = size {
-                         kprintln!("virtio device at {:#x}, size: {:#x}", base, s);
-                    } else {
-                        kprintln!("virtio device at {:#x}, size unknown", base);
-                    } 
-                    create_mapping_for_phys_address(base);
-                    let id = unsafe { core::ptr::read_volatile((base + hhdm_offset +0x8) as *const u32)}; // test read
-                    kprintln!("Mapped virtio device at {:#x}, magic num: {:#x}", base, id);
+
+                if let Some(mut regs) = node.reg() {
+                    for reg in regs {
+                        kprintln!("base_addr: {:#x}", reg.starting_address as usize);
+                        if let Some(size) = reg.size {
+                            kprintln!("size: {:#x}", size);
+                        }
+                    create_mapping_for_phys_address(reg.starting_address as usize); 
+                    let id = unsafe { core::ptr::read_volatile((reg.starting_address as usize + hhdm_offset +0x8) as *const u32)}; // test read
+                    }
                     
                 }
             }
