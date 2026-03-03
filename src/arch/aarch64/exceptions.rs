@@ -27,6 +27,9 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         kprintln!("SVC");
         exc.elr_el1 += 4;
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
+        // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
+        // system_call_handler(exc);
+        
         return;
     }
     panic!(
@@ -60,7 +63,7 @@ extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     }
 
     // mask out the INTID (bits [23:0], top bits are affinity routing)
-    let intid = intid & 0xFF_FFFF;
+    let intid = intid & 0x3FF;
 
     match intid {
         30 => {
