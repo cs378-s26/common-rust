@@ -8,7 +8,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::{
+use buildtool::{
     Target, build_image_with_tag, cache_dir, configure_c_toolchain, download_ovmf, path_to_string,
 };
 

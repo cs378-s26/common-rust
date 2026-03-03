@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::{Target, build_image, build_kernel, download_ovmf, exec, path_to_string, run_dir};
+use buildtool::{Target, build_image, build_kernel, download_ovmf, exec, path_to_string, run_dir};
 
 pub fn run(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
