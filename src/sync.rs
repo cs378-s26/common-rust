@@ -5,7 +5,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use spin::{Mutex, MutexGuard, lazy::Lazy};
+use spin::{Mutex, MutexGuard};
 
 use crate::{
     arch::{Arch, ArchTrait, IrqState},
@@ -50,7 +50,7 @@ pub struct IntMutex<T> {
     // underlying mutex
     lock: AtomicBool,
     data: UnsafeCell<T>,
-    blocked: Lazy<Mutex<ThreadQueue>>,
+    blocked: Mutex<ThreadQueue>,
 }
 
 pub trait MutexLike<T> {
@@ -66,7 +66,7 @@ impl<T> IntMutex<T> {
         IntMutex {
             lock: AtomicBool::new(false),
             data: UnsafeCell::new(init),
-            blocked: Lazy::new(|| Mutex::new(new_thread_queue())),
+            blocked: Mutex::new(new_thread_queue()),
         }
     }
 
@@ -97,7 +97,7 @@ impl<T> IntMutex<T> {
 
             while self.lock.load(Ordering::Relaxed) {
                 // attempt to block
-                let queue = &*self.blocked;
+                let queue = &self.blocked;
                 Arch::set_irq_enabled(false);
                 suspend_to_queue(queue);
             }

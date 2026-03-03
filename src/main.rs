@@ -25,7 +25,7 @@ use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -188,7 +188,6 @@ pub fn kernel_main() -> ! {
         .call_once(|| {
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count);
-            init_threading();
             init_coroutine_queue();
             Barrier::new(core_count)
         })

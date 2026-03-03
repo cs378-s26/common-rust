@@ -47,7 +47,7 @@ mod test_runtime {
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
     use crate::physical_memory::init_physical_memory_allocator;
     use crate::print::{StackTrace, init_tty, kprintln};
-    use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+    use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
     use crate::virtual_memory::init_virtual_memory_allocator;
 
     // some sample limine requests, for no particular reason
@@ -141,7 +141,6 @@ mod test_runtime {
                 kprintln!("hii~");
                 kprintln!("preparing common tasks on {}", CORE_ID.get());
                 kprintln!("there are {} cores total", core_count);
-                init_threading();
                 init_coroutine_queue();
                 Barrier::new(core_count)
             })
