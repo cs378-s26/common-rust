@@ -93,5 +93,6 @@ pub unsafe fn initialize_core(cpu: &Cpu) -> () {
     exceptions::init_exceptions();
     unsafe {
         interrupt::enable();
+        interrupt::timer_init(interrupt::timer_frequency());
     }
 }

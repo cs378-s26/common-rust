@@ -25,7 +25,7 @@ use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_c
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
+use kernel_common::physical_memory::{HHDM_REQUEST, THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
@@ -210,7 +210,6 @@ pub fn kernel_main() -> ! {
 
     INIT_THREADING_BARRIER
         .call_once(|| {
-            kprintln!("hii~");
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count);
             init_threading();
@@ -234,9 +233,13 @@ pub fn kernel_main() -> ! {
 
     let initial_core = CORE_ID.get();
 
-    // spawn_coroutine(async_task(1624252));
+    // let GICD_BASE: usize = 0x0800_0000 + HHDM_REQUEST.get_response().unwrap().offset() as usize;
+    // let gicd_iidr = (GICD_BASE + 0xFEC) as *const u32;
+    // let iidr = unsafe { gicd_iidr.read_volatile() };
+    // let gic_version = (iidr >> 4) & 0xF; // 0x2 = GICv2, 0x3 = GICv3
+    // kprintln!("GIC VERSION: {}", gic_version);
 
-    for i in 0..20 {
+    for i in 0..2 {
         spawn_thread(move || {
             kprintln!("Thread Start, id={}, initial_core={}", i, initial_core);
 
