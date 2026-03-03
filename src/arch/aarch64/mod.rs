@@ -6,8 +6,10 @@ use crate::{print::CharSink, virtual_memory::PagingOptions};
 
 mod asm;
 mod context;
+mod exceptions;
 mod interrupt;
 mod mp;
+pub use exceptions::dump_core_state;
 
 pub use asm::*;
 pub use context::Context;
@@ -90,7 +92,7 @@ impl ArchTrait for Arch {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
         panic!("unimplemented virtual_unmap");
     }
-    
+
     fn shutdown(_err_code: u16) {
         // TODO implement this
         halt();
