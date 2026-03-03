@@ -50,7 +50,38 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 #[unsafe(no_mangle)]
 extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     kprintln!("Current elx irq");
-    default_exception_handler(e);
+    let intid: u64;
+    unsafe {
+        core::arch::asm!(
+            "mrs {}, ICC_IAR1_EL1",
+            out(reg) intid,
+        );
+    }
+
+    // mask out the INTID (bits [23:0], top bits are affinity routing)
+    let intid = intid & 0xFF_FFFF;
+
+    match intid {
+        30 => {
+            kprintln!("physical timer ticked");
+            unsafe {
+                core::arch::asm!(
+                    "msr CNTP_TVAL_EL0, {}",
+                    in(reg) 62_500_000u64,
+                );
+            }
+        }
+        1023 => { /* spurious interrupt, ignore */ }
+        _ => panic!("unexpected INTID: {}", intid),
+    }
+
+    // signal EOI — "I'm done handling this"
+    unsafe {
+        core::arch::asm!(
+            "msr ICC_EOIR1_EL1, {}",
+            in(reg) intid,
+        );
+    }
 }
 
 #[unsafe(no_mangle)]

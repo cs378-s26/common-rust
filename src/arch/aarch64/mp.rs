@@ -1,6 +1,6 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
-    arch::aarch64::exceptions,
+    arch::aarch64::{exceptions, interrupt},
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::kprintln,
 };
@@ -91,4 +91,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) -> () {
 
     // TODO: handle interrupts
     exceptions::init_exceptions();
+    unsafe {
+        interrupt::enable();
+    }
 }

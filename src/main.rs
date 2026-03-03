@@ -236,14 +236,16 @@ pub fn kernel_main() -> ! {
 
     // spawn_coroutine(async_task(1624252));
 
-    for i in 0..400 {
+    for i in 0..20 {
         spawn_thread(move || {
             kprintln!("Thread Start, id={}, initial_core={}", i, initial_core);
+
             // dump_core_state("before");
-            unsafe {
-                core::arch::asm!("svc {imm}", imm = const 8);
-            }
+            // unsafe {
+            //     core::arch::asm!("svc {imm}", imm = const 8);
+            // }
             // dump_core_state("after");
+
             // unsafe { asm!("mov x1, #8", "ldr x0, [x1]") }
             kprintln!(
                 "Thread Ending from {}, id={}, initial_core={}, tid={}, fetch={}",
