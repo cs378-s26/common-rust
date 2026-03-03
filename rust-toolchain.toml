@@ -6,4 +6,4 @@ targets = [
     "aarch64-unknown-none"
 ]
 
-components = ["rust-analyzer", "rustfmt", "clippy"]
+components = ["rust-analyzer", "rustfmt", "clippy", "rust-src"]
