@@ -39,7 +39,8 @@ use core::sync::atomic::Ordering;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, DeviceTreeBlobRequest, FirmwareTypeRequest, MpRequest,
+    RequestsEndMarker, RequestsStartMarker,
 };
 use physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use spin::{Barrier, Once};
@@ -62,6 +63,10 @@ pub static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 pub static MP_REQUEST: MpRequest = MpRequest::new();
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static DEVICE_TREE_BLOB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 #[used]
 #[unsafe(link_section = ".limine_requests_start")]
@@ -97,6 +102,12 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
                 _ => "unknown",
             }
         )
+    }
+
+    if let Some(dtb) = DEVICE_TREE_BLOB_REQUEST.get_response() {
+        kprintln!("dtb pointer: {:p}", dtb.dtb_ptr());
+    } else {
+        kprintln!("warn: no dtb response from bootloader");
     }
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
