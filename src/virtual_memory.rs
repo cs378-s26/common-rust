@@ -5,9 +5,9 @@ use crate::{
 };
 use alloc::boxed::Box;
 use bitflags::bitflags;
+use core::ops::{Deref, DerefMut};
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::{Mutex, Once};
-use core::ops::{Deref, DerefMut};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -92,7 +92,7 @@ pub fn handle_page_fault(space: u64, address: usize, cause: PageFaultConditions)
             if below.base + below.length > address {
                 let frame = frame_alloc();
                 Arch::virtual_map(
-                    Arch::get_address_space(),
+                    space,
                     address as u64 & (!0xFFF),
                     frame as u64,
                     PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE, // TODO use vme options

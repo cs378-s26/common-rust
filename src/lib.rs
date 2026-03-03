@@ -35,8 +35,7 @@ mod test_runtime {
     use limine::BaseRevision;
     use limine::firmware_type::FirmwareType;
     use limine::request::{
-        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
-        RequestsStartMarker,
+        BootloaderInfoRequest, FirmwareTypeRequest, RequestsEndMarker, RequestsStartMarker,
     };
     use spin::{Barrier, Once};
     use talc::Span;
@@ -46,7 +45,7 @@ mod test_runtime {
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
     use crate::event::init_event_handler;
     use crate::heap::init_malloc;
-    use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+    use crate::mp::{CORE_ID, MP_REQUEST, MP_STAGE, MPStage, init_cpu_local_table};
     use crate::physical_memory::init_physical_memory_allocator;
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
@@ -64,10 +63,6 @@ mod test_runtime {
     #[used]
     #[unsafe(link_section = ".limine_requests")]
     static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
-
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
-    static MP_REQUEST: MpRequest = MpRequest::new();
 
     // ignore these
     #[used]

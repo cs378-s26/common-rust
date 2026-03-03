@@ -1,37 +1,16 @@
-use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
+use crate::virtual_memory::PageFaultConditions;
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use x86::{
-    bits64::rflags::{self, RFlags},
-    controlregs::{cr2, cr3},
-};
+use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
 use super::apic;
-use crate::arch::{Arch, IrqStateTrait};
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
 pub fn timer_ticks() -> u64 {
     TIMER_TICKS.load(Ordering::Relaxed)
-}
-
-#[repr(transparent)]
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct IrqState(bool);
-
-impl IrqStateTrait for IrqState {
-    type Arch = Arch;
-
-    #[inline(always)]
-    fn save() -> IrqState {
-        IrqState(rflags::read().contains(RFlags::FLAGS_IF))
-    }
-
-    fn is_masked(&self) -> bool {
-        !self.0
-    }
 }
 
 #[repr(C)]
@@ -176,7 +155,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                 if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
                     cause.insert(PageFaultConditions::FETCH);
                 }
-                handle_page_fault(cr3(), unsafe { cr2() }, cause);
+                unsafe { crate::thread::preempt_from_interrupt(context) };
             } else {
                 panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
                     cr2()

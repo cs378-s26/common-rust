@@ -22,17 +22,15 @@ use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
-use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+use kernel_common::mp::{CORE_ID, MP_REQUEST, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, FirmwareTypeRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use spin::{Barrier, Once};
 use talc::Span;
@@ -165,9 +163,6 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
-    let mp_res = MP_REQUEST
-        .get_response()
-        .expect("Expected to find MpResponse, found None.");
     init_cpu_local_table();
     Arch::initialize_mp::<MainKernelEntry>(&MP_REQUEST)
 }

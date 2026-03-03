@@ -8,7 +8,7 @@ use core::{
 use spin::{Mutex, MutexGuard, lazy::Lazy};
 
 use crate::{
-    arch::{Arch, ArchTrait, IrqState, IrqStateTrait},
+    arch::{Arch, ArchTrait, IrqState},
     thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
 };
 

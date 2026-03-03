@@ -5,8 +5,8 @@ use core::{cell::Cell, ffi::c_void};
 use alloc::vec::Vec;
 use atomic_enum::atomic_enum;
 use derive_more::{Debug, Display};
-use spin::Once;
 use limine::request::MpRequest;
+use spin::Once;
 
 use alloc::boxed::Box;
 
@@ -73,7 +73,6 @@ impl<T> CoreLocal<T> {
         Self(val)
     }
 }
-
 
 impl<T: Send + Sync> CoreLocal<T> {
     pub fn read_for(&self, core: CoreId) -> &T {

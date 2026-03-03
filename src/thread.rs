@@ -18,8 +18,13 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Arch, ArchTrait, Context, ContextTrait, irq_vectors, InterruptContext, IrqState, IrqStateTrait, apic, sleep_core, switch_stack
-    }, event::{EVENT_QUEUE, EVENT_HANDLER}, local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage}, mp::{MP_STAGE, MPStage, core_local}, sync::MutexLike
+        Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqState, apic, irq_vectors,
+        sleep_core,
+    },
+    event::{EVENT_HANDLER, is_pending_event},
+    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
+    mp::{MP_STAGE, MPStage, core_local},
+    sync::MutexLike,
 };
 
 #[derive(Debug)]
@@ -147,6 +152,7 @@ thread_local! {
     pub THIS_THREAD: Once<Arc<Thread>> = Once::new();
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
+    pub CORE_PINNED: AtomicBool = AtomicBool::new(false);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -164,11 +170,13 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
     LOCAL_WORK_QUEUE.borrow_mut()
 }
 
+// TODO not preemption-safe!
 fn thread_enter(thread: Arc<Thread>) {
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
+// TODO not preemption-safe!
 fn thread_exit() {
     CURRENT_THREAD.set(None);
     unsafe { Arch::set_thread_local_pointer(ptr::null()) };
@@ -221,10 +229,10 @@ pub fn poll_tasks() -> ! {
                 break;
             };
 
-            GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+            make_ready(thread);
         }
 
-        let thread = if !EVENT_QUEUE.get().unwrap().lock().front().is_null() {
+        let thread = if is_pending_event() {
             EVENT_HANDLER.get().map(Arc::clone)
         } else {
             let mut lock = GLOBAL_WORK_QUEUE.get().unwrap().lock();
@@ -253,7 +261,16 @@ pub fn can_yield() -> bool {
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
-// Handles preemption from an interrupt context.
+fn make_ready(thread: Arc<Thread>) {
+    if !CORE_PINNED.load(Ordering::Acquire) {
+        GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+        apic::send_ipi_all_except_self(irq_vectors::IPI_WAKE); // TODO arch abstraction
+    } // pinned threads are automatically ready
+}
+
+/// Handles preemption from an interrupt context.
+/// # Safety
+/// This is sketchy
 pub unsafe fn preempt_from_interrupt(ctx: &InterruptContext) {
     if !can_yield_for_preempt() {
         return;
@@ -283,14 +300,8 @@ unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
 
     thread_exit();
 
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(irq_vectors::IPI_WAKE);
+    make_ready(thread);
 
-    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
-}
-
-// Called on CTX_SWITCH_STACK when a thread exits normally (no re-queuing needed).
-extern "C" fn go_to_idle_direct() -> ! {
     unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
 }
 
@@ -340,24 +351,22 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 
 #[inline(always)]
 pub fn yield_thread() {
-    let queue = GLOBAL_WORK_QUEUE.get().unwrap();
-    suspend_to_queue(queue);
+    if CORE_PINNED.load(Ordering::Acquire) {
+    } else {
+        let queue = GLOBAL_WORK_QUEUE.get().unwrap();
+        suspend_to_queue(queue);
+    }
 }
 
-pub fn make_thread<T: FnOnce() + Send + 'static>(task: T, yieldable: bool) -> Arc<Thread> {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T, pinned: bool) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
             task();
         }
 
-        CAN_YIELD.store(false, Ordering::Relaxed);
-        CTX_GUARD.take();
-        thread_exit();
-
-        let stack: &[u8] = &(*CTX_SWITCH_STACK).0;
-        let stack_top = stack.as_ptr_range().end as u64;
-        unsafe { switch_stack(stack_top, go_to_idle_direct) }
+        suspend_to_thread(IDLE.get().unwrap().clone());
+        unreachable!()
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -385,16 +394,14 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T, yieldable: bool) -> Ar
         *ctx = Context::new_kthread(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
-    CAN_YIELD.read_for(&thread).store(yieldable, Ordering::Relaxed);
+    CORE_PINNED
+        .read_for(&thread)
+        .store(pinned, Ordering::Relaxed);
+    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
     thread.clone()
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
-    let thread = make_thread(task, true);
-    GLOBAL_WORK_QUEUE
-        .get()
-        .unwrap()
-        .lock()
-        .push_back(thread);
-    apic::send_ipi_all_except_self(irq_vectors::IPI_WAKE as u8); // TODO arch abstraction
+    let thread = make_thread(task, false);
+    make_ready(thread);
 }
