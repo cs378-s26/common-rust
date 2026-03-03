@@ -76,10 +76,6 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
 
     #[used]
     #[unsafe(link_section = ".limine_requests")]
-    static HHDM_REQUEST: limine::request::HhdmRequest = limine::request::HhdmRequest::new();
-
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
     static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
     // ignore these
