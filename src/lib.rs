@@ -15,9 +15,9 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
-pub mod device;
 pub mod heap;
 pub mod local_storage;
+pub mod device;
 pub mod mp;
 pub mod physical_memory;
 pub mod print;
@@ -49,7 +49,6 @@ use core::task::{Context, Poll};
     use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
     use crate::cmdline::{self, get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
-    use crate::device::{acpi_tables, init_acpi, init_pci};
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
     use crate::physical_memory::init_physical_memory_allocator;
@@ -74,6 +73,14 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
     #[used]
     #[unsafe(link_section = ".limine_requests")]
     static MP_REQUEST: MpRequest = MpRequest::new();
+
+    #[used]
+    #[unsafe(link_section = ".limine_requests")]
+    static HHDM_REQUEST: limine::request::HhdmRequest = limine::request::HhdmRequest::new();
+
+    #[used]
+    #[unsafe(link_section = ".limine_requests")]
+    static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
     // ignore these
     #[used]
@@ -210,14 +217,12 @@ use crate::device::{init_acpi, init_pci, acpi_tables};
 
         init_malloc(Span::from_slice(&raw mut THE_HEAP));
 
-        let hhdm_offset = if let Some(hhdm) = HHDM_REQUEST.get_response() {
-            hhdm.offset()
-        } else {
-            kprintln!("No HHDM?");
-            0
-        };
+        // note we don't need to do anything special here because rust doesn't have init_array
+        // if we wanted once-initialized data, we would either provide our custom mechanism,
+        // or just spam OnceCell
 
-        // TODO: initialize virtual memory for memory-mapped I/O with HHDM offset.
+        init_physical_memory_allocator();
+        init_virtual_memory_allocator();
 
         if let Some(rsdp) = RSDP_REQUEST.get_response() {
             kprintln!("RSDP revision {}: {:#x}", rsdp.revision(), rsdp.address());
