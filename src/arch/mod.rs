@@ -110,7 +110,7 @@ pub trait ArchTrait {
         E::kernel_main()
     }
     fn set_irq_enabled(enabled: bool);
-
+    fn irq_is_enabled() -> bool;
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety
     /// Internal, do not call outside of thread module.

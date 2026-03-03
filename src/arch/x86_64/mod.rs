@@ -12,10 +12,13 @@ mod debug;
 mod interrupt;
 mod mp;
 mod tables;
+pub mod apic;
+pub mod tsc;
 mod vmm;
 
 pub use asm::*;
 pub use context::Context;
+pub use context::{switch_stack, switch_stack_and_call};
 use context::save_context;
 pub use interrupt::*;
 use mp::{
@@ -54,6 +57,10 @@ impl ArchTrait for Arch {
                 irq::disable();
             }
         }
+    }
+
+    fn irq_is_enabled() -> bool {
+        irq_is_enabled()
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

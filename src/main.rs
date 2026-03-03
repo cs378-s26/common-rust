@@ -18,7 +18,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
+use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
@@ -188,7 +188,6 @@ pub fn kernel_main() -> ! {
 
     INIT_THREADING_BARRIER
         .call_once(|| {
-            kprintln!("hii~");
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count);
             init_threading();
@@ -199,7 +198,7 @@ pub fn kernel_main() -> ! {
 
     let idle = set_up_idle();
 
-    kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
+    kprintln!("init idle tid {} on core {}", idle.tid(), CORE_ID.get());
 
     init_coroutine_executor();
     kprintln!("Coroutine executor initialized.");
@@ -210,31 +209,43 @@ pub fn kernel_main() -> ! {
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-    let initial_core = CORE_ID.get();
+    if CORE_ID.get().0 == 0 {
+        spawn_coroutine(async_task(1624252));
 
-    spawn_coroutine(async_task(1624252));
+        let num_threads = 20;
+        kprintln!(
+            "Spawning {} test threads across {} cores",
+            num_threads,
+            core_count
+        );
 
-    for i in 0..1000 {
-        spawn_thread(move || {
-            kprintln!("hi, id={}, initial_core={}", i, initial_core);
+        for i in 0..num_threads {
+            spawn_thread(move || {
+                let start_core = CORE_ID.get();
+                let start_tick = timer_ticks();
 
-            // bad sleep function :D
-            let tsc = Arch::read_cycle_counter();
-            while Arch::read_cycle_counter() < tsc + 10000000000 {
-                yield_thread();
-            }
+                kprintln!(
+                    "Thread {} started on core {} at tick {}",
+                    i,
+                    start_core.0,
+                    start_tick
+                );
 
-            kprintln!(
-                "meow from {}, id={}, initial_core={}, tid={}",
-                CORE_ID.get(),
-                i,
-                initial_core,
-                Thread::this_tid()
-            );
-            loop {
-                yield_thread();
-            }
-        });
+                let cycle_start = Arch::read_cycle_counter();
+                while Arch::read_cycle_counter() < cycle_start + 100_000_000 {}
+
+                let end_core = CORE_ID.get();
+                let end_tick = Arch::read_cycle_counter();
+
+                kprintln!(
+                    "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed",
+                    i,
+                    start_core.0,
+                    end_core.0,
+                    end_tick - start_tick,
+                );
+            });
+        }
     }
 
     Arch::set_irq_enabled(true);

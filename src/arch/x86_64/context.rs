@@ -4,6 +4,8 @@ use core::{
     ptr::{self},
 };
 
+use super::interrupt::InterruptContext;
+
 use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
@@ -63,7 +65,7 @@ impl const Default for Context {
                 r15: 0,
             },
             rip: Default::default(),
-            rflags: RFlags::empty(), // RFlags::FLAGS_IF,
+            rflags: RFlags::from_bits_truncate(0x202), // bit 1 (reserved, must be set) + IF flag
             cs: Default::default(),
             ss: Default::default(),
         }
@@ -173,6 +175,55 @@ impl ContextTrait for Context {
         ctx.gp.rsp = slice_stack_pointer(stack);
         ctx
     }
+}
+
+impl Context {
+    /// Populates this context from an interrupt frame, for preemptive context save.
+    /// cs/ss are intentionally left untouched (already correct from setup_kthread_context).
+    pub fn save_from_interrupt(&mut self, ctx: &InterruptContext) {
+        // regs[] layout (low to high in memory = last-pushed to first-pushed):
+        // [0]=r15 [1]=r14 [2]=r13 [3]=r12 [4]=r11 [5]=r10 [6]=r9 [7]=r8
+        // [8]=rdi [9]=rsi [10]=rbx [11]=rdx [12]=rcx [13]=rax
+        self.gp.r15 = ctx.regs[0];
+        self.gp.r14 = ctx.regs[1];
+        self.gp.r13 = ctx.regs[2];
+        self.gp.r12 = ctx.regs[3];
+        self.gp.r11 = ctx.regs[4];
+        self.gp.r10 = ctx.regs[5];
+        self.gp.r9 = ctx.regs[6];
+        self.gp.r8 = ctx.regs[7];
+        self.gp.rdi = ctx.regs[8];
+        self.gp.rsi = ctx.regs[9];
+        self.gp.rbx = ctx.regs[10];
+        self.gp.rdx = ctx.regs[11];
+        self.gp.rcx = ctx.regs[12];
+        self.gp.rax = ctx.regs[13];
+        self.gp.rbp = ctx.rbp;
+        self.gp.rsp = ctx.rsp;
+        self.rip = ctx.rip;
+        self.rflags = RFlags::from_bits_truncate(ctx.rflags);
+    }
+}
+
+/// Switches RSP to `stack_top` and tail-calls `f(arg)`.
+#[unsafe(naked)]
+pub unsafe extern "C" fn switch_stack_and_call(
+    stack_top: u64,
+    arg: u64,
+    f: extern "C" fn(u64) -> !,
+) -> ! {
+    naked_asm!(
+        "movq %rdi, %rsp",
+        "movq %rsi, %rdi",
+        "jmp *%rdx",
+        options(att_syntax)
+    )
+}
+
+/// Switches RSP to `stack_top` and tail-calls `f()`.
+#[unsafe(naked)]
+pub unsafe extern "C" fn switch_stack(stack_top: u64, f: extern "C" fn() -> !) -> ! {
+    naked_asm!("movq %rdi, %rsp", "jmp *%rsi", options(att_syntax))
 }
 
 #[repr(C)]

@@ -47,6 +47,10 @@ impl ArchTrait for Arch {
         }
     }
 
+    fn irq_is_enabled() -> bool {
+        !IrqState::save().is_masked()
+    }
+
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: spin::MutexGuard<'static, Self::Context>,

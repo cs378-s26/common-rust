@@ -17,11 +17,13 @@ use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter}
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, IrqState, IrqStateTrait, sleep_core},
+    arch::{
+        Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqState, IrqStateTrait,
+        IPI_WAKE_VECTOR, apic, sleep_core, switch_stack,
+    },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
-    print::kprintln,
-    sync::MutexLike,
+    mp::{MP_STAGE, MPStage, core_local},
+    sync::{IntMutex, MutexLike},
 };
 
 pub struct Thread {
@@ -213,6 +215,9 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
+    // Ensure IRQs are enabled so sleep_core (hlt) can be woken by IPIs/timer.
+    Arch::set_irq_enabled(true);
+
     loop {
         loop {
             let Some(thread) = local_work_queue().pop_front() else {
@@ -230,8 +235,6 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            Arch::set_irq_enabled(true); // unmask interrupts
-            kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
             sleep_core();
             continue;
         };
@@ -241,13 +244,58 @@ pub fn poll_tasks() -> ! {
 }
 
 pub fn can_yield() -> bool {
-    // we can only yield if we are in a thread context
-    // and the current thread can yield (for instance, idle cannot yield)
+    // we can only yield if we are in a thread context,
+    // the current thread can yield (for instance, idle cannot yield),
+    // and interrupts are enabled (if IRQs are disabled we're likely in an
+    // interrupt handler or critical section).
+    Arch::irq_is_enabled()
+        && MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
+        && is_on_thread()
+        && CAN_YIELD.load(Ordering::Relaxed)
+}
+
+// Handles preemption from an interrupt context.
+pub unsafe fn preempt_from_interrupt(ctx: &InterruptContext) {
+    if !can_yield_for_preempt() {
+        return;
+    }
+    unsafe { do_preempt(ctx) }
+}
+
+// Like `can_yield` but skips the IRQ-enabled check.
+// we call this from the timer ISR where IRQs are already disabled by the CPU,
+// but we still want to preempt.
+fn can_yield_for_preempt() -> bool {
     MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
         && is_on_thread()
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
+// Handles preemption.
+unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
+    // Save the interrupted context and release the CONTEXT lock.
+    let mut guard = CTX_GUARD
+        .take()
+        .expect("CTX_GUARD not set during preemption");
+    guard.save_from_interrupt(ctx);
+    drop(guard);
+
+    let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
+
+    thread_exit();
+
+    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+
+    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
+}
+
+// Called on CTX_SWITCH_STACK when a thread exits normally (no re-queuing needed).
+extern "C" fn go_to_idle_direct() -> ! {
+    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
+}
+
+// flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let irq_state = IrqState::save();
     Arch::set_irq_enabled(false);
@@ -304,8 +352,13 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
             task();
         }
 
-        // implement thread cleanup here
-        todo!()
+        CAN_YIELD.store(false, Ordering::Relaxed);
+        CTX_GUARD.take();
+        thread_exit();
+
+        let stack: &[u8] = &(*CTX_SWITCH_STACK).0;
+        let stack_top = stack.as_ptr_range().end as u64;
+        unsafe { switch_stack(stack_top, go_to_idle_direct) }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -338,9 +391,11 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+    let thread = make_thread(task);
     GLOBAL_WORK_QUEUE
         .get()
         .unwrap()
         .lock()
-        .push_back(make_thread(task));
+        .push_back(thread);
+    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR as u8);
 }
