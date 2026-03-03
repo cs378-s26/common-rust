@@ -82,9 +82,15 @@ struct BlockGroupDescriptor {
     used_dirs_count: u16,
 }
 
+struct INode {
+    number: usize,
+    data: INodeData,
+    dirty: bool,
+}
+
 #[repr(C, packed)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
-struct INode {
+struct INodeData {
     mode: u16,
     uid: u16,
     size: u32,
@@ -244,7 +250,11 @@ impl<D: Disk> Ext2<D> {
         (bgd, (bgd_offset, bgd_block))
     }
 
-    fn get_inode(self: &Arc<Self>, inumber: u32, scratch_buffer: Option<&mut [u8]>) -> INode
+    fn get_inode(
+        self: &Arc<Self>,
+        inumber: u32,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> (INode, (usize, usize))
     where
         Self: Sized,
     {
@@ -262,8 +272,15 @@ impl<D: Disk> Ext2<D> {
         self.read_block(inode_block, scratch_buffer);
         let inode_index = inode_index % inodes_per_block;
         let inode_offset = inode_index * (self.superblock.inode_size as usize);
-        let (inode, _) = INode::read_from_prefix(&scratch_buffer[inode_offset..]).unwrap();
-        inode
+        let (inode_data, _) = INodeData::read_from_prefix(&scratch_buffer[inode_offset..]).unwrap();
+        (
+            INode {
+                number: inumber as usize,
+                data: inode_data,
+                dirty: false,
+            },
+            (inode_block, inode_offset),
+        )
     }
 
     fn get_root(self: &Arc<Self>) -> Weak<FNode<D>>
@@ -286,7 +303,7 @@ impl<D: Disk> Ext2<D> {
         if let Some(s) = fnode_cache.get(&inumber) {
             return Arc::downgrade(s);
         }
-        let inode = self.get_inode(inumber, Some(scratch_buffer));
+        let (inode, _) = self.get_inode(inumber, Some(scratch_buffer));
         let node = Arc::new(FNode {
             fs: self.clone(),
             inode: Mutex::new(inode),
@@ -368,7 +385,7 @@ impl<D: Disk> FNode<D> {
             None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
         };
 
-        list[0] = inode.block[indices[0]] as usize;
+        list[0] = inode.data.block[indices[0]] as usize;
         for i in 1..depth {
             if list[i - 1] == 0 {
                 return (list, indices, depth);
@@ -423,14 +440,76 @@ impl<D: Disk> FNode<D> {
         }
     }
 
+    fn write_block(
+        self: &Arc<Self>,
+        block_number: usize,
+        buffer: &[u8],
+        inode: &mut INode,
+        scratch_buffer: Option<&mut [u8]>,
+    ) {
+        let scratch_buffer = match scratch_buffer {
+            Some(s) => s,
+            None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
+        };
+        let (mut tree, indices, size) = self.block_tree(block_number, Some(scratch_buffer), &inode);
+        for i in 0..size {
+            if tree[i] != 0 {
+                continue;
+            }
+
+            tree[i] = self.fs.alloc_block(0, Some(scratch_buffer)).unwrap();
+            if i == 0 {
+                let mut new_array = inode.data.block;
+                new_array[indices[i]] = tree[i] as u32;
+                let new_inode = INode {
+                    dirty: true,
+                    number: inode.number,
+                    data: INodeData {
+                        block: new_array,
+                        ..inode.data
+                    },
+                };
+                self.write_back(inode, new_inode, Some(scratch_buffer));
+            } else {
+                scratch_buffer[0..self.fs.block_size].fill(0);
+                (tree[i] as u32)
+                    .write_to_prefix(&mut scratch_buffer[indices[i] * 4..])
+                    .unwrap();
+                self.fs.write_block(tree[i - 1], scratch_buffer);
+            }
+        }
+        self.fs.write_block(tree[size - 1], buffer);
+    }
+
+    fn write_back(
+        self: &Arc<Self>,
+        old: &mut INode,
+        new: INode,
+        scratch_buffer: Option<&mut [u8]>,
+    ) {
+        let scratch_buffer = match scratch_buffer {
+            Some(s) => s,
+            None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
+        };
+        let (inode, (inode_block, inode_offset)) =
+            self.fs.get_inode(old.number as u32, Some(scratch_buffer));
+        inode
+            .data
+            .write_to_prefix(&mut scratch_buffer[inode_offset..])
+            .unwrap();
+        self.fs.write_block(inode_block, scratch_buffer);
+        *old = new;
+    }
+
     // TODO: use indexing instead of linsearch
-    fn traverse(self: &Arc<Self>, next: &str) -> Option<Weak<FNode<D>>> {
+    pub fn traverse(self: &Arc<Self>, next: &str) -> Option<Weak<FNode<D>>> {
         let inode = self.inode.lock();
-        assert!(inode.mode & 0xF000 == 0x4000);
+        // TODO proper types
+        assert!(inode.data.mode & 0xF000 == 0x4000);
         let mut pointer: usize = 0;
         let mut last_fetched_block: usize = 1;
         let mut buffer = alloc::vec![0u8; self.fs.block_size];
-        while pointer < (inode.size as usize) {
+        while pointer < (inode.data.size as usize) {
             assert!(pointer % 4 == 0);
             let needed_block = pointer / self.fs.block_size;
             if needed_block != last_fetched_block {
@@ -450,7 +529,7 @@ impl<D: Disk> FNode<D> {
                     }
                 }
                 Err(_) => {
-                    panic!("could not parse a string inside a ext2 directory?");
+                    panic!("could not parse a string inside a ext2 directory file?");
                 }
             };
             pointer += rec_len as usize;
@@ -474,9 +553,20 @@ mod test {
         let hello = root.traverse("hello").unwrap().upgrade().unwrap();
         let mut buffer = alloc::vec![0u8; fs.block_size];
         {
-            let inode = hello.inode.lock();
+            let mut inode = hello.inode.lock();
             hello.read_block(0, &mut buffer, &inode);
-            kprintln!("{}", core::str::from_utf8(&buffer[..]).unwrap());
+            match core::str::from_utf8(&buffer[..]) {
+                Ok(s) => kprintln!("{}", s),
+                Err(g) => kprintln!("dead {}", g),
+            };
+            buffer[0] = 'b' as u8;
+            hello.write_block(1000, &buffer, &mut inode, None);
+            kprintln!("trying to read now");
+            hello.read_block(1000, &mut buffer, &inode);
+            match core::str::from_utf8(&buffer[..]) {
+                Ok(s) => kprintln!("{}", s),
+                Err(g) => kprintln!("dead {}", g),
+            };
         }
         kprintln!("{}", fs.alloc_block(0, None).unwrap());
     }
