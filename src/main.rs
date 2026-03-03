@@ -12,7 +12,7 @@
 extern crate alloc;
 
 use core::arch::asm;
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // For coroutines.
 use core::future::Future;
@@ -199,6 +199,7 @@ unsafe extern "C" fn system_main() -> ! {
 
 static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn kernel_main() -> ! {
     // kprintln!("we are the MPCorelings! please feed us!");
@@ -235,30 +236,24 @@ pub fn kernel_main() -> ! {
 
     // spawn_coroutine(async_task(1624252));
 
-    // dump_core_state("before");
-    unsafe {
-        core::arch::asm!("svc {imm}", imm = const 8);
-    }
-    // dump_core_state("after");
-
-    for i in 0..4 {
+    for i in 0..400 {
         spawn_thread(move || {
-            kprintln!("hi, id={}, initial_core={}", i, initial_core);
-
-            // bad sleep function :D
-            let tsc = Arch::read_cycle_counter();
-            while Arch::read_cycle_counter() < tsc + 100000000 {
-                yield_thread();
+            kprintln!("Thread Start, id={}, initial_core={}", i, initial_core);
+            // dump_core_state("before");
+            unsafe {
+                core::arch::asm!("svc {imm}", imm = const 8);
             }
-
+            // dump_core_state("after");
+            // unsafe { asm!("mov x1, #8", "ldr x0, [x1]") }
             kprintln!(
-                "meow from {}, id={}, initial_core={}, tid={}",
+                "Thread Ending from {}, id={}, initial_core={}, tid={}, fetch={}",
                 CORE_ID.get(),
                 i,
                 initial_core,
-                Thread::this_tid()
+                Thread::this_tid(),
+                TEMP_COUNTER.fetch_add(1, Ordering::Relaxed) + 1
             );
-            // unsafe { asm!("mov x1, #8", "ldr x0, [x1]") }
+
             loop {
                 yield_thread();
             }
