@@ -8,7 +8,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use buildtool::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
+use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {

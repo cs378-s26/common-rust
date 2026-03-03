@@ -1,10 +1,6 @@
-#![feature(decl_macro)]
-#![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
-#![feature(gen_blocks)]
-
+use crate::debug::gen_debug_module;
 use anyhow::{Error, Result};
 use cargo_metadata::{Message, MetadataCommand};
-use debug::gen_debug_module;
 use fatfs::{FatType, FileSystem, FormatVolumeOptions, FsOptions, format_volume};
 use fscommon::StreamSlice;
 use gptman::{GPT, GPTPartitionEntry};
@@ -17,8 +13,6 @@ use std::process::{Command, Stdio};
 use std::str;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
-
-mod debug;
 
 const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";

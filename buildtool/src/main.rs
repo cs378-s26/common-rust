@@ -1,13 +1,20 @@
+#![feature(decl_macro)]
+#![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
+#![feature(gen_blocks)]
+
 use anyhow::Result;
-use buildtool::{Target, cache_dir};
 use clap::{Parser, Subcommand};
 use std::fs;
 
+mod debug;
 mod gdb;
 mod image;
 mod qemu;
 mod qemu_test;
 mod test;
+mod util;
+
+use crate::util::{Target, cache_dir};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
