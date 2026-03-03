@@ -50,10 +50,6 @@ static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::n
 #[unsafe(link_section = ".limine_requests")]
 static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
 
-#[used]
-#[unsafe(link_section = ".limine_requests")]
-static MP_REQUEST: MpRequest = MpRequest::new();
-
 // ignore these
 #[used]
 #[unsafe(link_section = ".limine_requests_start")]
@@ -172,7 +168,7 @@ unsafe extern "C" fn system_main() -> ! {
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
-    init_cpu_local_table(mp_res.cpus().len());
+    init_cpu_local_table();
     Arch::initialize_mp::<MainKernelEntry>(&MP_REQUEST)
 }
 

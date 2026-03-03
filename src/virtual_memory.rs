@@ -7,6 +7,7 @@ use alloc::boxed::Box;
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::{Mutex, Once};
+use core::ops::{Deref, DerefMut};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -80,7 +81,7 @@ pub fn init_virtual_memory_allocator() {
 }
 
 // can't block! (as of now)
-pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
+pub fn handle_page_fault(space: u64, address: usize, cause: PageFaultConditions) {
     if !cause.contains(PageFaultConditions::PRESENT) {
         let mut vmes = VMES
             .get()
@@ -94,7 +95,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
                     Arch::get_address_space(),
                     address as u64 & (!0xFFF),
                     frame as u64,
-                    PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+                    PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE, // TODO use vme options
                 );
             } else {
                 panic!("*** PAGE FAULT AT {:x} outside mapped region ***", address);
@@ -105,10 +106,26 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
     }
 }
 
-pub struct VirtualMemoryAllocation {
-    space: u64,
-    base: usize,
-    length: usize,
+#[derive(Clone, Copy)]
+pub struct VirtualMemoryRange {
+    pub space: u64,
+    pub base: usize,
+    pub length: usize,
+}
+
+pub struct VirtualMemoryAllocation(VirtualMemoryRange);
+
+impl Deref for VirtualMemoryAllocation {
+    type Target = VirtualMemoryRange;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for VirtualMemoryAllocation {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -149,11 +166,11 @@ impl VirtualMemoryAllocation {
                 i += Arch::PAGE_SIZE;
             }
         }
-        VirtualMemoryAllocation {
+        VirtualMemoryAllocation(VirtualMemoryRange {
             space,
             base,
             length,
-        }
+        })
     }
 }
 
@@ -161,8 +178,8 @@ impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
         while self.length > 0 {
-            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
             self.length -= Arch::PAGE_SIZE;
+            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
         }
         let mut vmes = VMES
             .get()

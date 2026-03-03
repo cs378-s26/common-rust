@@ -15,6 +15,7 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
+pub mod event;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -43,6 +44,7 @@ mod test_runtime {
     use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
     use crate::cmdline::{self, get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+    use crate::event::init_event_handler;
     use crate::heap::init_malloc;
     use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
     use crate::physical_memory::init_physical_memory_allocator;
@@ -136,6 +138,8 @@ mod test_runtime {
             .expect("Expected to find MpResponse, found None.");
         let core_count = mp_res.cpus().len();
 
+        init_event_handler();
+
         INIT_THREADING_BARRIER
             .call_once(|| {
                 kprintln!("hii~");
@@ -213,7 +217,7 @@ mod test_runtime {
         let mp_res = MP_REQUEST
             .get_response()
             .expect("Expected to find MpResponse, found None.");
-        init_cpu_local_table(mp_res.cpus().len());
+        init_cpu_local_table();
         Arch::initialize_mp::<TestKernelEntry>(&MP_REQUEST)
     }
 

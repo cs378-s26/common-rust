@@ -1,9 +1,7 @@
 use crate::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
-    virtual_memory::PagingOptions,
+    arch::apic::{send_ipi, send_ipi_all_except_self}, physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc}, virtual_memory::{PagingOptions, VirtualMemoryRange}
 };
 use core::arch::asm;
-use spin::Mutex;
 use x86_64::{
     PhysAddr, VirtAddr,
     structures::paging::{
@@ -11,6 +9,12 @@ use x86_64::{
         PhysFrame, Size4KiB,
     },
 }; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
+
+use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::sync::Arc;
+use spin::Mutex;
+use crate::mp::{CORE_COUNT, CoreId};
+use crate::event::{Event, push_event};
 
 // ChatGPT told me how to do this trait impl'ing
 pub struct FrameAllocatorWrapper {
@@ -125,4 +129,16 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
     } else {
         None
     }
+}
+
+pub fn shootdown(range: VirtualMemoryRange) {
+    let n_cores = CORE_COUNT.get().unwrap().0;
+    let latch = Arc::new(AtomicUsize::new(0));
+    for core in 0..n_cores {
+        // TODO not this core though!
+        push_event(Event::Shootdown{range, latch: latch.clone()}, CoreId(core));
+    }
+    // TODO ipi
+    // latch.fetch_add(1, Ordering::Relaxed); fix when this core
+    while latch.load(Ordering::Acquire) != n_cores {} // TODO block on... something
 }

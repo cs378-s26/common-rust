@@ -17,6 +17,7 @@ pub mod tsc;
 mod vmm;
 
 pub use asm::*;
+pub use core::arch::asm;
 pub use context::Context;
 pub use context::{switch_stack, switch_stack_and_call};
 use context::save_context;
@@ -31,7 +32,7 @@ use x86::irq;
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 use crate::mp::CoreId;
 use crate::print::CharSink;
-use crate::virtual_memory::PagingOptions;
+use crate::virtual_memory::{PagingOptions, VirtualMemoryRange};
 pub struct Arch;
 
 impl ArchTrait for Arch {
@@ -103,6 +104,22 @@ impl ArchTrait for Arch {
 
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
         vunmap(space, vaddr)
+    }
+
+    // asm! stuff mostly from ChatGPT
+    #[inline(always)]
+    fn tlb_flush(address: u64) {
+        unsafe {
+            asm!(
+                "invlpg [{}]",
+                in(reg) address,
+                options(nostack, preserves_flags)
+            );
+        }
+    }
+
+    fn tlb_shootdown(range: VirtualMemoryRange) {
+        shootdown(range);
     }
 
     fn shutdown(err_code: u16) {

@@ -18,14 +18,11 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqState, IrqStateTrait,
-        IPI_WAKE_VECTOR, apic, sleep_core, switch_stack,
-    },
-    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{MP_STAGE, MPStage, core_local},
-    sync::{IntMutex, MutexLike},
+        Arch, ArchTrait, Context, ContextTrait, irq_vectors, InterruptContext, IrqState, IrqStateTrait, apic, sleep_core, switch_stack
+    }, event::{EVENT_QUEUE, EVENT_HANDLER}, local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage}, mp::{MP_STAGE, MPStage, core_local}, sync::MutexLike
 };
 
+#[derive(Debug)]
 pub struct Thread {
     pub link: LinkedListAtomicLink,
     #[allow(unused)]
@@ -227,7 +224,9 @@ pub fn poll_tasks() -> ! {
             GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
         }
 
-        let thread = {
+        let thread = if !EVENT_QUEUE.get().unwrap().lock().front().is_null() {
+            EVENT_HANDLER.get().map(Arc::clone)
+        } else {
             let mut lock = GLOBAL_WORK_QUEUE.get().unwrap().lock();
             let task = lock.pop_front();
             drop(lock);
@@ -285,7 +284,7 @@ unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
     thread_exit();
 
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    apic::send_ipi_all_except_self(irq_vectors::IPI_WAKE);
 
     unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
 }
@@ -345,7 +344,7 @@ pub fn yield_thread() {
     suspend_to_queue(queue);
 }
 
-pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T, yieldable: bool) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
@@ -386,16 +385,16 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
         *ctx = Context::new_kthread(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
-    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    CAN_YIELD.read_for(&thread).store(yieldable, Ordering::Relaxed);
     thread.clone()
 }
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
-    let thread = make_thread(task);
+    let thread = make_thread(task, true);
     GLOBAL_WORK_QUEUE
         .get()
         .unwrap()
         .lock()
         .push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR as u8);
+    apic::send_ipi_all_except_self(irq_vectors::IPI_WAKE as u8); // TODO arch abstraction
 }

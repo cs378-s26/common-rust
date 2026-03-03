@@ -10,7 +10,7 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
-use crate::mp::CoreId;
+use crate::{mp::CoreId, virtual_memory::VirtualMemoryRange};
 use crate::virtual_memory::PagingOptions;
 use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
@@ -135,6 +135,8 @@ pub trait ArchTrait {
     fn get_address_space() -> u64;
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
+    fn tlb_flush(address: u64);
+    fn tlb_shootdown(range: VirtualMemoryRange);
     fn shutdown(err_code: u16);
     fn halt() -> !;
 }

@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use atomic_enum::atomic_enum;
 use derive_more::{Debug, Display};
 use spin::Once;
+use limine::request::MpRequest;
 
 use alloc::boxed::Box;
 
@@ -19,6 +20,11 @@ use crate::{
 #[display("{_0}")]
 #[debug("CoreId({_0})")]
 pub struct CoreId(pub usize);
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static MP_REQUEST: MpRequest = MpRequest::new();
+pub static CORE_COUNT: Once<CoreId> = Once::new();
 
 // core local stuff
 
@@ -68,6 +74,13 @@ impl<T> CoreLocal<T> {
     }
 }
 
+
+impl<T: Send + Sync> CoreLocal<T> {
+    pub fn read_for(&self, core: CoreId) -> &T {
+        unsafe { &*(get_cpu_local_pointer_for(core) as *const T) }
+    }
+}
+
 impl_local_storage!(CoreLocal, CoreLocalStorageHandler);
 
 // offset storage
@@ -78,7 +91,13 @@ pub fn get_cpu_local_pointer_for(core: CoreId) -> u64 {
     &raw const OFFSET_ARRAY.get().unwrap()[core.0] as u64
 }
 
-pub fn init_cpu_local_table(n_cores: usize) {
+pub fn init_cpu_local_table() {
+    let n_cores: usize = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.")
+        .cpus()
+        .len();
+    CORE_COUNT.call_once(|| CoreId(n_cores));
     OFFSET_ARRAY.call_once(|| {
         (0..n_cores)
             .map(|_| Box::leak(CoreLocalStorageHandler::create()).as_ptr() as u64)
