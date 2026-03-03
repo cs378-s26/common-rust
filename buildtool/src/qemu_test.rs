@@ -30,7 +30,7 @@ pub enum TestTarget {
 }
 
 impl TestTarget {
-    fn to_target(self) -> Target {
+    pub fn to_target(self) -> Target {
         match self {
             TestTarget::X86_64 => Target::X86_64,
             TestTarget::Aarch64 => Target::Aarch64,
@@ -115,33 +115,9 @@ pub fn run(config_path: String, release: bool) -> Result<()> {
     }
 }
 
-pub fn run_for_target(
-    config_path: &Path,
-    release: bool,
-    target: Target,
-) -> Result<Option<TestRunSummary>> {
+pub fn load_test_config(config_path: &Path) -> Result<TestConfig> {
     let config_path = resolve_repo_root_path(config_path)?;
-    let test_cfg = load_test_config(&config_path)?;
-    if test_cfg.target.to_target() != target {
-        return Ok(None);
-    }
-
-    let summary = match run_with_config(&config_path, &test_cfg, release) {
-        Ok(summary) => summary,
-        Err(err) => {
-            let summary = write_failure_artifacts(&config_path, &test_cfg, &err.to_string())
-                .unwrap_or_else(|_| fallback_summary(&config_path, &test_cfg));
-            eprintln!("{} setup failed: {}", summary.name, err);
-            summary
-        }
-    };
-
-    print_summary(&summary);
-    Ok(Some(summary))
-}
-
-fn load_test_config(config_path: &Path) -> Result<TestConfig> {
-    let raw = fs::read_to_string(config_path)
+    let raw = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read test config: {}", config_path.display()))?;
     serde_json::from_str::<TestConfig>(&raw)
         .with_context(|| format!("failed to parse test config: {}", config_path.display()))
