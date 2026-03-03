@@ -87,7 +87,7 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
 
     fn get_base() -> u64 {
         assert!(is_on_thread());
-        Arch::get_thread_local_pointer()
+        unsafe { Arch::get_thread_local_pointer() }
     }
 }
 
@@ -157,10 +157,10 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
+static GLOBAL_WORK_QUEUE: Once<Mutex<ThreadQueue>> = Once::new();
 
 pub fn init_threading() {
-    GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
+    GLOBAL_WORK_QUEUE.call_once(|| Mutex::new(new_thread_queue()));
 }
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
@@ -168,13 +168,13 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
 }
 
 fn thread_enter(thread: Arc<Thread>) {
-    Arch::set_thread_local_pointer(&thread.tls_addr);
+    unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
     CURRENT_THREAD.set(None);
-    Arch::set_thread_local_pointer(ptr::null());
+    unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
@@ -345,7 +345,7 @@ pub fn yield_thread() {
     suspend_to_queue(queue);
 }
 
-pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
@@ -387,7 +387,15 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()
+}
 
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+    let thread = make_thread(task);
+    GLOBAL_WORK_QUEUE
+        .get()
+        .unwrap()
+        .lock()
+        .push_back(thread);
     apic::send_ipi_all_except_self(IPI_WAKE_VECTOR as u8);
 }

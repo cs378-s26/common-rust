@@ -11,17 +11,25 @@ mod aarch64;
 pub use self::aarch64::*;
 
 use crate::mp::CoreId;
+use crate::virtual_memory::PagingOptions;
 use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 
 pub trait UnwindContextTrait: Sized {
     /// Returns the current stack frame as an unwind context
+    /// # Safety
+    /// Safe if the current function is on a valid stack.
     unsafe fn get() -> Self;
+
+    /// # Safety
+    /// Safe if the current function is on a valid stack.
     unsafe fn valid(&self) -> bool {
         (unsafe { self.return_address() }) != 0
     }
 
+    /// # Safety
+    /// Safe if the current function is on a valid stack.
     unsafe fn return_address(&self) -> u64 {
         unsafe { self.get_ptr().wrapping_add(1).read() }
     }
@@ -29,6 +37,8 @@ pub trait UnwindContextTrait: Sized {
     fn from_ptr(ptr: *const u64) -> Self;
     fn get_ptr(&self) -> *const u64;
 
+    /// # Safety
+    /// Safe if the current function is on a valid stack.
     unsafe fn next(&self) -> Self {
         Self::from_ptr(unsafe { self.get_ptr().read() } as *const u64)
     }
@@ -88,8 +98,13 @@ pub trait ArchTrait {
     /// 1. setting up the cpu local ptr
     /// 2. setting up tables and interrupts
     /// 3. turning on needed features
+    /// # Safety
+    /// Should only be called from bootstrap processor during kernel initialization
     unsafe fn initialize_core(cpu: &Cpu) -> ();
+
     /// wrapper around initalize core that goes to kernel main
+    /// # Safety
+    /// Should only be called from bootstrap processor during kernel initialization
     unsafe extern "C" fn start_core<E: KernelEntryTrait>(cpu: &Cpu) -> ! {
         unsafe { Self::initialize_core(cpu) };
         E::kernel_main()
@@ -97,6 +112,8 @@ pub trait ArchTrait {
     fn set_irq_enabled(enabled: bool);
     fn irq_is_enabled() -> bool;
     /// save the current context and switch on to the provided temp stack & call fwd()
+    /// # Safety
+    /// Internal, do not call outside of thread module.
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: MutexGuard<'static, Self::Context>,
@@ -104,9 +121,20 @@ pub trait ArchTrait {
     );
     fn set_cpu_local_pointer(core_id: CoreId);
     fn get_cpu_local_pointer() -> u64;
-    fn set_thread_local_pointer(base: *const u64);
-    fn get_thread_local_pointer() -> u64;
+
+    /// # Safety
+    /// Internal, do not call outside of thread module.
+    unsafe fn set_thread_local_pointer(base: *const u64);
+
+    /// # Safety
+    /// Internal, do not call outside of thread module.
+    unsafe fn get_thread_local_pointer() -> u64;
+
     fn read_cycle_counter() -> u64;
+    const PAGE_SIZE: usize;
+    fn get_address_space() -> u64;
+    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
     fn halt() -> !;
 }

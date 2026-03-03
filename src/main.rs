@@ -23,8 +23,12 @@ use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_c
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+use kernel_common::thread::{
+    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
+};
+use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
@@ -58,47 +62,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
-
-fn dump_boot_info() {
-    if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
-        kprintln!("bootloader: {} v{}", res.name(), res.version());
-    }
-
-    if let Some(res) = get_cmdline_text() {
-        kprintln!("cmdline: \"{}\"", res);
-    }
-
-    if let Some(err) = get_cmdline_error() {
-        match err {
-            kernel_common::cmdline::CmdlineError::NoResponse => {
-                kprintln!("warn: no response received for cmdline request")
-            }
-            kernel_common::cmdline::CmdlineError::Utf8Error(err) => {
-                kprintln!("warn: failed to convert cmdline to utf8: {}", err)
-            }
-            kernel_common::cmdline::CmdlineError::ParseError(err) => {
-                kprintln!("warn: failed to parse cmdline: {}", err)
-            }
-        }
-    }
-
-    if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
-        kprintln!(
-            "firmware: {}",
-            match res.firmware_type() {
-                FirmwareType::X86_BIOS => "bios",
-                FirmwareType::UEFI_32 => "efi_32",
-                FirmwareType::UEFI_64 => "efi_64",
-                FirmwareType::SBI => "sbi",
-                _ => "unknown",
-            }
-        );
-    }
-}
 
 // For async/await testing. Move if/when we have a better testing setup.
 struct IntFuture {
@@ -178,7 +141,28 @@ unsafe extern "C" fn system_main() -> ! {
         )
     }
 
+    if let Some(err) = get_cmdline_error() {
+        match err {
+            kernel_common::cmdline::CmdlineError::NoResponse => {
+                kprintln!("warn: no response received for cmdline request")
+            }
+            kernel_common::cmdline::CmdlineError::Utf8Error(err) => {
+                kprintln!("warn: failed to convert cmdline to utf8: {}", err)
+            }
+            kernel_common::cmdline::CmdlineError::ParseError(err) => {
+                kprintln!("warn: failed to parse cmdline: {}", err)
+            }
+        }
+    }
+
+    if let Some(res) = get_cmdline_text() {
+        kprintln!("cmdline: \"{}\"", res);
+    }
+
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
+
+    init_physical_memory_allocator();
+    init_virtual_memory_allocator();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

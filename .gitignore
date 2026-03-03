@@ -1,9 +1,8 @@
-/build/
-
 .vim
 .zed/
 
-target/
+# rust source tree
+target
 buildtool-cache/
 run/
 Cargo.lock

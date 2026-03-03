@@ -1,11 +1,12 @@
+use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use x86::{
     bits64::rflags::{self, RFlags},
     controlregs::cr2,
-    irq,
 };
+use x86_64::structures::idt::PageFaultErrorCode;
 
 use super::apic;
 use crate::arch::{Arch, IrqStateTrait};
@@ -33,38 +34,6 @@ impl IrqStateTrait for IrqState {
     }
 }
 
-impl IrqState {
-    #[inline(always)]
-    pub fn restore(self) {
-        if self.0 {
-            unsafe { irq::enable() };
-        } else {
-            unsafe { irq::disable() };
-        }
-    }
-
-    pub fn is_irq_enabled(self) -> bool {
-        self.0
-    }
-}
-
-pub fn irq_is_enabled() -> bool {
-    rflags::read().contains(RFlags::FLAGS_IF)
-}
-
-#[inline(always)]
-pub unsafe fn disable() {
-    unsafe { irq::disable() };
-}
-
-#[inline(always)]
-pub unsafe fn enable() {
-    unsafe { irq::enable() };
-}
-
-/// Layout matches what irq_handler_t0 pushes onto the stack (low to high):
-/// r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbx, rdx, rcx, rax, rbp
-/// id, err, rip, cs, rflags, rsp, ss
 #[repr(C)]
 pub struct InterruptContext {
     pub regs: [u64; 14],
@@ -107,7 +76,7 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn irq_handler_t0() -> ! {
+unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
         "pushq %rbp",
         "pushq %rax",
@@ -182,8 +151,32 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
 
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
-
     match context.id as u8 {
+        14 => {
+            if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
+                // seems like kind of a lot of overhead for interface translation...
+                let mut cause = PageFaultConditions::empty();
+                if code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {
+                    cause.insert(PageFaultConditions::PRESENT);
+                }
+                if code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
+                    cause.insert(PageFaultConditions::WRITE);
+                }
+                if code.contains(PageFaultErrorCode::USER_MODE) {
+                    cause.insert(PageFaultConditions::USER);
+                }
+                if code.contains(PageFaultErrorCode::MALFORMED_TABLE) {
+                    cause.insert(PageFaultConditions::CORRUPT);
+                }
+                if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
+                    cause.insert(PageFaultConditions::FETCH);
+                }
+                handle_page_fault(cause, unsafe { cr2() });
+            } else {
+                panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
+                    cr2()
+                });
+            }
         TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
         IPI_WAKE_VECTOR => ipi_wake_handler(context),
         _ => panic!(

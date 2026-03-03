@@ -44,7 +44,7 @@ fn handle_named_struct(fields_named: &FieldsNamed) -> TokenStream {
 
         quote! {
             if field_tok.0 == crate::cmdline::CmdlineTokenData::Not {
-                match lexer.next()?.unwrap_ident()? {
+                match lexer.next_tok()?.unwrap_ident()? {
                     #(#matches,)*
                     _ => {
                         return Err(field_tok.make_error(
@@ -68,7 +68,7 @@ fn handle_named_struct(fields_named: &FieldsNamed) -> TokenStream {
                         if lexer.peek().0 != crate::cmdline::CmdlineTokenData::Colon {
                             *#name = true;
                         } else {
-                            lexer.next()?;
+                            lexer.next_tok()?;
                             #name.parse(lexer)?;
                         }
                     }
@@ -94,7 +94,7 @@ fn handle_named_struct(fields_named: &FieldsNamed) -> TokenStream {
             crate::cmdline::CmdlineTokenData::ClosedBrace,
             crate::cmdline::CmdlineTokenData::Comma,
             |lexer| {
-                let field_tok = lexer.next()?;
+                let field_tok = lexer.next_tok()?;
 
                 #bool_handler
 
@@ -121,7 +121,7 @@ fn handle_unnamed_struct(fields: &FieldsUnnamed) -> TokenStream {
 
         quote! {
             if lexer.peek().0 == crate::cmdline::CmdlineTokenData::Identifier("_") {
-                lexer.next()?;
+                lexer.next_tok()?;
             } else {
                 #tok.parse(lexer)?;
             }
@@ -129,7 +129,7 @@ fn handle_unnamed_struct(fields: &FieldsUnnamed) -> TokenStream {
             {
                 let tok = lexer.peek();
                 if tok.0 == crate::cmdline::CmdlineTokenData::Comma {
-                    lexer.next()?;
+                    lexer.next_tok()?;
                 } else {
                     lexer.expect(crate::cmdline::CmdlineTokenData::ClosedParen)?;
                     return Ok(());
@@ -142,7 +142,7 @@ fn handle_unnamed_struct(fields: &FieldsUnnamed) -> TokenStream {
         lexer.expect(crate::cmdline::CmdlineTokenData::OpenParen)?;
 
         if lexer.peek().0 == crate::cmdline::CmdlineTokenData::ClosedParen {
-            lexer.next()?;
+            lexer.next_tok()?;
             return Ok(());
         }
 
@@ -185,8 +185,7 @@ fn handle_enum(variants: &Punctuated<Variant, Token![,]>) -> TokenStream {
                         let init = f
                             .attrs
                             .iter()
-                            .filter(|f| f.path.to_token_stream().to_string() == "default_value")
-                            .next()
+                            .find(|f| f.path.to_token_stream().to_string() == "default_value")
                             .map(|f| f.tokens.clone())
                             .unwrap_or(quote! { std::default::Default::default() });
 
@@ -237,7 +236,7 @@ fn handle_enum(variants: &Punctuated<Variant, Token![,]>) -> TokenStream {
     let names = entries.iter().map(|f| &f.1);
 
     quote! {
-        let id_tok = lexer.next()?;
+        let id_tok = lexer.next_tok()?;
         *self = match id_tok.unwrap_ident()? {
             #(#handlers)*
             _ => return Err(id_tok.make_error(
@@ -275,7 +274,7 @@ fn handle_struct(fields: &Fields) -> TokenStream {
         Fields::Unit => todo!(),
     };
 
-    let inner = handle_fields(&fields, false);
+    let inner = handle_fields(fields, false);
 
     quote! {
         #unwrapper

@@ -80,7 +80,10 @@ struct CoroutineWaker {
 }
 
 impl CoroutineWaker {
-    fn new(task_node: Arc<CoroutineTaskNode>, ready_queue: Arc<IntMutex<CoroutineQueue>>) -> Waker {
+    fn new_waker(
+        task_node: Arc<CoroutineTaskNode>,
+        ready_queue: Arc<IntMutex<CoroutineQueue>>,
+    ) -> Waker {
         Waker::from(Arc::new(CoroutineWaker {
             task_node,
             ready_queue,
@@ -88,7 +91,7 @@ impl CoroutineWaker {
     }
 
     fn wake_task(&self) {
-        self.ready_queue.lock().push_back((&self.task_node).clone());
+        self.ready_queue.lock().push_back(self.task_node.clone());
     }
 }
 
@@ -124,7 +127,7 @@ impl Executor {
                 };
 
                 // Create new waker.
-                let waker = CoroutineWaker::new(task_node.clone(), self.ready_queue.clone());
+                let waker = CoroutineWaker::new_waker(task_node.clone(), self.ready_queue.clone());
                 let mut context = Context::from_waker(&waker);
 
                 // Make progress.
@@ -137,9 +140,7 @@ impl Executor {
 
     fn spawn(&self, future: impl Future<Output = ()> + Send + Sync + 'static) {
         let task = CoroutineTaskNode::new(future);
-        {
-            self.ready_queue.lock().push_back(Arc::new(task))
-        };
+        self.ready_queue.lock().push_back(Arc::new(task));
     }
 }
 
@@ -148,7 +149,7 @@ pub fn spawn_coroutine(future: impl Future<Output = ()> + Send + Sync + 'static)
 }
 
 pub fn init_coroutine_queue() {
-    GLOBAL_EXECUTOR.call_once(|| Executor::new());
+    GLOBAL_EXECUTOR.call_once(Executor::new);
 }
 
 pub fn init_coroutine_executor() {

@@ -91,12 +91,14 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         slice_stack_pointer(unsafe { &*Box::into_raw(aligned_slice(pages * 4096, 4096)) })
     }
 
+    // stores the stacks we switch to when interrupts occur
     let ist = IST.call_once(|| InterruptStackTable {
         reserved0: 0,
         rsp0: 0,
         rsp1: 0,
         rsp2: 0,
         reserved1: 0,
+        // allocate interrupt stacks
         ist1: allocate_sp(32),
         ist2: allocate_sp(32),
         ist3: allocate_sp(32),
@@ -110,10 +112,10 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     });
 
     let gdt = GDT.call_once(|| GlobalDescriptorTable::new(ist));
-    let _idt = IDT.call_once(InterruptDescriptorTable::new);
+    let idt = IDT.call_once(InterruptDescriptorTable::new);
 
     unsafe { gdt.load() };
-    unsafe { _idt.load() };
+    unsafe { idt.load() };
 
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads
