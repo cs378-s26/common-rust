@@ -5,6 +5,7 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
@@ -12,13 +13,11 @@ mod debug;
 mod interrupt;
 mod mp;
 mod tables;
-pub mod apic;
 pub mod tsc;
 mod vmm;
 
 pub use asm::*;
 pub use context::Context;
-pub use context::{switch_stack, switch_stack_and_call};
 use context::save_context;
 pub use interrupt::*;
 use mp::{
@@ -26,6 +25,7 @@ use mp::{
     set_thread_local_pointer,
 };
 pub use vmm::*;
+use x86::bits64::rflags::{self, RFlags};
 use x86::irq;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
@@ -36,7 +36,6 @@ pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
-    type IrqState = IrqState;
 
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
         let resp = req
@@ -60,7 +59,7 @@ impl ArchTrait for Arch {
     }
 
     fn irq_is_enabled() -> bool {
-        irq_is_enabled()
+        rflags::read().contains(RFlags::FLAGS_IF)
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
