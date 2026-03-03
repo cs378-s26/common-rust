@@ -8,9 +8,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use buildtool::{
-    Target, build_image_with_tag, cache_dir, configure_c_toolchain, download_ovmf, path_to_string,
-};
+use buildtool::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -622,8 +620,6 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
-
-    configure_c_toolchain(target, &mut cmd)?;
 
     let mut cmd = cmd.spawn()?;
     let stdout = cmd
