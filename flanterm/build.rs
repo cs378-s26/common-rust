@@ -33,7 +33,7 @@ fn build_flanterm() {
         }
     }
 
-    build.target(&target).compile("flanterm");
+    build.compile("flanterm");
 }
 
 fn main() {

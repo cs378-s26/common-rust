@@ -106,44 +106,6 @@ impl Target {
             Target::Aarch64 => Some("cortex-a72"),
         }
     }
-
-    pub fn requires_c_toolchain_config(self) -> bool {
-        matches!(self, Target::Aarch64)
-    }
-}
-
-fn require_tool(name: &str) -> Result<()> {
-    let status = Command::new("which")
-        .arg(name)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|_| Error::msg("which command not available"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::msg(format!("{} not found in PATH", name)))
-    }
-}
-
-pub fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
-    if !target.requires_c_toolchain_config() {
-        return Ok(());
-    }
-
-    let target_triple = target.target_triple();
-
-    require_tool("clang")?;
-    require_tool("ar")?;
-
-    let cc_key = format!("CC_{}", target_triple.replace('-', "_"));
-    let ar_key = format!("AR_{}", target_triple.replace('-', "_"));
-    let cflags_key = format!("CFLAGS_{}", target_triple.replace('-', "_"));
-
-    cmd.env(cc_key, "clang");
-    cmd.env(ar_key, "ar");
-    cmd.env(cflags_key, format!("--target={}", target_triple));
-    Ok(())
 }
 
 pub fn cache_dir() -> Result<PathBuf> {
@@ -244,8 +206,6 @@ pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(Stri
             "-C relocation-model=static -C force-frame-pointers=yes",
         )
         .stdout(Stdio::piped());
-
-    configure_c_toolchain(target, &mut cmd)?;
 
     let mut cmd = cmd.spawn()?;
 
