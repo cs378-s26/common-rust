@@ -1,8 +1,8 @@
-name: Rust Format Check
+name: PR - Format Check
 on: [pull_request]
 jobs:
   fmt:
-    name: cargo fmt
+    name: Format Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

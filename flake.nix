@@ -16,7 +16,7 @@
         };
         rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
-          targets = [ "x86_64-unknown-none" ];
+          targets = [ "x86_64-unknown-none" "aarch64-unknown-none" ];
         };
       in
         {

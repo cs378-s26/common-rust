@@ -550,10 +550,9 @@ fn gdb(kvm: bool, release: bool, target: Target) -> Result<()> {
 fn test_kernel(release: bool, target: Target) -> Result<()> {
     let mut args = vec![
         "test",
-        "--message-format=json-render-diagnostics",
+        // "--message-format=json-render-diagnostics",
         // "-Zbuild-std=core,alloc",
-        "--lib",
-        "--target",
+        "--lib", "--target",
     ];
 
     let target_triple = target.target_triple();

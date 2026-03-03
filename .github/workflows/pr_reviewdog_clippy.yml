@@ -1,4 +1,4 @@
-name: clippy-action
+name: PR - Clippy Reviewdog
 on: [pull_request]
 jobs:
   clippy:
@@ -13,6 +13,25 @@ jobs:
         reporter: 'github-pr-review'
         github_token: ${{ secrets.GITHUB_TOKEN }}
         fail_on_error: true
+        clippy_flags: --target x86_64-unknown-none -Zbuild-std=core,alloc
+    - uses: giraffate/clippy-action@v1
+      with:
+        reporter: 'github-pr-review'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        fail_on_error: true
+        clippy_flags: --target aarch64-unknown-none -Zbuild-std=core,alloc
+    - uses: giraffate/clippy-action@v1
+      with:
+        reporter: 'github-pr-review'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        fail_on_error: true
+        clippy_flags: --tests --target x86_64-unknown-none -Zbuild-std=core,alloc
+    - uses: giraffate/clippy-action@v1
+      with:
+        reporter: 'github-pr-review'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        fail_on_error: true
+        clippy_flags: --tests --target aarch64-unknown-none -Zbuild-std=core,alloc
 permissions:
   contents: read
   pull-requests: write
