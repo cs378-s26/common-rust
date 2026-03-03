@@ -90,7 +90,7 @@ struct CachePaths {
 }
 
 pub fn run(config_path: String, release: bool) -> Result<()> {
-    let config_path = PathBuf::from(config_path);
+    let config_path = resolve_repo_root_path(Path::new(&config_path))?;
     let test_cfg = load_test_config(&config_path)?;
     let summary = match run_with_config(&config_path, &test_cfg, release) {
         Ok(summary) => summary,
@@ -120,16 +120,17 @@ pub fn run_for_target(
     release: bool,
     target: Target,
 ) -> Result<Option<TestRunSummary>> {
-    let test_cfg = load_test_config(config_path)?;
+    let config_path = resolve_repo_root_path(config_path)?;
+    let test_cfg = load_test_config(&config_path)?;
     if test_cfg.target.to_target() != target {
         return Ok(None);
     }
 
-    let summary = match run_with_config(config_path, &test_cfg, release) {
+    let summary = match run_with_config(&config_path, &test_cfg, release) {
         Ok(summary) => summary,
         Err(err) => {
-            let summary = write_failure_artifacts(config_path, &test_cfg, &err.to_string())
-                .unwrap_or_else(|_| fallback_summary(config_path, &test_cfg));
+            let summary = write_failure_artifacts(&config_path, &test_cfg, &err.to_string())
+                .unwrap_or_else(|_| fallback_summary(&config_path, &test_cfg));
             eprintln!("{} setup failed: {}", summary.name, err);
             summary
         }
@@ -180,8 +181,7 @@ fn run_with_config(
     )?;
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
-    let expected_output_path =
-        resolve_expected_output_path(config_path, &test_cfg.expected_output_path);
+    let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
     let expected_output = fs::read_to_string(&expected_output_path).with_context(|| {
         format!(
             "failed to read expected output file: {}",
@@ -459,20 +459,14 @@ fn test_display_name(config_path: &Path, test_cfg: &TestConfig) -> String {
         .to_string()
 }
 
-fn resolve_expected_output_path(config_path: &Path, expected_output_path: &str) -> PathBuf {
-    let direct = PathBuf::from(expected_output_path);
-    if direct.is_absolute() || direct.exists() {
-        return direct;
+fn resolve_repo_root_path(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
     }
 
-    if let Some(parent) = config_path.parent() {
-        let from_cfg_dir = parent.join(expected_output_path);
-        if from_cfg_dir.exists() {
-            return from_cfg_dir;
-        }
-    }
-
-    direct
+    Ok(std::env::current_dir()
+        .context("failed to determine repository root from current directory")?
+        .join(path))
 }
 
 fn assert_output_match(
