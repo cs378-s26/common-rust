@@ -5,6 +5,7 @@ use core::{
 };
 
 use crate::arch::{Arch, ContextTrait};
+use super::interrupt::InterruptContext;
 use spin::MutexGuard;
 
 const SPSR_MODE_EL1H: u64 = 0x5;
@@ -63,6 +64,12 @@ impl const Default for Context {
             pc: Default::default(),
             spsr: SPSR_MODE_EL1H | SPSR_IRQ_MASK, // EL1h with IRQ masked
         }
+    }
+}
+
+impl Context {
+    pub fn save_from_interrupt(&mut self, _ctx: &InterruptContext) {
+        panic!("save_from_interrupt not implemented on aarch64");
     }
 }
 

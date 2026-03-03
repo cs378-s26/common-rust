@@ -4,6 +4,12 @@ use crate::arch::{Arch, IrqStateTrait};
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct IrqState(bool);
 
+// Minimal interrupt context placeholder; real implementation TBD.
+#[repr(C)]
+pub struct InterruptContext;
+
+pub const IPI_WAKE_VECTOR: u8 = 0;
+
 const DAIF_IRQ_BIT: u64 = 1 << 7;
 
 pub unsafe fn disable() {

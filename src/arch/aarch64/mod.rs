@@ -3,16 +3,20 @@ use core::arch::asm;
 use spin::Once;
 
 use crate::print::CharSink;
+use crate::virtual_memory::PagingOptions;
+use crate::arch::IrqStateTrait;
 
 mod asm;
 mod context;
 mod interrupt;
+pub mod apic;
 mod mp;
 
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
-pub use interrupt::IrqState;
+pub use interrupt::*;
+pub use apic::timer_ticks;
 use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
@@ -69,11 +73,11 @@ impl ArchTrait for Arch {
         init_cpu_local_ptr(core_id);
     }
 
-    fn get_thread_local_pointer() -> u64 {
+    unsafe fn get_thread_local_pointer() -> u64 {
         unsafe { get_thread_local_pointer() }
     }
 
-    fn set_thread_local_pointer(base: *const u64) {
+    unsafe fn set_thread_local_pointer(base: *const u64) {
         unsafe { set_thread_local_pointer(base) };
     }
 
@@ -91,7 +95,7 @@ impl ArchTrait for Arch {
         panic!("unimplemented virtual_map");
     }
 
-    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+    fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
         panic!("unimplemented virtual_unmap");
     }
 
