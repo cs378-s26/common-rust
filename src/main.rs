@@ -250,10 +250,6 @@ pub fn kernel_main() -> ! {
     poll_tasks()
 }
 
-pub unsafe  fn clippy_rustfmt_test() {
-        
-            }
-
 // workaround for rust-analyzer being stupid
 #[inline(always)]
 #[allow(dead_code)]
