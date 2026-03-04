@@ -1,11 +1,12 @@
-use ansi_parser::{AnsiParser, Output};
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -502,13 +503,16 @@ fn normalize_output(output: &str) -> String {
 }
 
 fn strip_ansi_escape_codes(output: &str) -> String {
-    let mut stripped = String::with_capacity(output.len());
-    for token in output.ansi_parse() {
-        if let Output::TextBlock(text) = token {
-            stripped.push_str(text);
-        }
-    }
-    stripped
+    // Crude but effective regex stripper for CSI/OSC/single-byte ESC sequences.
+    ansi_escape_regex().replace_all(output, "").into_owned()
+}
+
+fn ansi_escape_regex() -> &'static Regex {
+    static ANSI_ESCAPE_RE: OnceLock<Regex> = OnceLock::new();
+    ANSI_ESCAPE_RE.get_or_init(|| {
+        Regex::new(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x1B\x07]*(?:\x07|\x1B\\))")
+            .expect("failed to compile ANSI escape regex")
+    })
 }
 
 fn qemu_status_ok(status: &ExitStatus) -> bool {
