@@ -20,7 +20,6 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use kernel_common::arch::dump_core_state;
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
@@ -31,16 +30,11 @@ use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
 };
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
-,
 };
 use spin::{Barrier, Once};
 use talc::Span;
@@ -110,7 +104,6 @@ fn dump_boot_info() {
             }
         );
     }
-
 }
 
 // For async/await testing. Move if/when we have a better testing setup.
@@ -213,7 +206,7 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
-    
+
     init_device_tree();
     // print_device_tree();
     map_virtio_devices();
@@ -297,7 +290,6 @@ pub fn kernel_main() -> ! {
             }
         });
     }
-
 
     Arch::set_irq_enabled(true);
     poll_tasks()
