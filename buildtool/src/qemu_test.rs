@@ -1,3 +1,4 @@
+use ansi_parser::{AnsiParser, Output};
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
 use serde::{Deserialize, Serialize};
@@ -242,6 +243,14 @@ fn run_with_config(
                 break;
             }
         };
+        let actual_output = strip_ansi_escape_codes(&actual_output);
+        fs::write(&cache_paths.serial_output, &actual_output).with_context(|| {
+            format!(
+                "failed to write stripped serial output after run {}: {}",
+                run_idx + 1,
+                cache_paths.serial_output.display()
+            )
+        })?;
 
         if let Err(err) = assert_output_match(
             &expected_output,
@@ -490,6 +499,16 @@ fn assert_output_match(
 
 fn normalize_output(output: &str) -> String {
     output.replace("\r\n", "\n")
+}
+
+fn strip_ansi_escape_codes(output: &str) -> String {
+    let mut stripped = String::with_capacity(output.len());
+    for token in output.ansi_parse() {
+        if let Output::TextBlock(text) = token {
+            stripped.push_str(text);
+        }
+    }
+    stripped
 }
 
 fn qemu_status_ok(status: &ExitStatus) -> bool {

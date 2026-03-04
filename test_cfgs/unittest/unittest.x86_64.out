@@ -1,6 +1,6 @@
-[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001H[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001HBdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
+BdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
 BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
-[2J[001;001H[001;001H[2J[001;001H[001;001Hlimine rev: 4
+limine rev: 4
 bootloader: Limine v10.8.2
 fimrware: uefi (64-bit)
 mem::init_malloc(): initializing heap
@@ -9,17 +9,17 @@ Core initialized.
 Core initialized.
 Core initialized.
 features:
-avx = [38;2;107;176;93mpresent[0m
-sse4.2 = [38;2;107;176;93mpresent[0m
-sse4.1 = [38;2;107;176;93mpresent[0m
-ssse3 = [38;2;107;176;93mpresent[0m
-sse3 = [38;2;231;76;76mnot present[0m
-xsave = [38;2;107;176;93mpresent[0m
-oxsave = [38;2;107;176;93mpresent[0m
-monitor/mwait = [38;2;107;176;93mpresent[0m
-vmx = [38;2;107;176;93mpresent[0m
+avx = present
+sse4.2 = present
+sse4.1 = present
+ssse3 = present
+sse3 = not present
+xsave = present
+oxsave = present
+monitor/mwait = present
+vmx = present
 extended features:
-fsgsbase = [38;2;107;176;93mpresent[0m
+fsgsbase = present
 running x86-64 unit tests.
 Coroutine executor initialized.
 Coroutine executor initialized.
