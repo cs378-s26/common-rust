@@ -64,6 +64,20 @@ pub fn init_physical_memory_allocator() {
         kprintln!("");
         entries
     });
+
+    let mut end = END.lock(); // the first memory region served wasn't checked to be usable
+    let regions = unwrap(&REGIONS);
+    if let Some(first_usable) =
+        (0..regions.len()).find(|&r| regions[r].entry_type == EntryType::USABLE)
+    {
+        *end = FrameLocation {
+            region: first_usable,
+            offset: 0x0,
+        };
+    } else {
+        panic!("No usable memory regions found");
+    }
+
 }
 
 fn unwrap<T>(o: &Once<T>) -> &T {
@@ -102,10 +116,40 @@ pub fn frame_alloc() -> usize {
     }
 }
 
-pub fn frame_dealloc(frame: usize) {
+pub fn alloc_frames(frames: usize) -> usize {
     let mut head = HEAD.lock();
-    unsafe {
-        *((unwrap(&HHDM_OFFSET) + frame) as *mut usize) = *head;
+    if *head == usize::MAX {
+        drop(head); // not using this anymore
+        let mut end = END.lock();
+
+        let regions = unwrap(&REGIONS);
+
+        while end.offset + Arch::PAGE_SIZE * frames > regions[end.region].length as usize {
+            // try to find the next usable region
+            if let Some(region) = ((end.region + 1)..regions.len())
+                .find(|&r| regions[r].entry_type == EntryType::USABLE)
+            {
+                *end = FrameLocation { region, offset: 0 };
+                continue;
+            }
+
+            // no usable region found — retry allocation
+            drop(end);
+            return alloc_frames(frames); // waits for physical pages to be freed
+        }
+
+        let frame: usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
+        end.offset += Arch::PAGE_SIZE * frames;
+        frame
+    } else {
+        let first: usize = *head;
+        for i in 0..frames {
+            *head = unsafe { *((unwrap(&HHDM_OFFSET) + first + i * Arch::PAGE_SIZE) as *const usize) };
+        }
+        first
     }
-    *head = frame;
+}
+
+// frames is in number of frames, not bytes
+pub fn frame_dealloc(frames: usize) {
 }
