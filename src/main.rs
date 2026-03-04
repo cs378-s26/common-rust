@@ -23,7 +23,7 @@ use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_c
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
+use kernel_common::physical_memory::{self, THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
@@ -209,6 +209,14 @@ unsafe extern "C" fn system_main() -> ! {
     init_device_tree();
     // print_device_tree();
     map_virtio_devices();
+
+    let frame = physical_memory::frame_alloc();
+    kprintln!("Allocated frame at {:x}", frame);
+    physical_memory::frame_dealloc(frame);
+
+    let frame = physical_memory::frame_alloc();
+    kprintln!("Allocated frame at {:x}", frame);
+    physical_memory::frame_dealloc(frame);
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
