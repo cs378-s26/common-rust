@@ -102,7 +102,6 @@ fn dump_boot_info() {
             }
         );
     }
-
 }
 
 // For async/await testing. Move if/when we have a better testing setup.
@@ -205,18 +204,10 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
-    
+
     init_device_tree();
     // print_device_tree();
     map_virtio_devices();
-
-    let frame = physical_memory::frame_alloc();
-    kprintln!("Allocated frame at {:x}", frame);
-    physical_memory::frame_dealloc(frame);
-
-    let frame = physical_memory::frame_alloc();
-    kprintln!("Allocated frame at {:x}", frame);
-    physical_memory::frame_dealloc(frame);
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -274,9 +265,9 @@ pub fn kernel_main() -> ! {
             core_count
         );
 
-    for i in 0..1000 {
-        spawn_thread(move || {
-            // kprintln!("hi, id={}, initial_core={}", i, initial_core);
+        for i in 0..1000 {
+            spawn_thread(move || {
+                // kprintln!("hi, id={}, initial_core={}", i, initial_core);
 
                 // kprintln!(
                 //     "Thread {} started on core {} at tick {}",

@@ -119,7 +119,6 @@ impl VirtualMemoryAllocation {
         backing: Option<usize>,
         options: PagingOptions,
     ) -> VirtualMemoryAllocation {
-
         assert!(length & 0xFFF == 0);
         let mut vmes = VMES
             .get()

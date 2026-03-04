@@ -18,7 +18,6 @@ pub fn read_cycle_counter() -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
-
 pub fn halt() -> ! {
     #[cfg(target_arch = "x86_64")]
     unsafe {

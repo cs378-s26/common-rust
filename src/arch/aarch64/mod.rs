@@ -2,22 +2,22 @@ use core::arch::asm;
 
 use spin::Once;
 
+use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
-use crate::arch::IrqStateTrait;
 
+pub mod apic;
 mod asm;
 mod context;
 mod interrupt;
-pub mod apic;
 mod mp;
 mod vmm;
 
+pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
-pub use apic::timer_ticks;
 use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
@@ -98,6 +98,10 @@ impl ArchTrait for Arch {
 
     fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
         vmm::vunmap(_space, _vaddr)
+    }
+
+    fn vaddr_to_paddr(space: u64, vaddr: u64) -> Option<u64> {
+        vmm::vaddr_to_paddr(space, vaddr)
     }
 
     fn shutdown(_err_code: u16) {

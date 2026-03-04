@@ -5,6 +5,7 @@
 use anyhow::{Error, Result};
 use cargo_metadata::{Message, MetadataCommand};
 use clap::{Parser, Subcommand};
+use core::str;
 use debug::gen_debug_module;
 use fatfs::{FatType, FileSystem, FormatVolumeOptions, FsOptions, format_volume};
 use fscommon::StreamSlice;
@@ -18,7 +19,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
-use core::str;
 
 mod debug;
 
@@ -479,6 +479,11 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
     let block_path = current_dir()?.join("disk.img");
+    if !block_path.exists() {
+        return Err(Error::msg(
+            "disk.img not found in project root. Create one with: dd if=/dev/zero of=disk.img bs=1M count=64",
+        ));
+    }
 
     let machine = target.qemu_machine();
 
@@ -499,7 +504,10 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Resul
         "-no-shutdown".into(),
         "-s".into(),
         "-drive".into(),
-        format!("file={},format=raw,if=none,id=hd", path_to_string(&block_path)?),
+        format!(
+            "file={},format=raw,if=none,id=hd",
+            path_to_string(&block_path)?
+        ),
         "-device".into(),
         // Use the MMIO transport on aarch64 so the device shows up in the FDT.
         // On x86_64 we still want the PCI variant ("virtio-blk"/virtio-blk-pci).
