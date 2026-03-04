@@ -4,13 +4,12 @@ use limine::request::DeviceTreeBlobRequest;
 #[unsafe(link_section = ".limine_requests")]
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
-use spin::Once;
-use kernel_common::print::{self, kprintln};
 use alloc::vec::Vec;
-use kernel_common::physical_memory::HHDM_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait};
+use kernel_common::physical_memory::HHDM_REQUEST;
+use kernel_common::print::{self, kprintln};
 use kernel_common::virtual_memory::PagingOptions;
-
+use spin::Once;
 
 static FDT: Once<fdt::Fdt<'static>> = Once::new();
 
@@ -25,7 +24,6 @@ pub fn init_device_tree() {
 }
 
 pub fn print_device_tree() {
-
     if let Some(device_tree) = FDT.get() {
         for node in device_tree.all_nodes() {
             if node.name.contains("virtio") {
@@ -34,12 +32,18 @@ pub fn print_device_tree() {
             // this can be edited to print all properties using node.properties()
             for prop in node.properties() {
                 if prop.name == "compatible" {
-                    let compat = prop.as_str().expect("compatible property should be a string");
+                    let compat = prop
+                        .as_str()
+                        .expect("compatible property should be a string");
                     kprintln!("compatible: {}", compat);
                 } else if prop.name == "interrupts" {
-                    let ints = prop.value.chunks_exact(4).map(|chunk| {
-                        u32::from_be_bytes(chunk.try_into().expect("chunk should be 4 bytes"))
-                    }).collect::<Vec<u32>>();
+                    let ints = prop
+                        .value
+                        .chunks_exact(4)
+                        .map(|chunk| {
+                            u32::from_be_bytes(chunk.try_into().expect("chunk should be 4 bytes"))
+                        })
+                        .collect::<Vec<u32>>();
                     kprintln!("interrupts: {:?}", ints);
                 }
             }
@@ -61,13 +65,15 @@ pub fn map_virtio_devices() {
                     // map the first 4KB of the device's MMIO region
                     // NOTE: this is device memory because it does not set the cacheable bit
                     let flags = PagingOptions::PRESENT | PagingOptions::WRITABLE;
-                    Arch::virtual_map(Arch::get_address_space(), 
-                    (base + hhdm_offset) as u64, 
-                    base as u64, 
-                    flags);
-                    let id = unsafe { core::ptr::read_volatile((base + hhdm_offset) as *const u32)}; // test read
+                    Arch::virtual_map(
+                        Arch::get_address_space(),
+                        (base + hhdm_offset) as u64,
+                        base as u64,
+                        flags,
+                    );
+                    let id =
+                        unsafe { core::ptr::read_volatile((base + hhdm_offset) as *const u32) }; // test read
                     kprintln!("Mapped virtio device at {:#x}, magic num: {:#x}", base, id);
-                    
                 }
             }
         }
