@@ -72,7 +72,7 @@ pub fn init_physical_memory_allocator() {
     {
         *end = FrameLocation {
             region: first_usable,
-            offset: 0x10000,
+            offset: 0x0,
         };
     } else {
         panic!("No usable memory regions found");
@@ -105,7 +105,15 @@ pub fn frame_alloc() -> usize {
             return frame_alloc(); // waits for a physical page to be freed
         }
 
-        let frame: usize = unwrap(&REGIONS)[end.region].base as usize + end.offset;
+        let entry = unwrap(&REGIONS)[end.region];
+        // kprintln!(
+        //     "Bump allocating 0x{:x} sized {} type frame at 0x{:x}",
+        //     entry.length,
+        //     display_entry_type(entry.entry_type),
+        //     entry.base as usize
+        // );
+
+        let frame: usize = entry.base as usize + end.offset;
         end.offset += Arch::PAGE_SIZE;
         frame
     } else {
