@@ -50,6 +50,7 @@ pub fn print_device_tree() {
 }
 
 pub fn map_virtio_devices() {
+    kprintln!("Mapping virtio devices...");
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
     if let Some(dt) = FDT.get() {
         for node in dt.all_nodes() {

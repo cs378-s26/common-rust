@@ -83,6 +83,7 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     attr |= PageTableEntryFlags::AF.bits(); // set Access Flag, so we don't get a permission fault on access before we set it in the page tables
     if options.contains(PagingOptions::PRESENT) {
         attr |= PageTableEntryFlags::VALID.bits();
+        attr |= PageTableEntryFlags::TABLE.bits(); 
     }
     if options.contains(PagingOptions::WRITABLE) && options.contains(PagingOptions::USER_ACCESSIBLE) {
         attr |= PageTableEntryFlags::RW_EL0.bits();
