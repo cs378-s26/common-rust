@@ -217,8 +217,11 @@ pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(Stri
         }
     }
 
-    cmd.wait()?;
+    let status = cmd.wait()?;
 
+    if !status.success() {
+        return Err(Error::msg("cargo build failed"));
+    }
     let executable = res.ok_or(Error::msg("failed to locate executable"))?;
     eprintln!("kernel binary path: {}", path_to_string(&executable)?);
     Ok((executable, crate_paths))
