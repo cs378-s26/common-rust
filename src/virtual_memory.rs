@@ -149,6 +149,7 @@ impl VirtualMemoryAllocation {
                 i += Arch::PAGE_SIZE;
             }
         }
+        kprintln!("Allocated VME starting at {:x}, len {:x}", base, length);
         VirtualMemoryAllocation {
             space,
             base,
@@ -160,10 +161,10 @@ impl VirtualMemoryAllocation {
 impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
-        kprintln!("Deallocating frame {:x}-{:x}", self.base, self.base + self.length);
-        while self.length > 0 {
-            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
-            self.length -= Arch::PAGE_SIZE;
+        let mut cur_addr = self.base;
+        while cur_addr < (self.base + self.length) {
+            Arch::virtual_unmap(self.space, cur_addr as u64);
+            cur_addr += Arch::PAGE_SIZE;
         }
         let mut vmes = VMES
             .get()
@@ -188,20 +189,20 @@ impl Drop for VirtualMemoryAllocation {
                     ))
                     .get()
                     .expect("tree mismatch 1");
-                found.length += above.length
+                found.length += above.length;
+                cursor.remove();
             }
         } else if let Some(back) = free.back().get()
             && back.base > found.base
         {
             assert!(found.base + found.length == back.base);
-            found.length += back.length // merge with topmost free region
+            found.length += back.length; // merge with topmost free region
+            free.back_mut().remove();
         }
         cursor.move_prev();
         if let Some(prev) = cursor.get() {
-            kprintln!("prev: {:x}-{:x}, found: {:x}-{:x}", prev.base, prev.base + prev.length, found.base, found.base + found.length);
             if prev.base + prev.length != found.base {
                 // remove, automagically drop (free), and merge with entry [prev.base + prev.length, found.base) in free tree
-                kprintln!("Finding {:x} and {:x}", found.base - prev.base - prev.length, prev.base + prev.length);
                 let below = free
                     .find(&(
                         found.base - prev.base - prev.length,
@@ -211,6 +212,7 @@ impl Drop for VirtualMemoryAllocation {
                     .expect("tree mismatch 2");
                 found.base = below.base;
                 found.length += below.length;
+                cursor.remove();
             }
         } else if let Some(front) = free.front().get()
             && front.base < found.base
@@ -218,7 +220,9 @@ impl Drop for VirtualMemoryAllocation {
             assert!(front.base + front.length == found.base);
             found.base = front.base;
             found.length += front.length;
+            free.front_mut().remove();
         }
+        free.insert(found);
     }
 }
 

@@ -2,6 +2,7 @@ use crate::{
     physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
     virtual_memory::PagingOptions,
 };
+use crate::print::kprintln;
 use core::arch::asm;
 use spin::Mutex;
 use x86_64::{
@@ -90,7 +91,27 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
             )
         }
     }
-    .unwrap_or_else(|_| {
+    .unwrap_or_else(|err| {
+        match err {
+            x86_64::structures::paging::mapper::MapToError::PageAlreadyMapped(_) => {
+                panic!(
+                    "virtual address {:x} is already mapped when trying to map physical page {:x}",
+                    vaddr, paddr
+                )
+            }
+            x86_64::structures::paging::mapper::MapToError::FrameAllocationFailed => {
+                panic!(
+                    "frame allocation failed when trying to map physical page {:x} at virtual address {:x}",
+                    paddr, vaddr
+                )
+            }
+            x86_64::structures::paging::mapper::MapToError::ParentEntryHugePage => {
+                panic!(
+                    "encountered huge page when trying to map physical page {:x} at virtual address {:x}",
+                    paddr, vaddr
+                )
+            }
+        }
         panic!(
             "mapping physical page {:x} at virtual address {:x} failed unexpectedly",
             paddr, vaddr
@@ -99,9 +120,11 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     toilet.flush(); // terrific variable name i know
 }
 
+fn nothing(_ : usize) {}
+
 pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
-    let mut mapper = unsafe {
+    let mut mapper: OffsetPageTable<'_> = unsafe {
         OffsetPageTable::new(
             &mut *((space + hhdm_offset) as *mut PageTable),
             VirtAddr::new(hhdm_offset),
@@ -117,7 +140,7 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI... // TODO! TLB shootdown
         unsafe {
             FrameDeallocatorWrapper {
-                inner: frame_dealloc,
+                inner: nothing,
             }
             .deallocate_frame(frame)
         }; // no shared mappings for now

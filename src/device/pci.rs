@@ -515,7 +515,6 @@ impl PcieConfigSpace {
 impl PcieConfigSpace {
     fn read_u32(&self, offset: u16) -> u32 {
         let address = self.mapping.base + (offset & 0xfff) as usize;
-        kprintln!("Reading from PCIe config space at address {:#x}", address);
         unsafe { core::ptr::read_volatile(address as *const u32) }
     }
 
@@ -578,6 +577,7 @@ impl PciAccess for PcieMMIO {
 fn pcie_scan_bus(base : usize, bus: u8) -> Vec<Arc<dyn Device>> {
     let mut devices : Vec<Arc<dyn Device>> = vec![];
     for device in 0..=31 {
+        kprintln!("Scanning PCIe device at bus {}, device {}", bus, device);
         let mapping = PcieConfigSpace::new(base, bus, device, 0);
         let vendor_id = mapping.read_u16(0);
         if (vendor_id & 0xFFFF) as u16 == INVALID_VENDOR_ID {
@@ -585,7 +585,6 @@ fn pcie_scan_bus(base : usize, bus: u8) -> Vec<Arc<dyn Device>> {
         }
         kprintln!("Found PCIe device: bus={}, device={}, vendor_id={:#x}", bus, device, vendor_id);
         devices.append(&mut pcie_scan_device(mapping, base, bus, device));
-        kprintln!("Done scanning device");
         //core::mem::drop(mapping); // this is really just to make sure we don't have too many mappings open at once, since each device has its own config space mapping. We could also just reuse the same mapping for every device, but this is easier for now.
     }
     devices
@@ -595,9 +594,7 @@ fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u
     let mut functions : Vec<Arc<dyn Device>> = vec![];
     let header_type = mapping.read_u32(0xc) >> 16;
     let reg0 = mapping.read_u32(0);
-    kprintln!("Mapping address: {:x}", mapping.mapping.base);
     if let Some(dev) = pcie_scan_function(mapping, reg0) {
-        kprintln!("Pushing device");
         functions.push(dev);
     }
     if header_type & 0x80 != 0 {
@@ -608,7 +605,6 @@ fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u
                 continue;
             }
             if let Some(dev) = pcie_scan_function(mapping, reg0) {
-                kprintln!("Pushing device");
                 functions.push(dev);
             }
         }
@@ -623,15 +619,17 @@ fn pcie_scan_function(handle: PcieConfigSpace, register0: u32) ->
     if vendor_id == INVALID_VENDOR_ID {
         None
     } else {
-        kprintln!(
-            "Found PCI device: vendor_id={:#x}, device_id={:#x}",
-            vendor_id,
-            device_id
-        );
-
         let register2 = handle.read_u32( 0x8);
         let class_code = (register2 >> 24) as u8;
         let subclass = ((register2 >> 16) & 0xFF) as u8;
+
+        kprintln!(
+            "Found PCIe device: vendor_id={:#x}, device_id={:#x}, class_code={:#x}, subclass={:#x}",
+            vendor_id,
+            device_id,
+            class_code,
+            subclass
+        );
 
         if class_code == 0x06 && subclass == 0x04 {
             kprintln!("Found PCIe bridge: vendor_id={:#x}, device_id={:#x}", vendor_id, device_id);
@@ -656,6 +654,13 @@ fn pcie_scan_function(handle: PcieConfigSpace, register0: u32) ->
     }
 }   
 
+fn has_single_controller(base : usize, bus_start: u8) -> bool {
+    // Check if bus 0 has a multifunction device at device 0, function 0.
+    let mapping = PcieConfigSpace::new(base, bus_start, 0, 0);
+    let header_type = mapping.read_u32(0xc) >> 16;
+    header_type & 0x80 == 0
+}
+
 
 pub fn init_pci() {
     kprintln!("Initializing PCI.");
@@ -677,9 +682,16 @@ pub fn init_pci() {
             );
 
             let mut children : Vec<Arc<dyn Device>> = vec![];
-            for bus in bus_start..=bus_end {
-                let mut bus_devices = pcie_scan_bus(base_address as usize, bus);
+            if has_single_controller(base_address as usize, bus_start) {
+                kprintln!("Single PCIe controller detected at bus {}", bus_start);
+                let mut bus_devices = pcie_scan_bus(base_address as usize, bus_start);
                 children.append(&mut bus_devices);
+            } else {
+                for bus in bus_start..=bus_end {
+                    let mut bus_devices = pcie_scan_bus(base_address as usize, bus);
+                    children.append(&mut bus_devices);
+                    kprintln!("Done scanning bus {}", bus);
+                }
             }
             let root : Arc<dyn Device> = Arc::new(
                 PCIRoot {
