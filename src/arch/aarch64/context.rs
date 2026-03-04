@@ -168,6 +168,7 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
     #[unsafe(naked)]
     unsafe extern "C" fn save_context_impl<T: FnOnce() -> !>(
         _stack: u64,
+        
         _ctx: *mut MutexGuard<'static, Context>,
         _fwd: *mut T,
     ) {

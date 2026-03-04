@@ -11,20 +11,26 @@
 
 extern crate alloc;
 
-use core::sync::atomic::Ordering;
+use core::arch::asm;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // For coroutines.
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
+use kernel_common::arch::dump_core_state;
+use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
+use kernel_common::physical_memory::{HHDM_REQUEST, THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
+use kernel_common::thread::{
+    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
+};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
 };
@@ -32,7 +38,9 @@ use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
+    
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+,
 };
 use spin::{Barrier, Once};
 use talc::Span;
@@ -224,6 +232,7 @@ unsafe extern "C" fn system_main() -> ! {
 
 static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn kernel_main() -> ! {
     // kprintln!("we are the MPCorelings! please feed us!");
@@ -234,9 +243,8 @@ pub fn kernel_main() -> ! {
 
     INIT_THREADING_BARRIER
         .call_once(|| {
-            // kprintln!("hii~");
-            // kprintln!("preparing common tasks on {}", CORE_ID.get());
-            // kprintln!("there are {} cores total", core_count);
+            kprintln!("preparing common tasks on {}", CORE_ID.get());
+            kprintln!("there are {} cores total", core_count);
             init_threading();
             init_coroutine_queue();
             Barrier::new(core_count)
@@ -256,43 +264,40 @@ pub fn kernel_main() -> ! {
 
     MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-    if CORE_ID.get().0 == 0 {
-        spawn_coroutine(async_task(1624252));
+    let initial_core = CORE_ID.get();
 
-        let num_threads = 20;
-        kprintln!(
-            "Spawning {} test threads across {} cores",
-            num_threads,
-            core_count
-        );
+    // let GICD_BASE: usize = 0x0800_0000 + HHDM_REQUEST.get_response().unwrap().offset() as usize;
+    // let gicd_iidr = (GICD_BASE + 0xFEC) as *const u32;
+    // let iidr = unsafe { gicd_iidr.read_volatile() };
+    // let gic_version = (iidr >> 4) & 0xF; // 0x2 = GICv2, 0x3 = GICv3
+    // kprintln!("GIC VERSION: {}", gic_version);
 
-    for i in 0..1000 {
+    for i in 0..2 {
         spawn_thread(move || {
-            // kprintln!("hi, id={}, initial_core={}", i, initial_core);
+            kprintln!("Thread Start, id={}, initial_core={}", i, initial_core);
 
-                // kprintln!(
-                //     "Thread {} started on core {} at tick {}",
-                //     i,
-                //     start_core.0,
-                //     start_tick
-                // );
+            // dump_core_state("before");
+            // unsafe {
+            //     core::arch::asm!("svc {imm}", imm = const 8);
+            // }
+            // dump_core_state("after");
 
-                let cycle_start = Arch::read_cycle_counter();
-                while Arch::read_cycle_counter() < cycle_start + 100_000_000 {}
+            // unsafe { asm!("mov x1, #8", "ldr x0, [x1]") }
+            kprintln!(
+                "Thread Ending from {}, id={}, initial_core={}, tid={}, fetch={}",
+                CORE_ID.get(),
+                i,
+                initial_core,
+                Thread::this_tid(),
+                TEMP_COUNTER.fetch_add(1, Ordering::Relaxed) + 1
+            );
 
-                let end_core = CORE_ID.get();
-                // let end_tick = Arch::read_cycle_counter();
-
-                // kprintln!(
-                //     "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed",
-                //     i,
-                //     start_core.0,
-                //     end_core.0,
-                //     end_tick - start_tick,
-                // );
-            });
-        }
+            loop {
+                yield_thread();
+            }
+        });
     }
+
 
     Arch::set_irq_enabled(true);
     poll_tasks()

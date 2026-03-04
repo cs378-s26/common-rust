@@ -8,9 +8,11 @@ use crate::arch::IrqStateTrait;
 
 mod asm;
 mod context;
+mod exceptions;
 mod interrupt;
 pub mod apic;
 mod mp;
+pub use exceptions::dump_core_state;
 mod vmm;
 
 pub use asm::*;

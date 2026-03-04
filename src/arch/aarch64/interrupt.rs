@@ -1,4 +1,7 @@
-use crate::arch::{Arch, IrqStateTrait};
+use crate::{
+    arch::{Arch, IrqStateTrait},
+    print::{kprint, kprintln},
+};
 
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -37,4 +40,27 @@ impl IrqStateTrait for IrqState {
     fn is_masked(&self) -> bool {
         !self.0
     }
+}
+
+pub unsafe fn timer_init(interval_ticks: u64) {
+    unsafe {
+        core::arch::asm!(
+            "msr cntp_tval_el0, {x}",
+            x = in(reg) interval_ticks,
+        );
+
+        core::arch::asm!(
+            "msr cntp_ctl_el0, {x}",
+            x = in(reg) 1u64,  // ENABLE=1, IMASK=0
+        );
+    }
+}
+
+pub fn timer_frequency() -> u64 {
+    let freq: u64;
+    unsafe {
+        core::arch::asm!("mrs {x}, cntfrq_el0", x = out(reg) freq);
+    }
+    kprintln!("Frequency is {}", freq);
+    freq
 }
