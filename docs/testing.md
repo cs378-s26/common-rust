@@ -34,4 +34,4 @@ type TestConfig = {
 The build tool will recursively search all directories in `test_cfgs` for files matching the pattern `test_cfgs/**/*_test.json`, and run these as tests.
 Any `qemu_args` sub string matching the pattern `{PATH_TO_EFI}` and `{PATH_TO_IMG}` will get substituted with the corresponding path.
 
-An example unittest can be found in `tests/example_integration.rs` with the corresponding config json in `test_cfgs/example_integration/example_x86_64_test.json`.
+An example integration test can be found in `tests/example_integration.rs` with the corresponding config json in `test_cfgs/example_integration/example_x86_64_test.json`.
