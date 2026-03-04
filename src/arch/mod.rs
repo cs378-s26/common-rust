@@ -122,6 +122,8 @@ pub trait ArchTrait {
     unsafe fn get_thread_local_pointer() -> u64;
 
     fn read_cycle_counter() -> u64;
+    // walk hardware description (device tree on aarch64, acpi on x86) and print found devices
+    fn init_device_discovery();
     const PAGE_SIZE: usize;
     fn get_address_space() -> u64;
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);

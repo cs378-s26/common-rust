@@ -104,11 +104,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
         )
     }
 
-    if let Some(dtb) = DEVICE_TREE_BLOB_REQUEST.get_response() {
-        kprintln!("dtb pointer: {:p}", dtb.dtb_ptr());
-    } else {
-        kprintln!("warn: no dtb response from bootloader");
-    }
+    A::init_device_discovery();
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_physical_memory_allocator();

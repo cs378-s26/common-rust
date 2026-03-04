@@ -8,6 +8,7 @@ use crate::virtual_memory::PagingOptions;
 pub mod apic;
 mod asm;
 mod context;
+mod device_tree;
 mod interrupt;
 mod mp;
 
@@ -81,6 +82,15 @@ impl ArchTrait for Arch {
 
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
+    }
+
+    fn init_device_discovery() {
+        if let Some(dtb) = crate::DEVICE_TREE_BLOB_REQUEST.get_response() {
+            // safety: limine guarantees this pointer is valid for the lifetime of the kernel
+            unsafe { device_tree::walk_device_tree(dtb.dtb_ptr()) };
+        } else {
+            crate::print::kprintln!("device_tree: no dtb from bootloader");
+        }
     }
 
     const PAGE_SIZE: usize = 4096;

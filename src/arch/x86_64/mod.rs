@@ -90,6 +90,10 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn init_device_discovery() {
+        // x86 uses acpi — not implemented yet
+    }
+
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
