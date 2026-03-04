@@ -117,6 +117,6 @@ c_elx_sync_handler:
 c_elx_irq_handler:
     SAVE_REGS
     mov x0, sp
-    bl el0_irq
+    bl current_elx_irq
     RESTORE_REGS
     eret

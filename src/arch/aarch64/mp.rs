@@ -91,8 +91,9 @@ pub unsafe fn initialize_core(cpu: &Cpu) -> () {
 
     // TODO: handle interrupts
     exceptions::init_exceptions();
+    interrupt::gicc_init();
     unsafe {
         interrupt::enable();
-        interrupt::timer_init(interrupt::timer_frequency());
+        interrupt::timer_init(); // kicks off all timers by setting them on a 1s loop
     }
 }

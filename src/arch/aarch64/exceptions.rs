@@ -1,3 +1,4 @@
+use crate::arch::aarch64::interrupt::{self, GICC_BASE_VIRT, GICC_EOIR, GICC_IAR};
 use crate::{
     arch::{Arch, IrqStateTrait},
     mp::CORE_ID,
@@ -5,6 +6,7 @@ use crate::{
 };
 use core::arch::{asm, global_asm};
 use core::fmt;
+use core::sync::atomic::Ordering;
 
 global_asm!(include_str!("exception.s"));
 
@@ -29,7 +31,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
-        
+
         return;
     }
     panic!(
@@ -39,7 +41,6 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         exc
     );
 }
-
 
 //------------------------------------------------------------------------------
 // Current, ELx
@@ -53,38 +54,29 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 
 #[unsafe(no_mangle)]
 extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
-    kprintln!("Current elx irq");
-    let intid: u64;
-    unsafe {
-        core::arch::asm!(
-            "mrs {}, ICC_IAR1_EL1",
-            out(reg) intid,
-        );
-    }
-
-    // mask out the INTID (bits [23:0], top bits are affinity routing)
-    let intid = intid & 0x3FF;
-
+    let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
+    let intid = unsafe { ((gicc_virt + GICC_IAR) as *const u32).read_volatile() } & 0x3FF;
     match intid {
         30 => {
-            kprintln!("physical timer ticked");
             unsafe {
                 core::arch::asm!(
                     "msr CNTP_TVAL_EL0, {}",
-                    in(reg) 62_500_000u64,
+                    in(reg) *interrupt::TIMER_INTERVAL.get().expect("UNINITIALIZED TIMER INTERVAL")
                 );
             }
+            let ticks = interrupt::TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+            kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks + 1);
         }
-        1023 => { /* spurious interrupt, ignore */ }
+        1023 => {
+            kprintln!("Spurrious interrupt");
+            return;
+        }
         _ => panic!("unexpected INTID: {}", intid),
     }
 
-    // signal EOI — "I'm done handling this"
+    // signal irq handled
     unsafe {
-        core::arch::asm!(
-            "msr ICC_EOIR1_EL1, {}",
-            in(reg) intid,
-        );
+        ((gicc_virt + GICC_EOIR) as *mut u32).write_volatile(intid as u32);
     }
 }
 

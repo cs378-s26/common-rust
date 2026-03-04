@@ -5,13 +5,14 @@ use limine::request::DeviceTreeBlobRequest;
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 use alloc::vec::Vec;
-use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::physical_memory::HHDM_REQUEST;
-use kernel_common::print::{self, kprintln};
-use kernel_common::virtual_memory::PagingOptions;
+use crate::arch::{Arch, ArchTrait};
+use crate::physical_memory::HHDM_REQUEST;
+use crate::print::{self, kprintln};
+use crate::virtual_memory::PagingOptions;
+
 use spin::Once;
 
-static FDT: Once<fdt::Fdt<'static>> = Once::new();
+pub static FDT: Once<fdt::Fdt<'static>> = Once::new();
 
 pub fn init_device_tree() {
     if let Some(res) = FDT_REQUEST.get_response() {

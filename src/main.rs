@@ -19,10 +19,11 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::dump_core_state;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
+use kernel_common::arch::{dump_core_state, gicd_init};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
+use kernel_common::device::device::{init_device_tree, map_virtio_devices};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::physical_memory::{HHDM_REQUEST, THE_HEAP, init_physical_memory_allocator};
@@ -38,8 +39,6 @@ use limine::request::{
 };
 use spin::{Barrier, Once};
 use talc::Span;
-mod device;
-use device::device::*;
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -208,8 +207,10 @@ unsafe extern "C" fn system_main() -> ! {
     init_virtual_memory_allocator();
 
     init_device_tree();
-    // print_device_tree();
+
     map_virtio_devices();
+
+    gicd_init(); // this is ARM specific and must be abstracted away at some point
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -265,11 +266,11 @@ pub fn kernel_main() -> ! {
     // let gic_version = (iidr >> 4) & 0xF; // 0x2 = GICv2, 0x3 = GICv3
     // kprintln!("GIC VERSION: {}", gic_version);
 
-    for i in 0..2 {
+    for i in 0..4 {
         spawn_thread(move || {
             kprintln!("Thread Start, id={}, initial_core={}", i, initial_core);
 
-            // dump_core_state("before");
+            // // dump_core_state("before");
             // unsafe {
             //     core::arch::asm!("svc {imm}", imm = const 8);
             // }
