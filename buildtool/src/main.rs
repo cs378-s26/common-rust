@@ -362,25 +362,46 @@ pub fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     Ok(fs::read(tmp_stripped)?)
 }
 
-pub fn build_image(
+fn sanitize_cache_tag(tag: &str) -> String {
+    tag.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+pub fn build_image_with_tag(
     build_res: &(PathBuf, Vec<(String, PathBuf)>),
     release: bool,
     target: Target,
+    cache_tag: Option<&str>,
 ) -> Result<PathBuf> {
     let (kernel_elf, package_data) = build_res;
 
     let cache_dir = cache_dir()?;
+    let profile = if release { "release" } else { "debug" };
+    let tag_suffix = cache_tag
+        .map(sanitize_cache_tag)
+        .filter(|tag| !tag.is_empty())
+        .map(|tag| format!("-{tag}"))
+        .unwrap_or_default();
     let limine_efi = download_limine(target)?;
     let limine_cfg = resources_dir()?.join(LIMINE_CONF);
     let output_img = cache_dir.join(format!(
-        "kernel-{}-{}.img",
+        "kernel-{}-{}{}.img",
         target.name(),
-        if release { "release" } else { "debug" }
+        profile,
+        tag_suffix
     ));
     let debug_mod = cache_dir.join(format!(
-        "kernel-{}-debug_info-{}.mod",
+        "kernel-{}-debug_info-{}{}.mod",
         target.name(),
-        if release { "release" } else { "debug" }
+        profile,
+        tag_suffix
     ));
 
     if !fs::exists(&output_img)?
@@ -469,6 +490,14 @@ pub fn build_image(
     }
 
     Ok(output_img)
+}
+
+pub fn build_image(
+    build_res: &(PathBuf, Vec<(String, PathBuf)>),
+    release: bool,
+    target: Target,
+) -> Result<PathBuf> {
+    build_image_with_tag(build_res, release, target, None)
 }
 
 pub fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(

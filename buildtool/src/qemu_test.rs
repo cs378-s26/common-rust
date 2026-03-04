@@ -1,5 +1,5 @@
 use anyhow::{Context, Error, Result, anyhow};
-use cargo_metadata::Message;
+use cargo_metadata::{Artifact, Message, TargetKind};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufReader;
@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::SystemTime;
 
-use crate::{Target, build_image, cache_dir, configure_c_toolchain, download_ovmf, path_to_string};
+use crate::{
+    Target, build_image_with_tag, cache_dir, configure_c_toolchain, download_ovmf, path_to_string,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -164,7 +166,12 @@ fn run_with_config(
     let display_name = test_display_name(config_path, test_cfg);
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
     let kernel_path = build_test_binary(test_cfg, release)?;
-    let img_path = build_image(&(kernel_path.clone(), vec![]), release, target)?;
+    let img_path = build_image_with_tag(
+        &(kernel_path.clone(), vec![]),
+        release,
+        target,
+        Some(&display_name),
+    )?;
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
     let expected_output_path =
@@ -512,6 +519,27 @@ fn qemu_status_ok(status: &ExitStatus) -> bool {
     status.success() || status.code() == Some(1)
 }
 
+fn artifact_matches_requested_test(
+    artifact: &Artifact,
+    test_cfg: &TestConfig,
+    integration_test_name: Option<&str>,
+) -> bool {
+    if test_cfg.is_unittest {
+        return artifact
+            .target
+            .kind
+            .iter()
+            .any(|kind| *kind == TargetKind::Lib);
+    }
+
+    artifact
+        .target
+        .kind
+        .iter()
+        .any(|kind| *kind == TargetKind::Test)
+        && integration_test_name.is_some_and(|name| artifact.target.name == name)
+}
+
 fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
     let target = test_cfg.target.to_target();
     let mut args = vec![
@@ -520,19 +548,24 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
         "--no-run",
         "--target",
     ];
+    let integration_test_name = if test_cfg.is_unittest {
+        None
+    } else {
+        Some(
+            test_cfg
+                .test_name
+                .as_deref()
+                .context("test_name is required when is_unittest is false")?,
+        )
+    };
 
     args.push(target.target_triple());
 
     if test_cfg.is_unittest {
         args.push("--lib");
-    } else {
+    } else if let Some(test_name) = integration_test_name {
         args.push("--test");
-        args.push(
-            test_cfg
-                .test_name
-                .as_deref()
-                .context("test_name is required when is_unittest is false")?,
-        );
+        args.push(test_name);
     }
 
     if release {
@@ -558,11 +591,22 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
     let reader = BufReader::new(stdout);
 
     let mut executable = None;
+    let mut fallback_executable = None;
     for message in Message::parse_stream(reader) {
-        if let Message::CompilerArtifact(artifact) = message?
-            && let Some(path) = artifact.executable
-        {
-            executable = Some(PathBuf::from(path));
+        if let Message::CompilerArtifact(artifact) = message? {
+            let matches_requested =
+                artifact_matches_requested_test(&artifact, test_cfg, integration_test_name);
+
+            if let Some(path) = artifact.executable {
+                let path = PathBuf::from(path);
+                if fallback_executable.is_none() {
+                    fallback_executable = Some(path.clone());
+                }
+
+                if matches_requested {
+                    executable = Some(path);
+                }
+            }
         }
     }
 
@@ -573,5 +617,7 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
         )));
     }
 
-    executable.ok_or(Error::msg("failed to locate test executable"))
+    executable
+        .or(fallback_executable)
+        .ok_or(Error::msg("failed to locate test executable"))
 }
