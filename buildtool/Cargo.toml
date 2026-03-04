@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ansi-parser = "0.9.1"
 anyhow = { version = "1.0.100", features = ["backtrace"] }
 binary_serde = { version = "1.0.24", features = ["std"] }
 cargo_metadata = "0.23.0"
