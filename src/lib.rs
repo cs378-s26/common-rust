@@ -138,9 +138,7 @@ mod test_runtime {
 
         INIT_THREADING_BARRIER
             .call_once(|| {
-                kprintln!("hii~");
-                kprintln!("preparing common tasks on {}", CORE_ID.get());
-                kprintln!("there are {} cores total", core_count);
+                kprintln!("running x86-64 unit tests.");
                 init_threading();
                 init_coroutine_queue();
                 Barrier::new(core_count)
@@ -148,8 +146,6 @@ mod test_runtime {
             .wait();
 
         let idle = set_up_idle();
-
-        kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
         init_coroutine_executor();
         kprintln!("Coroutine executor initialized.");

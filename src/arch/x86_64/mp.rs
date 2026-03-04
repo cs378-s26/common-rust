@@ -76,12 +76,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     LAPIC_ID.store(cpu.lapic_id, Ordering::Relaxed);
-    kprintln!(
-        "done init core {}, CLS base={:x}, GSBASE={:x}",
-        id,
-        get_cpu_local_pointer(),
-        get_cpu_local_pointer_for(id)
-    );
+    kprintln!("Core initialized.");
 
     let cpu_id = CpuId::new();
 
