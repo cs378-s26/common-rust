@@ -20,7 +20,7 @@ monitor/mwait = present
 vmx = present
 extended features:
 fsgsbase = present
-running x86-64 integration test: example_integration.
+Starting Testing Code...
 Coroutine executor initialized.
 Coroutine executor initialized.
 Coroutine executor initialized.
