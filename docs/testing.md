@@ -21,8 +21,8 @@ Full model is below
 type TestConfig = {
     // for all integration tests, this value is false
     is_unittest: boolean,
-    n_runs: int,
-    timeout_ms: int, // required, must be >= 1
+    n_runs: number,
+    timeout_ms: number, // required, must be >= 1
     test_name?: string,
     expected_output_path: string,
     target: "x86_64" | "aarch64",
