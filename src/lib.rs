@@ -25,10 +25,12 @@ pub mod thread;
 pub mod virtual_memory;
 
 extern crate alloc;
+use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
+use alloc::sync::Arc;
+use spin::{Barrier, Once};
 
 #[cfg(test)]
 mod test_runtime {
-    use alloc::sync::Arc;
     use core::sync::atomic::Ordering;
 
     use limine::BaseRevision;
@@ -241,18 +243,16 @@ mod test_runtime {
     fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         rust_panic_impl(info);
     }
+}
 
-    // also copy-pasted from the tutorial
-    pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
-        let _barrier = Arc::new(Barrier::new(tests.len()));
-        kprintln!("Running tests...");
-        for test in tests {
-            test();
-        }
-        kprintln!("Done running tests.");
-        Arch::shutdown(0);
+// also copy-pasted from the tutorial
+pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
+    let _barrier = Arc::new(Barrier::new(tests.len()));
+    for test in tests {
+        test();
     }
+    Arch::shutdown(0);
 }
 
 #[cfg(test)]
-pub use test_runtime::{kernel_main, test_runner};
+pub use test_runtime::kernel_main;
