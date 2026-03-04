@@ -160,6 +160,7 @@ impl VirtualMemoryAllocation {
 impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
+        kprintln!("Deallocating frame {:x}-{:x}", self.base, self.base + self.length);
         while self.length > 0 {
             Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
             self.length -= Arch::PAGE_SIZE;
@@ -197,8 +198,10 @@ impl Drop for VirtualMemoryAllocation {
         }
         cursor.move_prev();
         if let Some(prev) = cursor.get() {
+            kprintln!("prev: {:x}-{:x}, found: {:x}-{:x}", prev.base, prev.base + prev.length, found.base, found.base + found.length);
             if prev.base + prev.length != found.base {
                 // remove, automagically drop (free), and merge with entry [prev.base + prev.length, found.base) in free tree
+                kprintln!("Finding {:x} and {:x}", found.base - prev.base - prev.length, prev.base + prev.length);
                 let below = free
                     .find(&(
                         found.base - prev.base - prev.length,

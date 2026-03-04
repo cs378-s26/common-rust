@@ -1,5 +1,8 @@
 use crate::device::acpi::get_acpi;
 use crate::print::kprintln;
+use crate::arch::{Arch, ArchTrait};
+use crate::virtual_memory::{VirtualMemoryAllocation, PagingOptions};
+use crate::physical_memory::HHDM_OFFSET;
 use acpi::platform::pci;
 use acpi::sdt::mcfg::Mcfg;
 use crate::sync::IntMutex;
@@ -202,14 +205,14 @@ struct GenericBridge {
     //we know what these are gonna be
     //pub class_code: u8,
     //pub subclass: u8,
-    pub address: u32,
+    pub address: usize,
     pub children: IntMutex<Vec<Arc<dyn Device>>>
     //TODO: look at bridge
 }
 use alloc::vec::Vec;
 use alloc::vec;
 impl GenericBridge {
-    pub fn new(bus_num: u8, address: u32, device_id: u16, vendor_id: u16) -> GenericBridge {
+    pub fn new(bus_num: u8, address: usize, device_id: u16, vendor_id: u16) -> GenericBridge {
         let children : Vec<Arc<dyn Device>> = pci_scan_bus(bus_num);
         Self {
             device_id,
@@ -223,7 +226,7 @@ impl GenericBridge {
 struct GenericDevice {
     pub device_id: u16,
     pub vendor_id: u16,
-    pub address: u32, 
+    pub address: u32,
     pub class_code: u8,
     pub subclass: u8
 }
@@ -241,6 +244,73 @@ pub trait Device {
     fn vendor_id(&self) -> u16;
     fn name(&self) -> &'static str;
     fn children(&self) -> Option<&IntMutex<Vec<Arc<dyn Device>>>>; // Only for bridges.
+}
+
+struct GenericPcieDevice {
+    pub device_id: u16,
+    pub vendor_id: u16,
+    pub class_code: u8,
+    pub subclass: u8,
+    pub cfg: PcieConfigSpace
+}
+
+struct GenericPcieBridge {
+    pub device_id: u16,
+    pub vendor_id: u16,
+    pub class_code: u8,
+    pub subclass: u8,
+    pub cfg: PcieConfigSpace,
+    pub children: IntMutex<Vec<Arc<dyn Device>>>
+}
+
+impl GenericPcieBridge {
+    pub fn new(cfg: PcieConfigSpace, bus_num: u8, device_id: u16, vendor_id: u16) -> GenericPcieBridge {
+        let children : Vec<Arc<dyn Device>> = pcie_scan_bus(0, bus_num);
+        Self {
+            device_id,
+            vendor_id,
+            class_code: 0x06,
+            subclass: 0x04,
+            cfg,
+            children : IntMutex::new(children)
+        }
+    }
+}
+
+impl Device for GenericPcieBridge {
+    fn device_id(&self) -> u16 {
+        self.device_id
+    }
+
+    fn vendor_id(&self) -> u16 {
+        self.vendor_id
+    }
+
+    fn name(&self) -> &'static str {
+        "Generic PCIe Bridge"
+    }
+
+    fn children(&self) -> Option<&IntMutex<Vec<Arc<dyn Device>>>> {
+        Some(&self.children)
+    }
+}
+
+impl Device for GenericPcieDevice {
+    fn device_id(&self) -> u16 {
+        self.device_id
+    }
+
+    fn vendor_id(&self) -> u16 {
+        self.vendor_id
+    }
+
+    fn name(&self) -> &'static str {
+        "Generic PCIe Device"
+    }
+
+    fn children(&self) -> Option<&IntMutex<Vec<Arc<dyn Device>>>> {
+        None
+    }
 }
 
 impl Device for GenericBridge {
@@ -369,7 +439,7 @@ fn pci_scan_function(bus: u8, device: u8, function: u8, register0: u32) ->
             let secondary_bus = Pci::read_u8(bus, device, function, SECONDARY_BUS_OFFSET);
             Some(Arc::new(GenericBridge::new(
                 secondary_bus, 
-                pci_address(bus, device, function, 0),
+                pci_address(bus, device, function, 0) as usize,
                 device_id,
                 vendor_id
             )))
@@ -413,6 +483,180 @@ fn pci_scan_bus(bus: u8) -> Vec<Arc<dyn Device>> {
     devices
 }
 
+struct PcieMMIO {
+    base : usize
+}
+
+struct PcieConfigSpace {
+    bus: u8,
+    device: u8,
+    function: u8,
+    mapping: VirtualMemoryAllocation
+}
+
+
+impl PcieConfigSpace {
+    pub fn new(base : usize, bus: u8, device: u8, function: u8) -> Self {
+        let address = pcie_address(base, bus, device, function, 0);
+        let mapping = 
+            VirtualMemoryAllocation::new(Arch::get_address_space(), 
+            4096, 
+            Some(address), 
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::WRITE_THROUGH);
+        Self {
+            bus,
+            device,
+            function,
+            mapping
+        }
+    }
+}
+
+impl PcieConfigSpace {
+    fn read_u32(&self, offset: u16) -> u32 {
+        let address = self.mapping.base + (offset & 0xfff) as usize;
+        kprintln!("Reading from PCIe config space at address {:#x}", address);
+        unsafe { core::ptr::read_volatile(address as *const u32) }
+    }
+
+    fn write_u32(&self, offset: u16, value: u32) {
+        let address = self.mapping.base + (offset & 0xfff) as usize;
+        unsafe { core::ptr::write_volatile(address as *mut u32, value) }
+    }
+
+    fn read_u8(&self, offset: u16) -> u8 {
+        ((self.read_u32(offset) >> ((offset & 3) * 8)) & 0xFF) as u8
+    }
+
+    fn read_u16(&self, offset: u16) -> u16 {
+        ((self.read_u32(offset) >> ((offset & 2) * 8)) & 0xFFFF) as u16
+    }
+}
+
+trait PciAccess {
+    fn read_u8(&self, bus : u8, device : u8, function : u8, offset : u8) -> u8 {
+        ((self.read_u32(bus, device, function, offset) >> ((offset & 3) * 8)) & 0xFF) as u8
+    }
+    fn read_u16(&self, bus : u8, device : u8, function : u8, offset : u8) -> u16 {
+        ((self.read_u32(bus, device, function, offset) >> ((offset & 2) * 8)) & 0xFFFF) as u16
+    }
+    fn read_u32(&self, bus : u8, device : u8, function : u8, offset : u8) -> u32;
+    fn write_u8(&self, bus : u8, device : u8, function : u8, offset : u8, value : u8) {
+        let current_value = self.read_u32(bus, device, function, offset);
+        let new_value = (current_value & !(0xFF << ((offset & 3) * 8))) | ((value as u32) << ((offset & 3) * 8));
+        self.write_u32(bus, device, function, offset, new_value);
+    }
+    fn write_u16(&self, bus : u8, device : u8, function : u8, offset : u8, value : u16) {
+        let current_value = self.read_u32(bus, device, function, offset);
+        let new_value = (current_value & !(0xFFFF << ((offset & 2) * 8))) | ((value as u32) << ((offset & 2) * 8));
+        self.write_u32(bus, device, function, offset, new_value);
+    }
+    fn write_u32(&self, bus : u8, device : u8, function : u8, offset : u8, value : u32);
+}
+
+fn pcie_address(base : usize, bus: u8, device: u8, function: u8, offset: u8) -> usize {
+        (base + (((bus as u64) << 20)
+        | ((device as u64) << 15)
+        | ((function as u64) << 12)
+        | (offset as u64 & 0xFFF)) as usize) as usize
+}
+
+impl PciAccess for PcieMMIO {
+    fn read_u32(&self, bus: u8, device: u8, function: u8, offset: u8) -> u32 {
+        let address = pcie_address(self.base, bus, device, function, offset);
+        unsafe { core::ptr::read_volatile(address as *const u32) }
+    }
+
+    fn write_u32(&self, bus: u8, device: u8, function: u8, offset: u8, value: u32) {
+        let address = pcie_address(self.base, bus, device, function, offset) as *mut u32;
+        unsafe { core::ptr::write_volatile(address as *mut u32, value) }
+    }
+}
+
+
+
+fn pcie_scan_bus(base : usize, bus: u8) -> Vec<Arc<dyn Device>> {
+    let mut devices : Vec<Arc<dyn Device>> = vec![];
+    for device in 0..=31 {
+        let mapping = PcieConfigSpace::new(base, bus, device, 0);
+        let vendor_id = mapping.read_u16(0);
+        if (vendor_id & 0xFFFF) as u16 == INVALID_VENDOR_ID {
+            continue;
+        }
+        kprintln!("Found PCIe device: bus={}, device={}, vendor_id={:#x}", bus, device, vendor_id);
+        devices.append(&mut pcie_scan_device(mapping, base, bus, device));
+        kprintln!("Done scanning device");
+        //core::mem::drop(mapping); // this is really just to make sure we don't have too many mappings open at once, since each device has its own config space mapping. We could also just reuse the same mapping for every device, but this is easier for now.
+    }
+    devices
+}
+
+fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u8) -> Vec<Arc<dyn Device>> {
+    let mut functions : Vec<Arc<dyn Device>> = vec![];
+    let header_type = mapping.read_u32(0xc) >> 16;
+    let reg0 = mapping.read_u32(0);
+    kprintln!("Mapping address: {:x}", mapping.mapping.base);
+    if let Some(dev) = pcie_scan_function(mapping, reg0) {
+        kprintln!("Pushing device");
+        functions.push(dev);
+    }
+    if header_type & 0x80 != 0 {
+        for function in 1..=7 {
+            let mapping = PcieConfigSpace::new(base, bus, device, function);
+            let vendor_id = reg0 & 0xFFFF;
+            if (vendor_id & 0xFFFF) as u16 == INVALID_VENDOR_ID {
+                continue;
+            }
+            if let Some(dev) = pcie_scan_function(mapping, reg0) {
+                kprintln!("Pushing device");
+                functions.push(dev);
+            }
+        }
+    }
+    functions
+}
+
+fn pcie_scan_function(handle: PcieConfigSpace, register0: u32) -> 
+    Option<Arc<dyn Device>> {
+    let device_id = (register0 >> 16) as u16;
+    let vendor_id = (register0 & 0xFFFF) as u16;
+    if vendor_id == INVALID_VENDOR_ID {
+        None
+    } else {
+        kprintln!(
+            "Found PCI device: vendor_id={:#x}, device_id={:#x}",
+            vendor_id,
+            device_id
+        );
+
+        let register2 = handle.read_u32( 0x8);
+        let class_code = (register2 >> 24) as u8;
+        let subclass = ((register2 >> 16) & 0xFF) as u8;
+
+        if class_code == 0x06 && subclass == 0x04 {
+            kprintln!("Found PCIe bridge: vendor_id={:#x}, device_id={:#x}", vendor_id, device_id);
+            let secondary_bus = handle.read_u8(SECONDARY_BUS_OFFSET.into());
+            Some(Arc::new(GenericPcieBridge::new(
+                handle,
+                secondary_bus, 
+                device_id,
+                vendor_id
+            )))
+        } else {
+            kprintln!("Creating new GenericPCIeDevice for vendor_id={:#x}, device_id={:#x}", vendor_id, device_id);
+            let ret: Option<Arc<dyn Device>> = Some(Arc::new(GenericPcieDevice{
+                 cfg: handle,
+                 device_id,
+                 vendor_id,
+                 class_code,
+                 subclass
+            }));
+            ret
+        }
+    }
+}   
+
+
 pub fn init_pci() {
     kprintln!("Initializing PCI.");
     //let root = DeviceNode::new(0, "root", BusType::PCI);
@@ -422,7 +666,7 @@ pub fn init_pci() {
             let base_address = entry.base_address;
             let segment_group = entry.pci_segment_group;
             let bus_start = entry.bus_number_start;
-            let bus_end = entry.bus_number_end;
+            let bus_end: u8 = entry.bus_number_end;
 
             kprintln!(
                 "PCI: base={:#x}, segment_group={:#x}, bus_start={:#x}, bus_end={:#x}",
@@ -431,6 +675,19 @@ pub fn init_pci() {
                 bus_start,
                 bus_end
             );
+
+            let mut children : Vec<Arc<dyn Device>> = vec![];
+            for bus in bus_start..=bus_end {
+                let mut bus_devices = pcie_scan_bus(base_address as usize, bus);
+                children.append(&mut bus_devices);
+            }
+            let root : Arc<dyn Device> = Arc::new(
+                PCIRoot {
+                    children: IntMutex::new(children)
+                }
+            );
+            kprintln!("Traversing tree");
+            traverse_tree(&root, 0);
         }
         // TODO: MCFG stuff.
     } else {
