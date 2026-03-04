@@ -19,14 +19,13 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
-use kernel_common::arch::{dump_core_state, gicd_init};
+use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
-use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
+use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::device::device::{init_device_tree, map_virtio_devices};
 use kernel_common::heap::init_malloc;
-use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-use kernel_common::physical_memory::{HHDM_REQUEST, THE_HEAP, init_physical_memory_allocator};
+use kernel_common::mp::{init_cpu_local_table, CORE_ID, MPStage, MP_STAGE};
+use kernel_common::physical_memory::{init_physical_memory_allocator, THE_HEAP};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
@@ -209,8 +208,6 @@ unsafe extern "C" fn system_main() -> ! {
     init_device_tree();
 
     map_virtio_devices();
-
-    gicd_init(); // this is ARM specific and must be abstracted away at some point
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

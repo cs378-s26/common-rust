@@ -20,6 +20,12 @@ use crate::{
 #[debug("CoreId({_0})")]
 pub struct CoreId(pub usize);
 
+impl CoreId {
+    pub fn is_bsp(&self) -> bool {
+        self.0 == 0
+    }
+}
+
 // core local stuff
 
 #[repr(C)]

@@ -9,6 +9,7 @@ use crate::arch::IrqStateTrait;
 mod asm;
 mod context;
 mod exceptions;
+pub mod gic;
 mod interrupt;
 pub mod apic;
 mod mp;
@@ -18,9 +19,8 @@ mod vmm;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
+pub use gic::timer_ticks;
 pub use interrupt::*;
-pub use apic::timer_ticks;
-use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
@@ -86,6 +86,10 @@ impl ArchTrait for Arch {
 
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
+    }
+
+    fn timer_ticks() -> u64 {
+        gic::timer_ticks()
     }
 
     const PAGE_SIZE: usize = 4096;

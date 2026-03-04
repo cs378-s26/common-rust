@@ -93,6 +93,10 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn timer_ticks() -> u64 {
+        interrupt::timer_ticks()
+    }
+
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {

@@ -1,7 +1,7 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
-    arch::aarch64::{exceptions, interrupt},
-    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
+    arch::aarch64::{exceptions, gic, interrupt},
+    mp::{core_local, get_cpu_local_pointer_for, CoreId, CORE_ID},
     print::kprintln,
 };
 use core::arch::asm;
@@ -89,11 +89,13 @@ pub unsafe fn initialize_core(cpu: &Cpu) -> () {
         get_cpu_local_pointer_for(id)
     );
 
-    // TODO: handle interrupts
     exceptions::init_exceptions();
-    interrupt::gicc_init();
+    if CORE_ID.get().is_bsp() {
+        gic::gicd_init();
+    }
+    gic::gicc_init();
     unsafe {
         interrupt::enable();
-        interrupt::timer_init(); // kicks off all timers by setting them on a 1s loop
+        gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
     }
 }

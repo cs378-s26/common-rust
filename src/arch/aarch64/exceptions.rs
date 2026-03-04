@@ -1,12 +1,10 @@
-use crate::arch::aarch64::interrupt::{self, GICC_BASE_VIRT, GICC_EOIR, GICC_IAR};
 use crate::{
-    arch::{Arch, IrqStateTrait},
+    arch::aarch64::gic,
     mp::CORE_ID,
     print::kprintln,
 };
 use core::arch::{asm, global_asm};
 use core::fmt;
-use core::sync::atomic::Ordering;
 
 global_asm!(include_str!("exception.s"));
 
@@ -52,32 +50,29 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
     default_exception_handler(e);
 }
 
+fn timer_interrupt_handler() {
+    gic::setup_timer(); // reset timer
+    gic::inc_timer_ticks();
+    let ticks = gic::timer_ticks();
+    kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
+}
+
 #[unsafe(no_mangle)]
-extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
-    let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
-    let intid = unsafe { ((gicc_virt + GICC_IAR) as *const u32).read_volatile() } & 0x3FF;
+extern "C" fn current_elx_irq(_e: &mut ExceptionContext) {
+    let intid = gic::ack_irq();
+
     match intid {
-        30 => {
-            unsafe {
-                core::arch::asm!(
-                    "msr CNTP_TVAL_EL0, {}",
-                    in(reg) *interrupt::TIMER_INTERVAL.get().expect("UNINITIALIZED TIMER INTERVAL")
-                );
-            }
-            let ticks = interrupt::TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
-            kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks + 1);
-        }
+        30 => timer_interrupt_handler(),
         1023 => {
             kprintln!("Spurrious interrupt");
+            // No EOI for spurious interrupts
             return;
         }
         _ => panic!("unexpected INTID: {}", intid),
     }
 
     // signal irq handled
-    unsafe {
-        ((gicc_virt + GICC_EOIR) as *mut u32).write_volatile(intid as u32);
-    }
+    gic::eoi(intid);
 }
 
 #[unsafe(no_mangle)]
