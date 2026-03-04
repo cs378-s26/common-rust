@@ -71,12 +71,10 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
 }
 
 pub unsafe fn initialize_core(cpu: &Cpu) {
-    // kprintln!("hello from x86::initialize_core");
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     LAPIC_ID.store(cpu.lapic_id, Ordering::Relaxed);
-    kprintln!("Core initialized.");
 
     let cpu_id = CpuId::new();
 
