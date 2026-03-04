@@ -27,3 +27,11 @@ jobs:
               run: |
                   cargo buildtool test --target x86-64
                   cargo buildtool test --target aarch64
+
+            - name: Upload cached testing directory on failure
+              if: ${{ failure() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: buildtool-cache-testing
+                  path: buildtool-cache/testing
+                  if-no-files-found: warn
