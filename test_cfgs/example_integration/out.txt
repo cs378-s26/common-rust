@@ -4,10 +4,6 @@ limine rev: 4
 bootloader: Limine v10.8.2
 fimrware: uefi (64-bit)
 mem::init_malloc(): initializing heap
-Core initialized.
-Core initialized.
-Core initialized.
-Core initialized.
 features:
 avx = present
 sse4.2 = present
