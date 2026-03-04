@@ -20,6 +20,11 @@ use tempfile::NamedTempFile;
 use uuid::Uuid;
 
 mod debug;
+mod gdb;
+mod image;
+mod qemu;
+mod qemu_test;
+mod test;
 
 const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";
@@ -36,63 +41,63 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, Copy)]
-enum Target {
+#[derive(clap::ValueEnum, Clone, Debug, Copy, PartialEq, Eq)]
+pub enum Target {
     X86_64,
     Aarch64,
 }
 
 impl Target {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Target::X86_64 => "x86_64",
             Target::Aarch64 => "aarch64",
         }
     }
 
-    fn limine_url(self) -> &'static str {
+    pub fn limine_url(self) -> &'static str {
         match self {
             Target::X86_64 => LIMINE_X86_URL,
             Target::Aarch64 => LIMINE_AARCH64_URL,
         }
     }
 
-    fn ovmf_url(self) -> &'static str {
+    pub fn ovmf_url(self) -> &'static str {
         match self {
             Target::X86_64 => OVMF_X86_URL,
             Target::Aarch64 => OVMF_AARCH64_URL,
         }
     }
 
-    fn target_triple(self) -> &'static str {
+    pub fn target_triple(self) -> &'static str {
         match self {
             Target::X86_64 => "x86_64-unknown-none",
             Target::Aarch64 => "aarch64-unknown-none",
         }
     }
 
-    fn strip_tool(self) -> &'static str {
+    pub fn strip_tool(self) -> &'static str {
         match self {
             Target::X86_64 => "strip",
             Target::Aarch64 => "aarch64-linux-gnu-strip",
         }
     }
 
-    fn limine_efi_path(self) -> &'static str {
+    pub fn limine_efi_path(self) -> &'static str {
         match self {
             Target::X86_64 => "efi/boot/BOOTX64.EFI",
             Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
         }
     }
 
-    fn qemu_machine(self) -> &'static str {
+    pub fn qemu_machine(self) -> &'static str {
         match self {
             Target::X86_64 => "pc",
             Target::Aarch64 => "virt",
         }
     }
 
-    fn qemu_display_args(self) -> &'static [&'static str] {
+    pub fn qemu_display_args(self) -> &'static [&'static str] {
         match self {
             Target::X86_64 => &["-vga", "std"],
             // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
@@ -100,14 +105,14 @@ impl Target {
         }
     }
 
-    fn qemu_binary(self) -> &'static str {
+    pub fn qemu_binary(self) -> &'static str {
         match self {
             Target::X86_64 => "qemu-system-x86_64",
             Target::Aarch64 => "qemu-system-aarch64",
         }
     }
 
-    fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
+    pub fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
         match self {
             Target::X86_64 => None,
             // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
@@ -115,7 +120,7 @@ impl Target {
         }
     }
 
-    fn requires_c_toolchain_config(self) -> bool {
+    pub fn requires_c_toolchain_config(self) -> bool {
         matches!(self, Target::Aarch64)
     }
 }
@@ -134,7 +139,7 @@ fn require_tool(name: &str) -> Result<()> {
     }
 }
 
-fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
+pub fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
     if !target.requires_c_toolchain_config() {
         return Ok(());
     }
@@ -175,9 +180,9 @@ enum Commands {
         release: bool,
     },
     QemuTest {
-        path_to_kernel: String,
-        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
-        target: Target,
+        test_cfg_path: String,
+        #[arg(short = 'r', long)]
+        release: bool,
     },
     Gdb {
         #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
@@ -196,24 +201,24 @@ enum Commands {
     Clean,
 }
 
-fn cache_dir() -> Result<PathBuf> {
+pub fn cache_dir() -> Result<PathBuf> {
     let root = current_dir()?.join("buildtool-cache");
     fs::create_dir_all(&root)?;
     Ok(root)
 }
 
-fn resources_dir() -> Result<PathBuf> {
+pub fn resources_dir() -> Result<PathBuf> {
     let root = current_dir()?.join("resources");
     Ok(root)
 }
 
-fn run_dir() -> Result<PathBuf> {
+pub fn run_dir() -> Result<PathBuf> {
     let root = current_dir()?.join("run");
     fs::create_dir_all(&root)?;
     Ok(root)
 }
 
-fn download_limine(target: Target) -> Result<PathBuf> {
+pub fn download_limine(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
     let limine_path = root.join(format!("limine-{}.efi", target.name()));
 
@@ -228,7 +233,7 @@ fn download_limine(target: Target) -> Result<PathBuf> {
     Ok(limine_path)
 }
 
-fn download_ovmf(target: Target) -> Result<PathBuf> {
+pub fn download_ovmf(target: Target) -> Result<PathBuf> {
     let root = cache_dir()?;
     let ovmf_path = root.join(format!("ovmf-{}.fd", target.name()));
 
@@ -243,7 +248,7 @@ fn download_ovmf(target: Target) -> Result<PathBuf> {
     Ok(ovmf_path)
 }
 
-fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
+pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
     let mut args = vec![
         "build",
         "--message-format=json-render-diagnostics",
@@ -327,7 +332,7 @@ fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, 
     Ok((executable, crate_paths))
 }
 
-fn path_to_string(path: &Path) -> Result<String> {
+pub fn path_to_string(path: &Path) -> Result<String> {
     Ok(path
         .canonicalize()?
         .to_str()
@@ -335,7 +340,7 @@ fn path_to_string(path: &Path) -> Result<String> {
         .to_string())
 }
 
-fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
+pub fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     let cache = cache_dir()?;
     let tmp_stripped = NamedTempFile::new_in(&cache)?;
 
@@ -357,7 +362,7 @@ fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     Ok(fs::read(tmp_stripped)?)
 }
 
-fn build_image(
+pub fn build_image(
     build_res: &(PathBuf, Vec<(String, PathBuf)>),
     release: bool,
     target: Target,
@@ -466,7 +471,10 @@ fn build_image(
     Ok(output_img)
 }
 
-fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>) -> Result<()> {
+pub fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(
+    command: &str,
+    args: Vec<T>,
+) -> Result<()> {
     eprintln!("running: {} {:?}", command, args);
     let err = Command::new(command)
         .args(args)
@@ -475,164 +483,28 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
     Err(err.into())
 }
 
-fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
-    let path = build_image(&build_kernel(release, target)?, release, target)?;
-
-    let machine = target.qemu_machine();
-
-    let mut args = vec![
-        "-machine".into(),
-        machine.into(),
-        "-bios".into(),
-        path_to_string(&download_ovmf(target)?)?,
-        "-drive".into(),
-        format!("file={},format=raw", path_to_string(&path)?),
-        "-no-reboot".into(),
-        "-monitor".into(),
-        "stdio".into(),
-        "-d".into(),
-        "int,cpu_reset".into(),
-        "-D".into(),
-        "qemu.log".into(),
-        "-no-shutdown".into(),
-        "-s".into(),
-        // "-S".into(),
-        // "-M".into(),
-        // "smm=off".into(),
-        "-m".into(),
-        format!("{}G", mem_g),
-        "-smp".into(),
-        format!("{}", cores),
-        "-serial".into(),
-        format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
-    ];
-
-    args.extend(
-        target
-            .qemu_display_args()
-            .iter()
-            .map(|arg| (*arg).to_string()),
-    );
-
-    if kvm {
-        args.push("-enable-kvm".into());
-        args.push("-cpu".into());
-        args.push("host".into());
-    } else if let Some(cpu) = target.qemu_cpu_without_kvm() {
-        args.push("-cpu".into());
-        args.push(cpu.into());
-    }
-
-    let qemu_binary = target.qemu_binary();
-    exec(qemu_binary, args)
-}
-
-fn gdb(kvm: bool, release: bool, target: Target) -> Result<()> {
-    let (kernel_elf, _) = build_kernel(release, target)?;
-
-    let gdb_args = if kvm {
-        vec!["target remote localhost:1234", "hbreak system_main", "c"]
-    } else {
-        vec!["target remote localhost:1234", "b system_main", "c"]
-    };
-
-    let mut args = vec![path_to_string(&kernel_elf)?];
-
-    for ent in gdb_args {
-        args.push("-ex".into());
-        args.push(ent.into());
-    }
-
-    exec("rust-gdb", args)
-}
-
-// TODO: currently not doing ricky debug magic
-fn test_kernel(release: bool, target: Target) -> Result<()> {
-    let mut args = vec![
-        "test",
-        // "--message-format=json-render-diagnostics",
-        // "-Zbuild-std=core,alloc",
-        "--lib", "--target",
-    ];
-
-    let target_triple = target.target_triple();
-    args.push(target_triple);
-
-    if release {
-        args.push("--release");
-    }
-
-    let mut cmd = Command::new("cargo");
-    cmd.args(args)
-        .env(
-            "RUSTFLAGS",
-            "-C relocation-model=static -C force-frame-pointers=yes",
-        )
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    configure_c_toolchain(target, &mut cmd)?;
-
-    let status = cmd.status()?;
-    if !status.success() {
-        return Err(Error::msg(format!(
-            "cargo test failed with status {status}"
-        )));
-    }
-
-    Ok(())
-}
-
-fn qemu_test(path_to_kernel: String, target: Target) -> Result<()> {
-    let img_path = build_image(&(PathBuf::from(path_to_kernel), vec![]), false, target)?;
-    let args = vec![
-        path_to_string(&download_ovmf(target)?)?,
-        format!("{}", path_to_string(&img_path)?),
-        format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
-    ];
-    let qemu_str = format!("../run_qemu_{}.sh", target.name());
-    eprintln!("running: {} {:?}", qemu_str, args);
-    let res = Command::new(qemu_str)
-        .args(args)
-        .current_dir(run_dir()?)
-        .status()?;
-    println!("{:#?}", res);
-    match res.code() {
-        Some(code) => {
-            if code == 1 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("bad"))
-            }
-        }
-        None => Err(anyhow::anyhow!("bad")),
-    }
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Image { target, release } => {
-            build_image(&build_kernel(release, target)?, release, target)?;
-        }
+        Commands::Image { target, release } => image::run(release, target)?,
         Commands::Qemu {
             target,
             kvm,
             cores,
             mem,
             release,
-        } => qemu(kvm, cores, mem, release, target)?,
+        } => qemu::run(kvm, cores, mem, release, target)?,
         Commands::Gdb {
             target,
             kvm,
             release,
-        } => gdb(kvm, release, target)?,
-        Commands::Test { release, target } => test_kernel(release, target)?,
+        } => gdb::run(kvm, release, target)?,
+        Commands::Test { release, target } => test::run_all(release, target)?,
         Commands::QemuTest {
-            path_to_kernel,
-            target,
-        } => qemu_test(path_to_kernel, target)?,
+            test_cfg_path,
+            release,
+        } => qemu_test::run(test_cfg_path, release)?,
         Commands::Clean => {
             fs::remove_dir_all(cache_dir()?)?;
             cache_dir()?;
