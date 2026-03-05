@@ -50,7 +50,7 @@ mod test_runtime {
     use crate::print::{StackTrace, init_tty, kprintln};
     use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
     use crate::virtual_memory::init_virtual_memory_allocator;
-    use crate::device::{init_acpi, init_pci, acpi_tables};
+    use crate::device::{init_acpi, init_pci, acpi_tables, traverse_tree};
 
     // some sample limine requests, for no particular reason
     #[used]
@@ -221,7 +221,8 @@ mod test_runtime {
         } else {
             kprintln!("warn: no response received for RSDP request");
         }
-        init_pci();
+        let device_tree = init_pci();
+        traverse_tree(&device_tree, 0);
 
         // handle SSE/FSGSBASE/etc in initialize_mp
         let mp_res = MP_REQUEST

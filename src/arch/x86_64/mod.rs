@@ -94,8 +94,8 @@ impl ArchTrait for Arch {
         vmap(space, vaddr, paddr, options);
     }
 
-    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
-        vunmap(space, vaddr)
+    fn virtual_unmap(space: u64, vaddr: u64, is_mmio: bool) -> Option<u64> {
+        vunmap(space, vaddr, is_mmio)
     }
 
     fn shutdown(err_code: u16) {

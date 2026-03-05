@@ -4,6 +4,7 @@ use crate::arch::{Arch, ArchTrait};
 use crate::virtual_memory::{VirtualMemoryAllocation, PagingOptions};
 use crate::physical_memory::HHDM_OFFSET;
 use acpi::platform::pci;
+use super::drivers::init_e1000e;
 use acpi::sdt::mcfg::Mcfg;
 use crate::sync::IntMutex;
 use alloc::boxed::Box;
@@ -487,7 +488,7 @@ struct PcieMMIO {
     base : usize
 }
 
-struct PcieConfigSpace {
+pub struct PcieConfigSpace {
     bus: u8,
     device: u8,
     function: u8,
@@ -502,7 +503,7 @@ impl PcieConfigSpace {
             VirtualMemoryAllocation::new(Arch::get_address_space(), 
             4096, 
             Some(address), 
-            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::WRITE_THROUGH);
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::WRITE_THROUGH | PagingOptions::MMIO);
         Self {
             bus,
             device,
@@ -521,6 +522,12 @@ impl PcieConfigSpace {
     fn write_u32(&self, offset: u16, value: u32) {
         let address = self.mapping.base + (offset & 0xfff) as usize;
         unsafe { core::ptr::write_volatile(address as *mut u32, value) }
+    }
+
+    fn write_16(&self, offset: u16, value: u16) {
+        let current_value = self.read_u32(offset);
+        let new_value = (current_value & !(0xFFFF << ((offset & 2) * 8))) | ((value as u32) << ((offset & 2) * 8));
+        self.write_u32(offset, new_value);
     }
 
     fn read_u8(&self, offset: u16) -> u8 {
@@ -572,13 +579,35 @@ impl PciAccess for PcieMMIO {
     }
 }
 
+//we presume that BAR is memory mapped. Hopefully this doesn't lead to anything horrible
+pub fn pcie_map_bar(handle : &mut PcieConfigSpace, offset: u8) -> VirtualMemoryAllocation {
+    let bar_value = handle.read_u32(0x10 + ((offset * 4) as u16));
+    kprintln!("BAR{} value: {:#x}", offset, bar_value);
+    if (bar_value & 1 == 1) {
+        panic!("IO space BARs not supported yet");
+    }
+    if (bar_value & 0x4) == 0x4 {
+        panic!("64-bit BARs not supported yet");
+    }
+    let base_address = bar_value & 0xFFFFFFF0;
+    handle.write_u32(0x10 + ((offset * 4) as u16), 0xffffffff);
+    let size = !(handle.read_u32(0x10 + ((offset * 4) as u16)) & 0xFFFFFFF0) + 1;
+    kprintln!("BAR{} base address: {:#x}, size: {:#x}", offset, base_address, size);
+    let cmdreg = handle.read_u16(4) & 0xff;
+    kprintln!("cmdreg: {:#x}", cmdreg);
+    handle.write_16(4, cmdreg | (1 << 1));
+    VirtualMemoryAllocation::new(Arch::get_address_space(), 
+                                size as usize, 
+                                Some(base_address as usize), 
+                                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::WRITE_THROUGH | PagingOptions::MMIO)
+}
 
 
 fn pcie_scan_bus(base : usize, bus: u8) -> Vec<Arc<dyn Device>> {
     let mut devices : Vec<Arc<dyn Device>> = vec![];
     for device in 0..=31 {
         kprintln!("Scanning PCIe device at bus {}, device {}", bus, device);
-        let mapping = PcieConfigSpace::new(base, bus, device, 0);
+        let mut mapping = PcieConfigSpace::new(base, bus, device, 0);
         let vendor_id = mapping.read_u16(0);
         if (vendor_id & 0xFFFF) as u16 == INVALID_VENDOR_ID {
             continue;
@@ -590,7 +619,7 @@ fn pcie_scan_bus(base : usize, bus: u8) -> Vec<Arc<dyn Device>> {
     devices
 }
 
-fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u8) -> Vec<Arc<dyn Device>> {
+fn pcie_scan_device(mut mapping: PcieConfigSpace, base : usize, bus : u8, device : u8) -> Vec<Arc<dyn Device>> {
     let mut functions : Vec<Arc<dyn Device>> = vec![];
     let header_type = mapping.read_u32(0xc) >> 16;
     let reg0 = mapping.read_u32(0);
@@ -599,12 +628,12 @@ fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u
     }
     if header_type & 0x80 != 0 {
         for function in 1..=7 {
-            let mapping = PcieConfigSpace::new(base, bus, device, function);
+            let mut mapping = PcieConfigSpace::new(base, bus, device, function);
             let vendor_id = reg0 & 0xFFFF;
             if (vendor_id & 0xFFFF) as u16 == INVALID_VENDOR_ID {
                 continue;
             }
-            if let Some(dev) = pcie_scan_function(mapping, reg0) {
+            if let Some(dev) = pcie_scan_function( mapping, reg0) {
                 functions.push(dev);
             }
         }
@@ -612,7 +641,7 @@ fn pcie_scan_device(mapping: PcieConfigSpace, base : usize, bus : u8, device : u
     functions
 }
 
-fn pcie_scan_function(handle: PcieConfigSpace, register0: u32) -> 
+fn pcie_scan_function(mut handle: PcieConfigSpace, register0: u32) -> 
     Option<Arc<dyn Device>> {
     let device_id = (register0 >> 16) as u16;
     let vendor_id = (register0 & 0xFFFF) as u16;
@@ -630,7 +659,10 @@ fn pcie_scan_function(handle: PcieConfigSpace, register0: u32) ->
             class_code,
             subclass
         );
-
+        if device_id == 0x10d3 {
+            kprintln!("Found network card");
+            init_e1000e(&mut handle);
+        }
         if class_code == 0x06 && subclass == 0x04 {
             kprintln!("Found PCIe bridge: vendor_id={:#x}, device_id={:#x}", vendor_id, device_id);
             let secondary_bus = handle.read_u8(SECONDARY_BUS_OFFSET.into());
@@ -662,9 +694,8 @@ fn has_single_controller(base : usize, bus_start: u8) -> bool {
 }
 
 
-pub fn init_pci() {
+pub fn init_pci() -> Arc<dyn Device> {
     kprintln!("Initializing PCI.");
-    //let root = DeviceNode::new(0, "root", BusType::PCI);
     let acpi_info = get_acpi();
     if let Some(mcfg) = acpi_info.tables.find_table::<Mcfg>() {
         for entry in mcfg.entries() {
@@ -699,7 +730,7 @@ pub fn init_pci() {
                 }
             );
             kprintln!("Traversing tree");
-            traverse_tree(&root, 0);
+            return root;
         }
         // TODO: MCFG stuff.
     } else {
@@ -717,7 +748,7 @@ pub fn init_pci() {
                     children: IntMutex::new(children)
                 }
             );
-            traverse_tree(&pci_host, 0);
+            return pci_host;
         } else {
             // this was some surprisingly elegant code by our little friend
             let controllers : Vec<Arc<dyn Device>> = (0..=7).filter_map(|function| {
@@ -739,8 +770,9 @@ pub fn init_pci() {
                     children: IntMutex::new(controllers)
                 }
             );
-            traverse_tree(&root, 0);
+            return root;
         }
     }
     kprintln!("PCI initialized.");
+    panic!("Shouldn't reach this point");
 }

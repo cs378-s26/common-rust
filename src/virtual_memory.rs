@@ -28,6 +28,7 @@ bitflags! {
         const WRITE_THROUGH = 1 << 4;
         const CACHEABLE = 1 << 5;
         const GLOBAL = 1 << 6;
+        const MMIO = 1 << 7;
     }
 }
 
@@ -109,6 +110,7 @@ pub struct VirtualMemoryAllocation {
     pub space: u64,
     pub base: usize,
     pub length: usize,
+    pub options: PagingOptions,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -149,11 +151,11 @@ impl VirtualMemoryAllocation {
                 i += Arch::PAGE_SIZE;
             }
         }
-        kprintln!("Allocated VME starting at {:x}, len {:x}", base, length);
         VirtualMemoryAllocation {
             space,
             base,
             length,
+            options,
         }
     }
 }
@@ -163,7 +165,7 @@ impl Drop for VirtualMemoryAllocation {
         // remove any mapped pages from the page table
         let mut cur_addr = self.base;
         while cur_addr < (self.base + self.length) {
-            Arch::virtual_unmap(self.space, cur_addr as u64);
+            Arch::virtual_unmap(self.space, cur_addr as u64, self.options.contains(PagingOptions::MMIO));
             cur_addr += Arch::PAGE_SIZE;
         }
         let mut vmes = VMES
@@ -270,7 +272,7 @@ mod test {
                     assert!(unsafe { *((vaddr + i) as *mut u8) } == i as u8);
                 }
                 kprintln!("manually unmapping vmem");
-                Arch::virtual_unmap(Arch::get_address_space(), vaddr);
+                Arch::virtual_unmap(Arch::get_address_space(), vaddr, false);
 
                 kprintln!("properly mapping vmem");
                 let mmapped = VirtualMemoryAllocation::new(

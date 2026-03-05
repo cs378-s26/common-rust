@@ -122,7 +122,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
 
 fn nothing(_ : usize) {}
 
-pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+pub fn vunmap(space: u64, vaddr: u64, is_mmio: bool) -> Option<u64> {
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper: OffsetPageTable<'_> = unsafe {
         OffsetPageTable::new(
@@ -133,6 +133,7 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
 
     let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr))
         .unwrap_or_else(|_| panic!("misaligned virtual address {:x} to vunmap", vaddr));
+    let inner = if is_mmio { nothing } else { frame_dealloc };
     if let Ok((frame, toilet)) = {
         let _ = VMM_PROTECTOR.lock();
         mapper.unmap(vpage)
@@ -140,7 +141,7 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI... // TODO! TLB shootdown
         unsafe {
             FrameDeallocatorWrapper {
-                inner: nothing,
+                inner // don't actually deallocate MMIO frames since they're not really allocated, but we want to be able to call the same code for both MMIO and normal pages
             }
             .deallocate_frame(frame)
         }; // no shared mappings for now

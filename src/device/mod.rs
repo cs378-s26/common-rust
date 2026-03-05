@@ -1,5 +1,6 @@
 pub mod acpi;
 pub mod pci;
+pub mod drivers;
 
 pub use acpi::{acpi_tables, get_acpi, init_acpi};
-pub use pci::init_pci;
+pub use pci::{init_pci, Device, traverse_tree};
