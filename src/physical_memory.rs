@@ -134,15 +134,15 @@ pub fn alloc_frames(frames: usize) -> usize {
     let mut end = END.lock();
     let regions = unwrap(&REGIONS);
     while end.offset + Arch::PAGE_SIZE * frames > regions[end.region].length as usize {
-        if let Some(region) = ((end.region + 1)..regions.len())
-            .find(|&r| regions[r].entry_type == EntryType::USABLE)
+        if let Some(region) =
+            ((end.region + 1)..regions.len()).find(|&r| regions[r].entry_type == EntryType::USABLE)
         {
             *end = FrameLocation { region, offset: 0 };
             continue;
         }
         panic!("No usable memory regions found");
     }
-    
+
     let entry = unwrap(&REGIONS)[end.region];
     let frame: usize = entry.base as usize + end.offset;
     end.offset += Arch::PAGE_SIZE * frames;

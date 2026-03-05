@@ -2,21 +2,21 @@ use core::arch::asm;
 
 use spin::Once;
 
+use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
-use crate::arch::IrqStateTrait;
 
+pub mod apic;
 mod asm;
 mod context;
 mod interrupt;
-pub mod apic;
 mod mp;
 
+pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
-pub use apic::timer_ticks;
 use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
