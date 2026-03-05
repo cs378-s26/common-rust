@@ -25,7 +25,7 @@ use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::device::device::{init_device_tree, map_virtio_devices};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{init_cpu_local_table, CORE_ID, MPStage, MP_STAGE};
-use kernel_common::physical_memory::{init_physical_memory_allocator, THE_HEAP};
+use kernel_common::physical_memory::{self, init_physical_memory_allocator, THE_HEAP};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
@@ -204,6 +204,7 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+
 
     init_device_tree();
 

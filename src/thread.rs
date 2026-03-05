@@ -18,8 +18,8 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqState, IrqStateTrait,
-        IPI_WAKE_VECTOR, apic, sleep_core, switch_stack,
+        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqState,
+        IrqStateTrait, apic, sleep_core, switch_stack,
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
@@ -392,10 +392,6 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
-    GLOBAL_WORK_QUEUE
-        .get()
-        .unwrap()
-        .lock()
-        .push_back(thread);
+    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
     apic::send_ipi_all_except_self(IPI_WAKE_VECTOR as u8);
 }

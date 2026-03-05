@@ -4,15 +4,15 @@ use limine::request::DeviceTreeBlobRequest;
 #[unsafe(link_section = ".limine_requests")]
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
+use super::virtio_blk::init_virtio_blk;
 use alloc::vec::Vec;
-use crate::arch::{Arch, ArchTrait};
-use crate::physical_memory::HHDM_REQUEST;
-use crate::print::{self, kprintln};
-use crate::virtual_memory::PagingOptions;
-
+use kernel_common::arch::{Arch, ArchTrait};
+use kernel_common::physical_memory::HHDM_REQUEST;
+use kernel_common::print::{self, kprintln};
+use kernel_common::virtual_memory::PagingOptions;
 use spin::Once;
 
-pub static FDT: Once<fdt::Fdt<'static>> = Once::new();
+static FDT: Once<fdt::Fdt<'static>> = Once::new();
 
 pub fn init_device_tree() {
     if let Some(res) = FDT_REQUEST.get_response() {
@@ -72,9 +72,14 @@ pub fn map_virtio_devices() {
                         base as u64,
                         flags,
                     );
-                    let id =
-                        unsafe { core::ptr::read_volatile((base + hhdm_offset) as *const u32) }; // test read
-                    kprintln!("Mapped virtio device at {:#x}, magic num: {:#x}", base, id);
+                    let id = unsafe {
+                        core::ptr::read_volatile((base + hhdm_offset + 0x8) as *const u32)
+                    }; // test read
+
+                    kprintln!("Mapped virtio device at {:#x}, id: {:#x}", base, id);
+                    if id == 2 {
+                        // init_virtio_blk(base + hhdm_offset, 512);
+                    }
                 }
             }
         }

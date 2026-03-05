@@ -111,6 +111,10 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
+    fn vaddr_to_paddr(space: u64, vaddr: u64) -> Option<u64> {
+        panic!("vaddr_to_paddr not implemented for x86_64");
+    }
+
     fn shutdown(err_code: u16) {
         debug::shutdown(err_code);
     }
