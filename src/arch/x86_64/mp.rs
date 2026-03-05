@@ -11,13 +11,13 @@ use x86::{
     msr::{IA32_GS_BASE, wrmsr},
 };
 
+use crate::arch::x86_64::interrupt::{KEYBOARD_INTERRUPT_VECTOR, MOUSE_INTERRUPT_VECTOR};
 use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
-use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::arch::x86_64::{acpi, ioapic, keyboard};
-use crate::arch::x86_64::interrupt::{KEYBOARD_INTERRUPT_VECTOR, MOUSE_INTERRUPT_VECTOR};
+use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,

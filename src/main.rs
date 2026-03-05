@@ -240,7 +240,9 @@ pub fn kernel_main() -> ! {
                 while let Some(pkt) = mouse::dequeue_mouse_packet() {
                     kprintln!(
                         "[mouse] buttons={:#03b} dx={} dy={}",
-                        pkt.buttons, pkt.dx, pkt.dy
+                        pkt.buttons,
+                        pkt.dx,
+                        pkt.dy
                     );
                 }
                 core::hint::spin_loop();

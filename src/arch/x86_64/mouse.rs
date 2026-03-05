@@ -1,8 +1,6 @@
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-
-
 const QUEUE_CAP: usize = 64;
 
 /// A decoded PS/2 mouse packet.
@@ -56,7 +54,6 @@ impl PacketQueue {
 
 static PACKET_QUEUE: PacketQueue = PacketQueue::new();
 
-
 // Index within the current 3-byte packet (0, 1, or 2).
 static BYTE_IDX: AtomicUsize = AtomicUsize::new(0);
 
@@ -93,4 +90,3 @@ pub fn enqueue_mouse_byte(byte: u8) {
 pub fn dequeue_mouse_packet() -> Option<MousePacket> {
     PACKET_QUEUE.pop()
 }
-

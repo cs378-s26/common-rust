@@ -62,7 +62,6 @@ pub fn dequeue_scancode() -> Option<u8> {
     SCANCODE_QUEUE.pop()
 }
 
-
 /// Lookup table: Set 2 make code → (unshifted char, shifted char).
 /// 0 means no printable character for that code.
 #[rustfmt::skip]
@@ -168,7 +167,7 @@ pub fn decode_scancode(byte: u8) -> Option<char> {
     None
 }
 
-//  PS/2 controller initialization 
+//  PS/2 controller initialization
 
 fn map_err(e: ControllerError) -> &'static str {
     match e {
@@ -203,7 +202,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
         .map_err(|_| "write_config failed")?;
 
     ctrl.test_controller().map_err(map_err)?;
-    ctrl.write_config(config).ok(); 
+    ctrl.write_config(config).ok();
     kprintln!("[PS2] controller self-test: PASS");
 
     let has_mouse = {
@@ -218,8 +217,14 @@ pub fn init_ps2() -> Result<(), &'static str> {
 
     let keyboard_works = ctrl.test_keyboard().is_ok();
     let mouse_works = has_mouse && ctrl.test_mouse().is_ok();
-    kprintln!("[PS2] keyboard port test: {}", if keyboard_works { "PASS" } else { "FAIL" });
-    kprintln!("[PS2] mouse port test: {}", if mouse_works { "PASS" } else { "FAIL" });
+    kprintln!(
+        "[PS2] keyboard port test: {}",
+        if keyboard_works { "PASS" } else { "FAIL" }
+    );
+    kprintln!(
+        "[PS2] mouse port test: {}",
+        if mouse_works { "PASS" } else { "FAIL" }
+    );
 
     config = ctrl.read_config().map_err(|_| "read_config (2) failed")?;
 
@@ -256,7 +261,11 @@ pub fn init_ps2() -> Result<(), &'static str> {
     // Write final config  this enables IRQs for all working devices.
     ctrl.write_config(config)
         .map_err(|_| "write_config (final) failed")?;
-    kprintln!("[PS2] init complete (kbd={} mouse={})", keyboard_works, mouse_works);
+    kprintln!(
+        "[PS2] init complete (kbd={} mouse={})",
+        keyboard_works,
+        mouse_works
+    );
 
     // Keep the controller alive so ps2's Drop impl doesn't disable the devices.
     core::mem::forget(ctrl);

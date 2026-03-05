@@ -10,8 +10,12 @@ const IOWIN: usize = 0x10;
 const REG_ID: u8 = 0x00;
 const REG_VER: u8 = 0x01;
 
-fn redir_lo(irq: u8) -> u8 { 0x10 + irq * 2 }
-fn redir_hi(irq: u8) -> u8 { 0x10 + irq * 2 + 1 }
+fn redir_lo(irq: u8) -> u8 {
+    0x10 + irq * 2
+}
+fn redir_hi(irq: u8) -> u8 {
+    0x10 + irq * 2 + 1
+}
 
 // Keeps the VirtualMemoryAllocation alive so the MMIO page is never unmapped.
 static IOAPIC: Once<VirtualMemoryAllocation> = Once::new();
@@ -74,7 +78,7 @@ pub fn init_ioapic(phys_base: u64) {
 
 /// Route an IRQ line to a CPU vector, delivered to `dest_apic_id` (physical mode).
 pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32) {
-    let lo: u32 = vector as u32;              // bits[16]=0 (unmasked), delivery=fixed
+    let lo: u32 = vector as u32; // bits[16]=0 (unmasked), delivery=fixed
     let hi: u32 = (dest_apic_id & 0xFF) << 24; // destination APIC ID in bits[31:24]
 
     unsafe {
@@ -86,7 +90,11 @@ pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32) {
     let read_hi = unsafe { read_reg(redir_hi(irq)) };
     kprintln!(
         "[IOAPIC] IRQ{} → vec={:#04x} dest_apic={} redir={:#010x}_{:#010x}",
-        irq, vector, dest_apic_id, read_hi, read_lo
+        irq,
+        vector,
+        dest_apic_id,
+        read_hi,
+        read_lo
     );
 }
 
