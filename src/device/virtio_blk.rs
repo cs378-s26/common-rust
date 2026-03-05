@@ -1,9 +1,9 @@
 extern crate virtio_drivers;
 use core::ptr::NonNull;
 use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
+use kernel_common::physical_memory::{HHDM_REQUEST, frame_alloc, alloc_frames, frame_dealloc};
 use kernel_common::print::kprintln;
-use kernel_common::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use kernel_common::virtual_memory::PagingOptions;
 use spin::Once;
 use virtio_drivers::transport::{Transport, mmio::MmioTransport, mmio::VirtIOHeader};
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, device::blk};
@@ -17,6 +17,7 @@ struct VirtioBlkHal;
 // necessary struct for virtio driver to communicate with hardware.
 unsafe impl Hal for VirtioBlkHal {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
+        kprintln!("Allocating dma buffer");
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
         // TODO currently ignoring direction and setting it to be non cacheable by the cpu, but maybe we want to change this
@@ -44,6 +45,7 @@ unsafe impl Hal for VirtioBlkHal {
 
     unsafe fn dma_dealloc(paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
         // TODO see prev todo
+        kprintln!("Deallocating dma buffer");
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE;
         for page in 0..pages {
             // reset permissions, then free the frame so it can be used by other things.
@@ -60,6 +62,7 @@ unsafe impl Hal for VirtioBlkHal {
 
     // maps a physical mmio region to a virtual address, must be mapped
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
+        kprintln!("mapping mmio");
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
         // get the total amount of pages covered by the region and
@@ -78,55 +81,35 @@ unsafe impl Hal for VirtioBlkHal {
         nn
     }
 
-    // I don't think this is everything we need for share but idk
     unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {
-        assert!(buffer.len() <= Arch::PAGE_SIZE); // sanity check
-
-        let vaddr = buffer.as_ptr() as *mut u8 as u64; // the double cast to pointer is because it buffer is a fat pointer
-        let paddr = Arch::vaddr_to_paddr(Arch::get_address_space(), vaddr).unwrap();
-
-        // TODO this currently sets the bufffer to be device memory, but in reality what we want is
-        // to make it normal non-cacheable.
-
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
-        Arch::virtual_map(
-            Arch::get_address_space(),
-            (vaddr as usize) as u64,
-            (paddr as usize) as u64,
-            options,
-        );
-
-        // PagingOptions will have to be edited to allow this
-        // let len = buffer.len();
-        // let page_offset = (vaddr as usize) % Arch::PAGE_SIZE;
-        // let pages_covered = (page_offset + len + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
-        // for page in 0..pages_covered {
-        // }
-
+        kprintln!("Sharing buffer with virtio device");
+        let pages = (buffer.len() + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
+        let (paddr, _) = Self::dma_alloc(pages, _direction);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                buffer.as_ptr() as *const u8,
+                (paddr + HHDM_REQUEST.get_response().unwrap().offset() as u64) as *mut u8,
+                buffer.len(),
+            );
+        }
         return paddr;
     }
 
-    // the buffer is now not needed by the device, so set it back to cacheable memory
     unsafe fn unshare(
         paddr: virtio_drivers::PhysAddr,
         buffer: NonNull<[u8]>,
         _direction: virtio_drivers::BufferDirection,
     ) {
-        let vaddr = buffer.as_ptr() as *mut u8 as u64;
-
-        // // set back to cacheable memory
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE;
-        // let len = buffer.len();
-        // let page_offset = (vaddr as usize) % Arch::PAGE_SIZE;
-        // let pages_covered = (page_offset + len + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
-        // for page in 0..pages_covered {
-        Arch::virtual_map(
-            Arch::get_address_space(),
-            (vaddr as usize) as u64,
-            (paddr as usize) as u64,
-            options,
-        );
-        // }
+        kprintln!("Unsharing buffer with virtio device");
+        let pages = (buffer.len() + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                (paddr + HHDM_REQUEST.get_response().unwrap().offset() as u64) as *const u8,
+                buffer.as_ptr() as *mut u8,
+                buffer.len(),
+            );
+            Self::dma_dealloc(paddr, NonNull::new(buffer.as_ptr() as *mut u8).unwrap(), pages);
+        }
     }
 }
 
@@ -135,12 +118,23 @@ pub fn init_virtio_blk(base_addr: usize, size: usize) {
         let transport =
             MmioTransport::new(NonNull::new(base_addr as *mut VirtIOHeader).unwrap(), size)
                 .unwrap();
-        let blk_device =
+        let mut blk_device =
             virtio_drivers::device::blk::VirtIOBlk::<VirtioBlkHal, MmioTransport>::new(transport)
                 .unwrap();
         kprintln!(
             "virtio blk device initialized with capacity {} bytes",
             blk_device.capacity() * 512
         );
+        let mut buf = [0u8; 512];
+        // let phys_addr = frame_alloc();
+        // let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
+        // let mut buf = core::slice::from_raw_parts_mut((phys_addr + hhdm) as *mut u8, 512);
+        
+        kprintln!("buf len: {}", buf.len());
+        buf[0] = 42;
+        blk_device.write_blocks(0, &mut buf).unwrap();
+        kprintln!("finished writing");
+        blk_device.read_blocks(0, &mut buf).unwrap();
+        kprintln!("Read from virtio blk device: {}", buf[0]);
     }
 }

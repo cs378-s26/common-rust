@@ -10,6 +10,7 @@ use kernel_common::physical_memory::HHDM_REQUEST;
 use kernel_common::print::{self, kprintln};
 use kernel_common::virtual_memory::PagingOptions;
 use spin::Once;
+use super::virtio_blk::init_virtio_blk;
 
 static FDT: Once<fdt::Fdt<'static>> = Once::new();
 
@@ -72,8 +73,12 @@ pub fn map_virtio_devices() {
                         flags,
                     );
                     let id =
-                        unsafe { core::ptr::read_volatile((base + hhdm_offset) as *const u32) }; // test read
-                    kprintln!("Mapped virtio device at {:#x}, magic num: {:#x}", base, id);
+                        unsafe { core::ptr::read_volatile((base + hhdm_offset + 0x8) as *const u32) }; // test read
+
+                    kprintln!("Mapped virtio device at {:#x}, id: {:#x}", base, id);
+                    if id == 2 {
+                        init_virtio_blk(base + hhdm_offset, 512);
+                    }
                 }
             }
         }

@@ -481,7 +481,7 @@ fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Resul
     let block_path = current_dir()?.join("disk.img");
     if !block_path.exists() {
         return Err(Error::msg(
-            "disk.img not found in project root. Create one with: dd if=/dev/zero of=disk.img bs=1M count=64",
+            "disk.img not found in project root. Create one with: qemu-img create -f raw disk.img 1M",
         ));
     }
 
