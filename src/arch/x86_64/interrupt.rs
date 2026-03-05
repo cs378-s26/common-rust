@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
-use super::{apic, keyboard};
+use super::{apic, keyboard, mouse};
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -117,6 +117,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
 pub const TIMER_INTERRUPT_VECTOR: u8 = 0x20;
 pub const IPI_WAKE_VECTOR: u8 = 0x21;
 pub const KEYBOARD_INTERRUPT_VECTOR: u8 = 0x22;
+pub const MOUSE_INTERRUPT_VECTOR: u8 = 0x2C;
 
 pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
@@ -131,10 +132,18 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
 
 pub extern "C" fn keyboard_interrupt_handler(_ctx: &InterruptContext) {
     // Read the scancode directly from the PS/2 data port.
-    // The byte MUST be read even if we don't process it  reading acknowledges the interrupt
+    // The byte MUST be read even if we don't process it — reading acknowledges the interrupt
     // to the PS/2 controller and allows the next scancode to be buffered.
     let scancode = unsafe { x86::io::inb(0x60) };
     keyboard::enqueue_scancode(scancode);
+    apic::eoi();
+}
+
+pub extern "C" fn mouse_interrupt_handler(_ctx: &InterruptContext) {
+    // Read the data byte from the PS/2 data port.
+    // Must always be read — clears the controller's output-full flag so the next byte can arrive.
+    let byte = unsafe { x86::io::inb(0x60) };
+    mouse::enqueue_mouse_byte(byte);
     apic::eoi();
 }
 
@@ -170,6 +179,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
         IPI_WAKE_VECTOR => ipi_wake_handler(context),
         KEYBOARD_INTERRUPT_VECTOR => keyboard_interrupt_handler(context),
+        MOUSE_INTERRUPT_VECTOR => mouse_interrupt_handler(context),
         id => {
             apic::eoi();
             crate::print::kprintln!(

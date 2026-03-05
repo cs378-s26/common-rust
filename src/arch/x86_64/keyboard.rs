@@ -3,7 +3,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
-use x86::io::inb;
 
 use crate::print::kprintln;
 
@@ -178,63 +177,88 @@ fn map_err(e: ControllerError) -> &'static str {
     }
 }
 
-/// Initialize the PS/2 controller and keyboard.
-/// Must be called once on the BSP, before enabling IRQs.
+/// Initialize both PS/2 devices (keyboard + mouse) following the OSDev wiki sequence.
+/// Must be called once on the BSP before enabling IRQs.
 /// https://docs.rs/ps2/latest/ps2/
-/// mainly from the above. 
-pub fn init_keyboard() -> Result<(), &'static str> {
+/// https://wiki.osdev.org/%228042%22_PS/2_Controller#Initialising_the_PS/2_Controller
+pub fn init_ps2() -> Result<(), &'static str> {
     let mut ctrl = unsafe { Controller::new() };
 
-    //  Disable ports while initializing.
-    // Keep mouse disabled since we are not servicing IRQ12 right now.
     ctrl.disable_keyboard()
         .map_err(|_| "disable_keyboard failed")?;
-    match ctrl.disable_mouse() {
-        Ok(()) => kprintln!("[PS2] keyboard+mouse ports disabled"),
-        Err(_) => kprintln!("[PS2] keyboard port disabled (mouse disable unsupported/failed)"),
-    }
+    ctrl.disable_mouse().ok();
+    kprintln!("[PS2] ports disabled");
 
     while ctrl.read_data().is_ok() {}
     kprintln!("[PS2] output buffer flushed");
 
     let mut config = ctrl.read_config().map_err(|_| "read_config failed")?;
-    config.remove(
-        ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT | ControllerConfigFlags::ENABLE_TRANSLATE,
+    config.set(
+        ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT
+            | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT
+            | ControllerConfigFlags::ENABLE_TRANSLATE,
+        false,
     );
     ctrl.write_config(config)
         .map_err(|_| "write_config failed")?;
-    kprintln!("[PS2] config: keyboard IRQ+translation disabled");
 
     ctrl.test_controller().map_err(map_err)?;
+    ctrl.write_config(config).ok(); 
     kprintln!("[PS2] controller self-test: PASS");
 
-    ctrl.test_keyboard().map_err(map_err)?;
-    kprintln!("[PS2] keyboard port test: PASS");
+    let has_mouse = {
+        ctrl.enable_mouse().is_ok() && {
+            let c = ctrl.read_config().unwrap_or(config);
+            let present = !c.contains(ControllerConfigFlags::DISABLE_MOUSE);
+            ctrl.disable_mouse().ok();
+            present
+        }
+    };
+    kprintln!("[PS2] mouse present: {}", has_mouse);
 
-    ctrl.enable_keyboard()
-        .map_err(|_| "enable_keyboard failed")?;
-    kprintln!("[PS2] keyboard port enabled");
+    let keyboard_works = ctrl.test_keyboard().is_ok();
+    let mouse_works = has_mouse && ctrl.test_mouse().is_ok();
+    kprintln!("[PS2] keyboard port test: {}", if keyboard_works { "PASS" } else { "FAIL" });
+    kprintln!("[PS2] mouse port test: {}", if mouse_works { "PASS" } else { "FAIL" });
 
-    ctrl.keyboard()
-        .reset_and_self_test()
-        .map_err(|_| "keyboard reset/self-test failed")?;
-    kprintln!("[PS2] keyboard reset+self-test: PASS");
+    config = ctrl.read_config().map_err(|_| "read_config (2) failed")?;
 
-    let mut config = ctrl.read_config().map_err(|_| "read_config (2) failed")?;
-    config.insert(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT);
-    config.remove(ControllerConfigFlags::ENABLE_TRANSLATE);
-    ctrl.write_config(config)
-        .map_err(|_| "write_config (2) failed")?;
-    kprintln!("[PS2] keyboard interrupt enabled in controller config");
-
-    //(QEMU) auto-enable scanning after reset, so treat failure as non-fatal.
-    match ctrl.keyboard().enable_scanning() {
-        Ok(()) => kprintln!("[PS2] keyboard scanning enabled"),
-        Err(_) => kprintln!("[PS2] enable_scanning: failed (non-fatal, continuing)"),
+    if keyboard_works {
+        ctrl.enable_keyboard()
+            .map_err(|_| "enable_keyboard failed")?;
+        config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
+        config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
+        ctrl.keyboard()
+            .reset_and_self_test()
+            .map_err(|_| "keyboard reset/self-test failed")?;
+        kprintln!("[PS2] keyboard reset+self-test: PASS");
+        // QEMU auto-enables scanning after reset; treat failure as non-fatal.
+        match ctrl.keyboard().enable_scanning() {
+            Ok(()) => kprintln!("[PS2] keyboard scanning enabled"),
+            Err(_) => kprintln!("[PS2] enable_scanning: failed (non-fatal)"),
+        }
     }
 
-    kprintln!("[PS2] keyboard init complete");
-    core::mem::forget(ctrl);
+    if mouse_works {
+        ctrl.enable_mouse().map_err(|_| "enable_mouse failed")?;
+        config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
+        config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
+        ctrl.mouse()
+            .reset_and_self_test()
+            .map_err(|_| "mouse reset/self-test failed")?;
+        kprintln!("[PS2] mouse reset+self-test: PASS");
+        match ctrl.mouse().enable_data_reporting() {
+            Ok(()) => kprintln!("[PS2] mouse data reporting enabled"),
+            Err(_) => kprintln!("[PS2] enable_data_reporting: failed (non-fatal)"),
+        }
+    }
 
+    // Write final config  this enables IRQs for all working devices.
+    ctrl.write_config(config)
+        .map_err(|_| "write_config (final) failed")?;
+    kprintln!("[PS2] init complete (kbd={} mouse={})", keyboard_works, mouse_works);
+
+    // Keep the controller alive so ps2's Drop impl doesn't disable the devices.
+    core::mem::forget(ctrl);
     Ok(())
 }

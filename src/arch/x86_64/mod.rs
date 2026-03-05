@@ -14,6 +14,7 @@ mod debug;
 mod interrupt;
 pub mod ioapic;
 pub mod keyboard;
+pub mod mouse;
 mod mp;
 mod tables;
 pub mod tsc;

@@ -19,7 +19,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
-use kernel_common::arch::keyboard;
+use kernel_common::arch::{keyboard, mouse};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
@@ -229,6 +229,19 @@ pub fn kernel_main() -> ! {
                             kprint!("{}", ch);
                         }
                     }
+                }
+                core::hint::spin_loop();
+            }
+        });
+
+        // TODO: migrate to an event-driven IRQ system once available.
+        spawn_thread(|| {
+            loop {
+                while let Some(pkt) = mouse::dequeue_mouse_packet() {
+                    kprintln!(
+                        "[mouse] buttons={:#03b} dx={} dy={}",
+                        pkt.buttons, pkt.dx, pkt.dy
+                    );
                 }
                 core::hint::spin_loop();
             }
