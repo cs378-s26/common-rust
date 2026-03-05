@@ -89,10 +89,14 @@ pub unsafe fn initialize_core(cpu: &Cpu) -> () {
         get_cpu_local_pointer_for(id)
     );
 
+
     exceptions::init_exceptions();
-    if CORE_ID.get().is_bsp() {
-        gic::gicd_init();
-    }
+    // if CORE_ID.get().is_bsp() {
+        
+    // }
+
+    
+    gic::gicd_init();
     gic::gicc_init();
     unsafe {
         interrupt::enable();

@@ -1,18 +1,15 @@
-
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use spin::Once;
 
 use crate::{
-    arch::aarch64::vmm,
-    device::device::FDT,
-    physical_memory::HHDM_REQUEST,
-    print::kprintln,
+    arch::aarch64::vmm, device::device::FDT, physical_memory::HHDM_REQUEST, print::kprintln,
     virtual_memory::PagingOptions,
 };
 
 pub const TIMER_HZ: u64 = 100;
 pub static TIMER_INTERVAL: Once<u64> = Once::new();
+static GICD_INIT: Once = Once::new();
 pub static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 
@@ -43,12 +40,18 @@ pub fn inc_timer_ticks() {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
 }
 
-pub fn setup_timer() {
+pub fn timer_reset_interval() {
     unsafe {
         core::arch::asm!(
             "msr cntp_tval_el0, {x}",
             x = in(reg) *TIMER_INTERVAL.get().expect("Interval uninitialized"),
         );
+    }
+}
+
+pub fn setup_timer() {
+    unsafe {
+        timer_reset_interval();
 
         core::arch::asm!( // enables it
             "msr cntp_ctl_el0, {x}",
@@ -70,7 +73,7 @@ fn gic_base_addrs() -> (usize, usize) {
                 if let Some(mut reg) = node.reg() {
                     let gicd = reg.next().unwrap().starting_address as usize;
                     let gicc = reg.next().unwrap().starting_address as usize;
-                    kprintln!("GIC: GICD={:#x} GICC={:#x}", gicd, gicc);
+                    // kprintln!("GIC: GICD={:#x} GICC={:#x}", gicd, gicc);
                     return (gicd, gicc);
                 }
             }
@@ -83,51 +86,53 @@ fn gic_base_addrs() -> (usize, usize) {
 pub fn gicd_init() {
     TIMER_INTERVAL.call_once(|| timer_frequency() / TIMER_HZ);
 
-    let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-    let (gicd_phys, gicc_phys) = gic_base_addrs();
+    GICD_INIT.call_once(|| {
+        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
+        let (gicd_phys, gicc_phys) = gic_base_addrs();
 
-    let gicd_virt = gicd_phys + hhdm;
-    let gicc_virt = gicc_phys + hhdm;
+        let gicd_virt = gicd_phys + hhdm;
+        let gicc_virt = gicc_phys + hhdm;
 
-    // map GICD
-    let flags = PagingOptions::PRESENT | PagingOptions::WRITABLE;
-    vmm::vmap(
-        crate::arch::aarch64::vmm::get_address_space(),
-        gicd_virt as u64,
-        gicd_phys as u64,
-        flags,
-    );
-    // map GICC
-    vmm::vmap(
-        crate::arch::aarch64::vmm::get_address_space(),
-        gicc_virt as u64,
-        gicc_phys as u64,
-        flags,
-    );
+        // map GICD
+        let flags = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        vmm::vmap(
+            crate::arch::aarch64::vmm::get_address_space(),
+            gicd_virt as u64,
+            gicd_phys as u64,
+            flags,
+        );
+        // map GICC
+        vmm::vmap(
+            crate::arch::aarch64::vmm::get_address_space(),
+            gicc_virt as u64,
+            gicc_phys as u64,
+            flags,
+        );
 
-    GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
+        GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
 
-    unsafe {
-        let gicd = gicd_virt as *mut u32;
+        unsafe {
+            let gicd = gicd_virt as *mut u32;
 
-        // disable gicd
-        gicd.add(GICD_CTLR / 4).write_volatile(0);
+            // disable gicd
+            gicd.add(GICD_CTLR / 4).write_volatile(0);
 
-        let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32; // offset 28 = intid 28..31
-        let mut word = pri_reg.read_volatile();
-        word &= !(0xFF << 16); // clear byte lane 2 (intid 30)
-        word |= 0xA0 << 16; // set priority 0xA0
-        pri_reg.write_volatile(word);
+            let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32; // offset 28 = intid 28..31
+            let mut word = pri_reg.read_volatile();
+            word &= !(0xFF << 16); // clear byte lane 2 (intid 30)
+            word |= 0xA0 << 16; // set priority 0xA0
+            pri_reg.write_volatile(word);
 
-        // enable ppi 30
-        let isenabler0 = gicd.add(GICD_ISENABLER0 / 4);
-        isenabler0.write_volatile(1 << 30);
+            // enable ppi 30
+            let isenabler0 = gicd.add(GICD_ISENABLER0 / 4);
+            isenabler0.write_volatile(1 << 30);
 
-        // enable gicd
-        gicd.add(GICD_CTLR / 4).write_volatile(1);
-    }
+            // enable gicd
+            gicd.add(GICD_CTLR / 4).write_volatile(1);
+        }
 
-    kprintln!("gicd_init done");
+        kprintln!("gicd_init done");
+    });
 }
 
 pub fn gicc_init() {

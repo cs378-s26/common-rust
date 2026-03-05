@@ -1,8 +1,4 @@
-use crate::{
-    arch::aarch64::gic,
-    mp::CORE_ID,
-    print::kprintln,
-};
+use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;
 
@@ -51,10 +47,10 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 }
 
 fn timer_interrupt_handler() {
-    gic::setup_timer(); // reset timer
+    gic::timer_reset_interval();
     gic::inc_timer_ticks();
     let ticks = gic::timer_ticks();
-    kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
+    // kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
 }
 
 #[unsafe(no_mangle)]
@@ -71,7 +67,6 @@ extern "C" fn current_elx_irq(_e: &mut ExceptionContext) {
         _ => panic!("unexpected INTID: {}", intid),
     }
 
-    // signal irq handled
     gic::eoi(intid);
 }
 
