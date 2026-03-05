@@ -267,7 +267,5 @@ pub fn init_ps2() -> Result<(), &'static str> {
         mouse_works
     );
 
-    // Keep the controller alive so ps2's Drop impl doesn't disable the devices.
-    core::mem::forget(ctrl);
     Ok(())
 }
