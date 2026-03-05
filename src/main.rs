@@ -11,7 +11,7 @@
 
 extern crate alloc;
 
-use core::arch::asm;
+use core::arch::{aarch64, asm};
 use core::sync::atomic::{AtomicU64, Ordering};
 
 // For coroutines.
@@ -19,13 +19,13 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
+use kernel_common::arch::{self, Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::device::device::{init_device_tree, map_virtio_devices};
 use kernel_common::heap::init_malloc;
-use kernel_common::mp::{init_cpu_local_table, CORE_ID, MPStage, MP_STAGE};
-use kernel_common::physical_memory::{self, init_physical_memory_allocator, THE_HEAP};
+use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
+use kernel_common::physical_memory::{self, THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
 use kernel_common::thread::{
     Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
@@ -205,7 +205,6 @@ unsafe extern "C" fn system_main() -> ! {
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
 
-
     init_device_tree();
 
     map_virtio_devices();
@@ -215,10 +214,14 @@ unsafe extern "C" fn system_main() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
+    kprintln!("A");
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
+
     init_cpu_local_table(mp_res.cpus().len());
+    kprintln!("B");
+
     Arch::initialize_mp::<MainKernelEntry>(&MP_REQUEST)
 }
 

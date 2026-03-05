@@ -23,7 +23,7 @@ use crate::{
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
-    sync::{IntMutex, MutexLike},
+    sync::{MutexLike},
 };
 
 pub struct Thread {

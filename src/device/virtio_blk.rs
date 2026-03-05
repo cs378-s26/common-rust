@@ -1,10 +1,10 @@
 extern crate virtio_drivers;
 use core::ptr::NonNull;
-use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::physical_memory::{HHDM_REQUEST, alloc_frames, frame_alloc, frame_dealloc};
-use kernel_common::print::kprintln;
-use kernel_common::virtual_memory::PagingOptions;
-use spin::Once;
+use crate::arch::{Arch, ArchTrait};
+use crate::physical_memory::{alloc_frames, frame_alloc, frame_dealloc, HHDM_REQUEST};
+use crate::print::kprintln;
+use crate::virtual_memory::PagingOptions;
+
 use virtio_drivers::transport::{Transport, mmio::MmioTransport, mmio::VirtIOHeader};
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, device::blk};
 

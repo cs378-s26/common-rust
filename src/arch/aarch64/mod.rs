@@ -13,16 +13,14 @@ mod exceptions;
 pub mod gic;
 mod interrupt;
 mod mp;
-pub use exceptions::dump_core_state;
+pub use exceptions::{dump_core_state, init_exceptions};
 mod vmm;
 
-pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use gic::timer_ticks;
 pub use interrupt::*;
-use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,

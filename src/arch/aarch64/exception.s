@@ -69,7 +69,7 @@ exception_vector_table:
     .align 7
     b .
     .align 7
-    b .
+    b c_default_irq_handler
     .align 7
     b .
     .align 7
@@ -91,7 +91,7 @@ exception_vector_table:
     .align 7
     b .
     .align 7
-    b .
+    b c_default_irq_handler
     .align 7
     b .
     .align 7
@@ -101,11 +101,19 @@ exception_vector_table:
     .align 7
     b .
     .align 7
-    b .
+    b c_default_irq_handler
     .align 7
     b .
     .align 7
     b .
+
+
+c_default_irq_handler:
+    SAVE_REGS
+    mov x0, sp
+    bl unimplemented
+    RESTORE_REGS
+    eret
 
 c_elx_sync_handler:
     SAVE_REGS

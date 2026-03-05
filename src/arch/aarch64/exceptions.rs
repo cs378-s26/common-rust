@@ -131,7 +131,7 @@ pub fn init_exceptions() {
         unsafe static exception_vector_table: u8;
     }
 
-    let mut vector_base_addr = unsafe { &exception_vector_table as *const _ as u64 };
+    let vector_base_addr = unsafe { &exception_vector_table as *const _ as u64 };
 
     unsafe {
         asm!("msr VBAR_EL1, {}", in(reg) (vector_base_addr as u64));

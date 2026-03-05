@@ -1,9 +1,6 @@
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
-use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
-use core::arch::asm;
-use spin::Mutex;
 use core::arch::asm;
 use spin::Mutex;
 
@@ -34,7 +31,6 @@ bitflags! {
 pub fn get_address_space() -> u64 {
     let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e above hhdm_offset
 
-    unsafe {
     unsafe {
         asm!(
             "mrs {}, ttbr1_el1",

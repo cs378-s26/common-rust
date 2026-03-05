@@ -4,15 +4,16 @@ use limine::request::DeviceTreeBlobRequest;
 #[unsafe(link_section = ".limine_requests")]
 static FDT_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
-use super::virtio_blk::init_virtio_blk;
+use crate::arch::{Arch, ArchTrait};
+use crate::device::virtio_blk::init_virtio_blk;
+use crate::physical_memory::HHDM_REQUEST;
+use crate::print::{self, kprintln};
+use crate::virtual_memory::PagingOptions;
+
 use alloc::vec::Vec;
-use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::physical_memory::HHDM_REQUEST;
-use kernel_common::print::{self, kprintln};
-use kernel_common::virtual_memory::PagingOptions;
 use spin::Once;
 
-static FDT: Once<fdt::Fdt<'static>> = Once::new();
+pub static FDT: Once<fdt::Fdt<'static>> = Once::new();
 
 pub fn init_device_tree() {
     if let Some(res) = FDT_REQUEST.get_response() {
@@ -78,11 +79,12 @@ pub fn map_virtio_devices() {
 
                     kprintln!("Mapped virtio device at {:#x}, id: {:#x}", base, id);
                     if id == 2 {
-                        // init_virtio_blk(base + hhdm_offset, 512);
+                        init_virtio_blk(base + hhdm_offset, 512);
                     }
                 }
             }
         }
+        kprintln!("Exits for");
     } else {
         kprintln!("FDT not initialized, cannot map virtio devices");
     }
