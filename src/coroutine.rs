@@ -158,12 +158,12 @@ pub fn init_coroutine_executor() {
 
 #[cfg(test)]
 mod test {
-    use super::{spawn_coroutine};
+    use super::spawn_coroutine;
     use crate::{print::kprintln, thread::yield_thread};
     use alloc::sync::Arc;
-    use core::sync::atomic::{AtomicU64, Ordering};
     use core::future::Future;
     use core::pin::Pin;
+    use core::sync::atomic::{AtomicU64, Ordering};
     use core::task::{Context, Poll};
 
     #[test_case]
@@ -171,19 +171,18 @@ mod test {
         const COUNT: u64 = 400;
         let counter = Arc::new(AtomicU64::new(0));
 
-        
         for _ in 0..COUNT {
             let counter_clone = counter.clone();
             spawn_coroutine(async move {
                 counter_clone.fetch_add(1, Ordering::SeqCst);
             });
         }
-        
+
         // Wait for all coroutines to finish.
         while counter.load(Ordering::SeqCst) < COUNT {
             yield_thread();
         }
-        
+
         assert_eq!(counter.load(Ordering::SeqCst), COUNT);
         kprintln!("Coroutine counter test passed: {}", COUNT);
     }
@@ -197,7 +196,8 @@ mod test {
         type Output = u64;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.polls > self.value { // Pend this many times before ready.
+            if self.polls > self.value {
+                // Pend this many times before ready.
                 Poll::Ready(self.value + 445)
             } else {
                 self.get_mut().polls += 1;
@@ -220,7 +220,10 @@ mod test {
             let n = async_int(i).await;
             assert_eq!(n, i + 445);
         }
-        kprintln!("Async task {} complete.", counter.fetch_add(1, Ordering::SeqCst));
+        kprintln!(
+            "Async task {} complete.",
+            counter.fetch_add(1, Ordering::SeqCst)
+        );
     }
 
     #[test_case]
