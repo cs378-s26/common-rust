@@ -15,16 +15,16 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
+pub mod ext2;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
 pub mod physical_memory;
 pub mod print;
+pub mod ramdisk;
 pub mod sync;
 pub mod thread;
 pub mod virtual_memory;
-pub mod ext2;
-pub mod ramdisk;
 
 extern crate alloc;
 
