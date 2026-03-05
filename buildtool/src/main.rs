@@ -37,7 +37,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, Copy)]
+#[derive(clap::ValueEnum, Clone, Debug, Copy, PartialEq)]
 enum Target {
     X86_64,
     Aarch64,
@@ -479,7 +479,9 @@ fn exec<T: std::fmt::Debug + AsRef<std::ffi::OsStr>>(command: &str, args: Vec<T>
 fn qemu(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
     let block_path = current_dir()?.join("disk.img");
-    if !block_path.exists() {
+    if target == Target::Aarch64 && !block_path.exists() {
+        eprintln!("warning: disk.img not found in project root; running without a block device");
+    } else if !block_path.exists() {
         return Err(Error::msg(
             "disk.img not found in project root. Create one with: qemu-img create -f raw disk.img 1M",
         ));

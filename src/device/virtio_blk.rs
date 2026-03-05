@@ -1,7 +1,7 @@
 extern crate virtio_drivers;
 use core::ptr::NonNull;
 use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::physical_memory::{HHDM_REQUEST, frame_alloc, alloc_frames, frame_dealloc};
+use kernel_common::physical_memory::{HHDM_REQUEST, alloc_frames, frame_alloc, frame_dealloc};
 use kernel_common::print::kprintln;
 use kernel_common::virtual_memory::PagingOptions;
 use spin::Once;
@@ -17,7 +17,6 @@ struct VirtioBlkHal;
 // necessary struct for virtio driver to communicate with hardware.
 unsafe impl Hal for VirtioBlkHal {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
-        kprintln!("Allocating dma buffer");
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
         // TODO currently ignoring direction and setting it to be non cacheable by the cpu, but maybe we want to change this
@@ -45,7 +44,6 @@ unsafe impl Hal for VirtioBlkHal {
 
     unsafe fn dma_dealloc(paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
         // TODO see prev todo
-        kprintln!("Deallocating dma buffer");
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE;
         for page in 0..pages {
             // reset permissions, then free the frame so it can be used by other things.
@@ -62,7 +60,6 @@ unsafe impl Hal for VirtioBlkHal {
 
     // maps a physical mmio region to a virtual address, must be mapped
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
-        kprintln!("mapping mmio");
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
         // get the total amount of pages covered by the region and
@@ -82,7 +79,6 @@ unsafe impl Hal for VirtioBlkHal {
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {
-        kprintln!("Sharing buffer with virtio device");
         let pages = (buffer.len() + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
         let (paddr, _) = Self::dma_alloc(pages, _direction);
         unsafe {
@@ -100,7 +96,6 @@ unsafe impl Hal for VirtioBlkHal {
         buffer: NonNull<[u8]>,
         _direction: virtio_drivers::BufferDirection,
     ) {
-        kprintln!("Unsharing buffer with virtio device");
         let pages = (buffer.len() + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -108,7 +103,11 @@ unsafe impl Hal for VirtioBlkHal {
                 buffer.as_ptr() as *mut u8,
                 buffer.len(),
             );
-            Self::dma_dealloc(paddr, NonNull::new(buffer.as_ptr() as *mut u8).unwrap(), pages);
+            Self::dma_dealloc(
+                paddr,
+                NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
+                pages,
+            );
         }
     }
 }
@@ -129,9 +128,9 @@ pub fn init_virtio_blk(base_addr: usize, size: usize) {
         // let phys_addr = frame_alloc();
         // let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
         // let mut buf = core::slice::from_raw_parts_mut((phys_addr + hhdm) as *mut u8, 512);
-        
-        kprintln!("buf len: {}", buf.len());
+
         buf[0] = 42;
+        kprintln!("Writing {} to virtio blk device", buf[0]);
         blk_device.write_blocks(0, &mut buf).unwrap();
         kprintln!("finished writing");
         blk_device.read_blocks(0, &mut buf).unwrap();
