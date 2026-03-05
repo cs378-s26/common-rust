@@ -28,7 +28,7 @@ pub mod virtual_memory;
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
 use crate::cmdline::parse_kernel_cmdline;
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::heap::init_malloc;
 use crate::mp::init_cpu_local_table;
 use crate::mp::{MP_STAGE, MPStage};
@@ -119,6 +119,8 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
 static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 #[cfg(test)]
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+#[cfg(test)]
+static MAKE_TEST_THREAD: Once<()> = Once::new();
 #[cfg(test)]
 pub struct TestKernelEntry;
 #[cfg(test)]

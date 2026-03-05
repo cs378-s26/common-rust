@@ -1,4 +1,6 @@
 use core::arch::asm;
+use crate::paging::PagingOptions;
+use crate::virtual_memory::VirtualMemoryManager;
 
 use spin::Once;
 
@@ -25,7 +27,6 @@ pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
-    type IrqState = IrqState;
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()
