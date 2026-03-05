@@ -44,16 +44,6 @@ pub trait UnwindContextTrait: Sized {
     }
 }
 
-pub trait IrqStateTrait {
-    type Arch: ArchTrait<IrqState = Self>;
-    // Save the current IrqState
-    fn save() -> Self;
-    fn is_masked(&self) -> bool;
-    fn restore(&self) {
-        Self::Arch::set_irq_enabled(!self.is_masked());
-    }
-}
-
 pub trait ContextTrait {
     type Arch: ArchTrait<Context = Self>;
     /// basically a constructor -- give your thread the correct permissions
@@ -72,7 +62,6 @@ pub trait KernelEntryTrait {
 
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
-    type IrqState: IrqStateTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
     /// calls initalize core
@@ -109,8 +98,10 @@ pub trait ArchTrait {
         unsafe { Self::initialize_core(cpu) };
         E::kernel_main()
     }
+
     fn set_irq_enabled(enabled: bool);
     fn irq_is_enabled() -> bool;
+
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety
     /// Internal, do not call outside of thread module.
@@ -137,4 +128,24 @@ pub trait ArchTrait {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
     fn halt() -> !;
+}
+
+#[repr(transparent)]
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct IrqState(bool);
+
+impl IrqState {
+    #[inline(always)]
+    pub fn save() -> IrqState {
+        IrqState(Arch::irq_is_enabled())
+    }
+
+    #[inline(always)]
+    pub fn restore(&self) {
+        Arch::set_irq_enabled(self.0);
+    }
+
+    pub fn is_masked(&self) -> bool {
+        !self.0
+    }
 }

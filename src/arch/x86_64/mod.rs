@@ -28,6 +28,7 @@ use mp::{
     set_thread_local_pointer,
 };
 pub use vmm::*;
+use x86::bits64::rflags::{self, RFlags};
 use x86::irq;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
@@ -38,7 +39,6 @@ pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
-    type IrqState = IrqState;
 
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
         let resp = req
@@ -62,7 +62,7 @@ impl ArchTrait for Arch {
     }
 
     fn irq_is_enabled() -> bool {
-        !IrqState::save().is_masked()
+        rflags::read().contains(RFlags::FLAGS_IF)
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

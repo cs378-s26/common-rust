@@ -231,8 +231,6 @@ impl<'a> CmdlineLexer<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::print::kprintln;
-
     use super::*;
 
     #[test_case]

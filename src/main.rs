@@ -25,9 +25,7 @@ use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::physical_memory::{self, THE_HEAP, init_physical_memory_allocator};
 use kernel_common::print::{init_tty, kprintln};
-use kernel_common::thread::{
-    Thread, init_threading, poll_tasks, set_up_idle, spawn_thread, yield_thread,
-};
+use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
