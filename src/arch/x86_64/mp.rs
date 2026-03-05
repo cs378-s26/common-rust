@@ -128,7 +128,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
     // Calibrate timers once on BSP, store frequencies for all cores
     static TIMER_CALIBRATION: Once<(u64, u64)> = Once::new();
-    let (tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
+    let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
         kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
 
         let tsc_freq = tsc::calibrate_tsc_with_pit();

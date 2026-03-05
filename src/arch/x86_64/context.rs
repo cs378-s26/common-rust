@@ -205,27 +205,6 @@ impl Context {
     }
 }
 
-/// Switches RSP to `stack_top` and tail-calls `f(arg)`.
-#[unsafe(naked)]
-pub unsafe extern "C" fn switch_stack_and_call(
-    stack_top: u64,
-    arg: u64,
-    f: extern "C" fn(u64) -> !,
-) -> ! {
-    naked_asm!(
-        "movq %rdi, %rsp",
-        "movq %rsi, %rdi",
-        "jmp *%rdx",
-        options(att_syntax)
-    )
-}
-
-/// Switches RSP to `stack_top` and tail-calls `f()`.
-#[unsafe(naked)]
-pub unsafe extern "C" fn switch_stack(stack_top: u64, f: extern "C" fn() -> !) -> ! {
-    naked_asm!("movq %rdi, %rsp", "jmp *%rsi", options(att_syntax))
-}
-
 #[repr(C)]
 struct StackContextFrame {
     rip: u64,
