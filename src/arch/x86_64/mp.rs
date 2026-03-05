@@ -16,6 +16,8 @@ use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
 use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
+use crate::arch::x86_64::{acpi, ioapic, keyboard};
+use crate::arch::x86_64::interrupt::KEYBOARD_INTERRUPT_VECTOR;
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
@@ -147,6 +149,31 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         );
 
         (tsc_freq, apic_freq)
+    });
+
+    // initialize_core runs on every CPU core in parallel, but the IOAPIC and PS/2
+    // controller are global shared hardware — initialize them exactly once on whichever
+    // core gets here first (the BSP).
+    static KEYBOARD_INIT: Once<()> = Once::new();
+    KEYBOARD_INIT.call_once(|| {
+        let ioapic_phys = acpi::find_ioapic_base()
+            .expect("ACPI MADT has no IOAPIC entry, cannot receive hardware IRQs");
+
+        // Map the IOAPIC MMIO page and mask all IRQ lines.
+        ioapic::init_ioapic(ioapic_phys);
+
+        //  IRQ1 is the keyboard line, but the MADT may remap it to a different
+        // Global System Interrupt number on non-standard platforms. find_irq_override
+        // handles that; on QEMU it returns 1 unchanged (identity mapping).
+        let kbd_gsi = acpi::find_irq_override(1);
+
+        let bsp_lapic_id = apic::get_lapic_id();
+        ioapic::route_irq(kbd_gsi, KEYBOARD_INTERRUPT_VECTOR, bsp_lapic_id);
+
+        match keyboard::init_keyboard() {
+            Ok(()) => kprintln!("[kbd] PS/2 keyboard ready"),
+            Err(e) => kprintln!("[kbd] PS/2 init failed: {}", e),
+        }
     });
 
     {

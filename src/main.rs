@@ -19,12 +19,13 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
+use kernel_common::arch::keyboard;
 use kernel_common::cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::heap::init_malloc;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
 use kernel_common::physical_memory::{THE_HEAP, init_physical_memory_allocator};
-use kernel_common::print::{init_tty, kprintln};
+use kernel_common::print::{init_tty, kprint, kprintln};
 use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::virtual_memory::init_virtual_memory_allocator;
 use limine::BaseRevision;
@@ -209,6 +210,29 @@ pub fn kernel_main() -> ! {
 
     if CORE_ID.get().0 == 0 {
         spawn_coroutine(async_task(1624252));
+
+        // TODO: migrate to an event-driven IRQ system once available — the IRQ handler
+        // should wake a blocked thread directly rather than requiring a spin-poll loop.
+        spawn_thread(|| {
+            kprintln!("[kbd] ready — type something!");
+            loop {
+                while let Some(sc) = keyboard::dequeue_scancode() {
+                    if let Some(ch) = keyboard::decode_scancode(sc) {
+                        // Print the character directly (no prefix) so it appears inline.
+                        // kprintln! adds a newline, so use kprint! for non-newline chars.
+                        if ch == '\n' {
+                            kprintln!("");
+                        } else if ch == '\x08' {
+                            // backspace erase previous char.
+                            kprint!("\x08 \x08");
+                        } else {
+                            kprint!("{}", ch);
+                        }
+                    }
+                }
+                core::hint::spin_loop();
+            }
+        });
 
         let num_threads = 20;
         kprintln!(

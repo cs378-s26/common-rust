@@ -109,7 +109,7 @@ impl Target {
 
     fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
         match self {
-            Target::X86_64 => None,
+             Target::X86_64 => Some("qemu64,+x2apic"),
             // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
             Target::Aarch64 => Some("cortex-a72"),
         }

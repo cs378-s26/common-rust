@@ -5,12 +5,15 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+pub mod acpi;
 pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
 mod debug;
 mod interrupt;
+pub mod ioapic;
+pub mod keyboard;
 mod mp;
 mod tables;
 pub mod tsc;

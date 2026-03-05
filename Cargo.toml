@@ -27,6 +27,7 @@ talc = "4.4.3"
 uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
+ps2 = "0.2.0"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = "0.15.4"

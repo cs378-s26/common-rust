@@ -157,6 +157,12 @@ impl VirtualMemoryAllocation {
     }
 }
 
+impl VirtualMemoryAllocation {
+    pub fn base(&self) -> usize {
+        self.base
+    }
+}
+
 impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table

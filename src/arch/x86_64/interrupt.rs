@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
-use super::apic;
+use super::{apic, keyboard};
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -116,6 +116,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
 
 pub const TIMER_INTERRUPT_VECTOR: u8 = 0x20;
 pub const IPI_WAKE_VECTOR: u8 = 0x21;
+pub const KEYBOARD_INTERRUPT_VECTOR: u8 = 0x22;
 
 pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
@@ -125,6 +126,15 @@ pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
 }
 
 pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
+    apic::eoi();
+}
+
+pub extern "C" fn keyboard_interrupt_handler(_ctx: &InterruptContext) {
+    // Read the scancode directly from the PS/2 data port.
+    // The byte MUST be read even if we don't process it  reading acknowledges the interrupt
+    // to the PS/2 controller and allows the next scancode to be buffered.
+    let scancode = unsafe { x86::io::inb(0x60) };
+    keyboard::enqueue_scancode(scancode);
     apic::eoi();
 }
 
@@ -159,11 +169,15 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         }
         TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
         IPI_WAKE_VECTOR => ipi_wake_handler(context),
-        _ => panic!(
-            "Unhandled interrupt #{}: err={}, cr2={:x}",
-            context.id,
-            context.err,
-            unsafe { cr2() }
-        ),
+        KEYBOARD_INTERRUPT_VECTOR => keyboard_interrupt_handler(context),
+        id => {
+            apic::eoi();
+            crate::print::kprintln!(
+                "warn: unexpected interrupt #{:#04x}: err={}, cr2={:#x}",
+                id,
+                context.err,
+                unsafe { cr2() }
+            );
+        }
     }
 }

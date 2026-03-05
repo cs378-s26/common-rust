@@ -70,6 +70,12 @@ fn unwrap<T>(o: &Once<T>) -> &T {
     o.get().unwrap()
 }
 
+/// Convert a physical address to a virtual one via the HHDM offset Limine provides.
+pub fn phys_to_virt(phys: u64) -> *const u8 {
+    let offset = HHDM_REQUEST.get_response().unwrap().offset();
+    (phys + offset) as *const u8
+}
+
 pub fn frame_alloc() -> usize {
     let mut head = HEAD.lock();
     if *head == usize::MAX {
