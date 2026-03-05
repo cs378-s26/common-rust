@@ -1,6 +1,4 @@
 use core::arch::asm;
-use crate::paging::PagingOptions;
-use crate::virtual_memory::VirtualMemoryManager;
 
 use spin::Once;
 

@@ -29,7 +29,7 @@ fn build_flanterm() {
         .flag("-fno-omit-frame-pointer")
         .flag("-fno-stack-protector");
 
-    build.flag(&format!("--target={target}"));
+    build.flag(format!("--target={target}"));
 
     match target_arch.as_str() {
         "x86_64" => {
@@ -56,7 +56,8 @@ fn build_flanterm() {
     if !output.status.success() {
         panic!(
             "C compiler {:?} did not accept -dumpmachine for target {}",
-            compiler.path(), target
+            compiler.path(),
+            target
         );
     }
 
