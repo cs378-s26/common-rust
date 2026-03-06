@@ -16,7 +16,6 @@ pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
-use interrupt::{disable, enable};
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
@@ -29,7 +28,6 @@ pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
-    type IrqState = IrqState;
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()
@@ -52,7 +50,7 @@ impl ArchTrait for Arch {
     }
 
     fn irq_is_enabled() -> bool {
-        !IrqState::save().is_masked()
+        irq_is_enabled()
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

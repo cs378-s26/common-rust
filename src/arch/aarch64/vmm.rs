@@ -178,7 +178,6 @@ fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64]
     let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
     let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
     let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
-    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
 
     for i in 0..512 {
         if (l3[i] & 0b11) != 0 {
