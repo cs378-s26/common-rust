@@ -211,7 +211,7 @@ pub fn kernel_main() -> ! {
     if CORE_ID.get().0 == 0 {
         spawn_coroutine(async_task(1624252));
 
-        let num_threads = 20;
+        let num_threads = 2000;
         kprintln!(
             "Spawning {} test threads across {} cores",
             num_threads,
@@ -245,6 +245,12 @@ pub fn kernel_main() -> ! {
                 );
             });
         }
+
+        kprintln!(
+            "Done spawning {} test threads across {} cores",
+            num_threads,
+            core_count
+        );
     }
 
     poll_tasks()

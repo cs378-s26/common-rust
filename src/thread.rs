@@ -20,12 +20,11 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqState, apic,
-        sleep_core,
+        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqGuard, apic,
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
-    sync::MutexLike,
+    sync::{IntSpinLock, MutexLike},
 };
 
 pub struct Thread {
@@ -169,18 +168,22 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Mutex<ThreadQueue> = Mutex::new(new_thread_queue());
+static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
     LOCAL_WORK_QUEUE.borrow_mut()
 }
 
 fn thread_enter(thread: Arc<Thread>) {
+    assert!(!Arch::irq_is_enabled());
+
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
+    assert!(!Arch::irq_is_enabled());
+
     CURRENT_THREAD.set(None);
     unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
@@ -231,24 +234,22 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    // Ensure IRQs are enabled so sleep_core (hlt) can be woken by IPIs/timer.
-    Arch::set_irq_enabled(true);
+    assert!(!Arch::irq_is_enabled());
 
     loop {
         loop {
-            // TEMP: need to replace with IntRefCell:342
-            Arch::set_irq_enabled(false);
+            // TEMP: need to replace with IntRefCell
             let Some(thread) = local_work_queue().pop_front() else {
-                Arch::set_irq_enabled(true);
                 break;
             };
-            Arch::set_irq_enabled(true);
 
+            assert!(!Arch::irq_is_enabled());
             GLOBAL_WORK_QUEUE.lock().push_back(thread);
             apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
         }
 
         let thread = {
+            assert!(!Arch::irq_is_enabled());
             let mut lock = GLOBAL_WORK_QUEUE.lock();
             let task = lock.pop_front();
             drop(lock);
@@ -256,7 +257,7 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            sleep_core();
+            // sleep_core();
             continue;
         };
 
@@ -314,12 +315,14 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
 
 // flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
-    let irq_state = IrqState::save();
-    Arch::set_irq_enabled(false);
+    assert!(
+        !Arch::irq_is_enabled(),
+        "suspend_impl requires irq to be disabled on entry"
+    );
 
     assert!(
         is_on_thread(),
-        "yield_thread_with_action_to() called when the current core is not in a thread context"
+        "suspend_impl() called when the current core is not in a thread context"
     );
 
     let thread = this_thread();
@@ -329,11 +332,13 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
         Arch::save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
             action(thread);
+            debug_assert!(
+                !Arch::irq_is_enabled(),
+                "action() re-enabled IRQ - this should never happen"
+            );
             go_to_thread(target);
         })
     }
-
-    irq_state.restore();
 }
 
 /// Preempt to the idle thread, for general purpose rescheduling.
@@ -345,14 +350,23 @@ pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    // We need to lock *before* suspend_impl, because interrupts are blocked there, and we shouldn't deal with
-    // that when in the limbo state.
-    let mut queue = queue.lock();
+    let _guard = IrqGuard::guard();
+
+    let mut queue = queue.lock_no_restore_irq();
+
+    assert!(
+        !Arch::irq_is_enabled(),
+        "interrupts must either be disabled by the lock, or be disabled on entry"
+    );
 
     suspend_impl(
         move |t| {
             queue.push_back(t);
-            drop(queue);
+            drop(queue); // okay to just drop the queue here, because we locked it with
+            // lock_no_restore_irq, so there's no chance of irqs randomly being
+            // restored here
+            //
+            // the _guard is used to actually restore irq state when needed
         },
         IDLE.get().unwrap().clone(),
     );
@@ -360,6 +374,7 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
+    let _guard = IrqGuard::disabled_guard();
     suspend_impl(drop, thread);
 }
 
@@ -376,7 +391,7 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
         }
 
         suspend_to_thread(IDLE.get().unwrap().clone());
-        unreachable!()
+        panic!("unreachable")
     }
 
     #[cfg(target_arch = "x86_64")]

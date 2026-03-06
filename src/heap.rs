@@ -8,7 +8,10 @@ use alloc::boxed::Box;
 use spin::Once;
 use talc::{ErrOnOom, Span, Talc};
 
-use crate::{print::kprintln, sync::IntMutex};
+use crate::{
+    print::kprintln,
+    sync::{IntMutex, MutexLike},
+};
 
 struct GlobalAllocImpl {
     delegate: Once<IntMutex<Talc<ErrOnOom>>>,
