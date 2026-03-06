@@ -15,7 +15,7 @@ use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
-use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
+use crate::arch::{Arch, ArchTrait, TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
@@ -132,6 +132,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
 
         let tsc_freq = tsc::calibrate_tsc_with_pit();
+
         kprintln!(
             "[Core {}] TSC frequency: {} MHz",
             CORE_ID.get(),
@@ -140,6 +141,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
         let apic_freq =
             apic::calibrate_apic_timer_with_tsc(tsc_freq).expect("Failed to calibrate APIC timer");
+
         kprintln!(
             "[Core {}] APIC timer frequency: {} MHz",
             CORE_ID.get(),

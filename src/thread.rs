@@ -13,7 +13,9 @@ use core::arch::naked_asm;
 
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
-use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
+use intrusive_collections::{
+    LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
+};
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
@@ -27,7 +29,13 @@ use crate::{
 };
 
 pub struct Thread {
+    // used for generally queuing threads somewhere
     pub link: LinkedListAtomicLink,
+
+    // used for scheduling
+    // some schedulers may opt to not use this (e.g. round robin)
+    pub rb_link: RBTreeAtomicLink,
+
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
@@ -40,6 +48,7 @@ impl Thread {
 
         let handle = Arc::new(Thread {
             link: LinkedListAtomicLink::new(),
+            rb_link: RBTreeAtomicLink::new(),
             tls: Pin::new(tls),
             tls_addr,
         });
@@ -152,6 +161,7 @@ thread_local! {
     pub THIS_THREAD: Once<Weak<Thread>> = Once::new();
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
+    pub IS_IDLE: AtomicBool = AtomicBool::new(false);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -210,6 +220,8 @@ pub fn set_up_idle() -> Arc<Thread> {
     ctx.setup_kthread_context();
     CTX_GUARD.set(Some(ctx));
 
+    IS_IDLE.store(true, Ordering::Relaxed);
+
     IDLE.get().unwrap().clone()
 }
 
@@ -224,11 +236,16 @@ pub fn poll_tasks() -> ! {
 
     loop {
         loop {
+            // TEMP: need to replace with IntRefCell:342
+            Arch::set_irq_enabled(false);
             let Some(thread) = local_work_queue().pop_front() else {
+                Arch::set_irq_enabled(true);
                 break;
             };
+            Arch::set_irq_enabled(true);
 
             GLOBAL_WORK_QUEUE.lock().push_back(thread);
+            apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
         }
 
         let thread = {
@@ -268,7 +285,12 @@ pub fn can_yield_for_preempt() -> bool {
 /// # Safety
 /// Can only be called from IRQ
 pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
-    assert!(can_yield_for_preempt());
+    // idle thread is allowed to call preempt_to
+    assert!(can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed));
+    assert!(
+        !Arch::irq_is_enabled(),
+        "IRQ cannot be enabled on preempt_to"
+    );
 
     // Save the interrupted context and release the CONTEXT lock.
     let mut guard = CTX_GUARD
@@ -277,23 +299,17 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
     guard.save_from_interrupt(ctx);
     drop(guard);
 
-    let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
+    let thread = this_thread();
+    let is_idle = IS_IDLE.load(Ordering::Relaxed);
 
     thread_exit();
 
-    GLOBAL_WORK_QUEUE
-        .lock()
-        .push_back(thread.upgrade().unwrap());
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    // can't queue idle
+    if !is_idle {
+        local_work_queue().push_back(thread);
+    }
 
     unsafe { go_to_thread(target) }
-}
-
-/// Preempt to the idle thread, for general purpose rescheduling.
-/// # Safety
-/// Can only be called from IRQ
-pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
-    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
@@ -315,9 +331,16 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
             action(thread);
             go_to_thread(target);
         })
-    };
+    }
 
     irq_state.restore();
+}
+
+/// Preempt to the idle thread, for general purpose rescheduling.
+/// # Safety
+/// Can only be called from IRQ
+pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
 }
 
 #[inline(always)]

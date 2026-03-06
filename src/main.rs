@@ -178,6 +178,8 @@ static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 
 pub fn kernel_main() -> ! {
+    assert!(!Arch::irq_is_enabled());
+
     // kprintln!("we are the MPCorelings! please feed us!");
     let mp_res = MP_REQUEST
         .get_response()
@@ -245,7 +247,6 @@ pub fn kernel_main() -> ! {
         }
     }
 
-    Arch::set_irq_enabled(true);
     poll_tasks()
 }
 

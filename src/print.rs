@@ -279,6 +279,7 @@ pub macro kprint {
         use $crate::print::PrintWriter;
         let _guard = $crate::print::LOCK_KPRINT.lock();
         let _ = PrintWriter.write_fmt(::core::format_args!($($arg)*));
+        drop(_guard);
     }}
 }
 
