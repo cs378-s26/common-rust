@@ -1,7 +1,5 @@
 use x86::io::{inb, outb};
 
-use crate::arch::{Arch, ArchTrait};
-
 #[inline]
 pub fn read_tsc() -> u64 {
     unsafe { x86::time::rdtsc() }

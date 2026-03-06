@@ -15,7 +15,7 @@ use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
-use crate::arch::{Arch, ArchTrait, TIMER_INTERRUPT_VECTOR, apic, tsc};
+use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
