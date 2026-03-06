@@ -11,7 +11,7 @@
 
 extern crate alloc;
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // For coroutines.
 use core::future::Future;
@@ -218,6 +218,8 @@ pub fn kernel_main() -> ! {
             core_count
         );
 
+        static EXPECTED: AtomicU64 = AtomicU64::new(0);
+
         for i in 0..num_threads {
             spawn_thread(move || {
                 let start_core = CORE_ID.get();
@@ -243,6 +245,10 @@ pub fn kernel_main() -> ! {
                     end_core.0,
                     end_tick - start_tick,
                 );
+
+                if EXPECTED.fetch_add(1, Ordering::SeqCst) + 1 == num_threads {
+                    kprintln!("testcase done");
+                }
             });
         }
 

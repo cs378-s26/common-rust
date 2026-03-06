@@ -189,6 +189,8 @@ fn thread_exit() {
 }
 
 pub fn is_on_thread() -> bool {
+    let _guard = IrqGuard::disabled_guard();
+
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
     CURRENT_THREAD.set(thread);
