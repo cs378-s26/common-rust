@@ -123,13 +123,11 @@ pub fn frame_alloc() -> usize {
     }
 }
 
-// maps 'frames' number of contiguous frames
+// maps 'frames' number of contiguous frames, used for DMA
 // TODO we don't really want this to be a bump allocator we want to be able
 // to better reclaim memory
 pub fn alloc_frames(frames: usize) -> usize {
-    if frames == 0 {
-        0;
-    }
+    assert!(frames > 0);
 
     let mut end = END.lock();
     let regions = unwrap(&REGIONS);

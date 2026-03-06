@@ -166,7 +166,7 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         let paddr = l3[index_3] & !0xFFF;
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
-        // free_unused_tables(vaddr, l0, l1, l2, l3);
+        free_unused_tables(vaddr, l0, l1, l2, l3);
         frame_dealloc(paddr as usize);
         Some(paddr)
     }
