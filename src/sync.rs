@@ -5,7 +5,6 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-
 use crate::{
     arch::{Arch, ArchTrait, IrqState},
     thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
