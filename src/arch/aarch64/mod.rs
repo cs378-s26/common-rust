@@ -9,6 +9,7 @@ pub mod apic;
 mod asm;
 mod context;
 mod device_tree;
+use device_tree::DeviceRegistry;
 mod interrupt;
 mod mp;
 
@@ -24,6 +25,9 @@ use mp::{
 mod vmm;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
+
+// populated once at boot by init_device_discovery; readable by the rest of the kernel
+static DEVICE_REGISTRY: Once<DeviceRegistry> = Once::new();
 
 pub struct Arch;
 
@@ -87,7 +91,24 @@ impl ArchTrait for Arch {
     fn init_device_discovery() {
         if let Some(dtb) = crate::DEVICE_TREE_BLOB_REQUEST.get_response() {
             // safety: limine guarantees this pointer is valid for the lifetime of the kernel
-            unsafe { device_tree::walk_device_tree(dtb.dtb_ptr()) };
+            let registry = unsafe { device_tree::walk_device_tree(dtb.dtb_ptr()) };
+
+            for dev in &registry.devices {
+                let compat = dev.compatible.first().copied().unwrap_or("(none)");
+                match dev.mmio {
+                    Some((base, size)) => crate::print::kprintln!(
+                        "  device: {}  compatible: {}  mmio: {:#x} size: {:#x}",
+                        dev.name, compat, base, size
+                    ),
+                    None => crate::print::kprintln!(
+                        "  device: {}  compatible: {}  mmio: none",
+                        dev.name, compat
+                    ),
+                }
+            }
+
+            // store registry so other parts of the kernel can query it later
+            DEVICE_REGISTRY.call_once(|| registry);
         } else {
             crate::print::kprintln!("device_tree: no dtb from bootloader");
         }
