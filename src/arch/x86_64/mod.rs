@@ -111,6 +111,10 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn parse_devices() {
+        // TODO implement this
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -142,8 +146,8 @@ pub struct SerialCharSink {
 }
 
 impl SerialCharSink {
-    pub fn open(port: u16) -> SerialCharSink {
-        let mut serial = unsafe { SerialPort::new(port) };
+    pub fn open(port: usize) -> SerialCharSink {
+        let mut serial = unsafe { SerialPort::new(port as u16) };
         serial.init();
         SerialCharSink {
             serial: SyncUnsafeCell::new(serial),

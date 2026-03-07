@@ -21,6 +21,8 @@ use mp::{
     set_thread_local_pointer,
 };
 mod vmm;
+mod device_tree;
+pub use device_tree::*;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 
@@ -105,6 +107,13 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn parse_devices() {
+        // Bring up devices via the FDT. Keep the names fully qualified to avoid
+        // accidentally calling this method recursively.
+        device_tree::init_device_tree();
+        device_tree::parse_devices();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -136,20 +145,25 @@ impl UnwindContextTrait for UnwindContext {
     }
 }
 
-pub struct SerialCharSink;
+pub struct SerialCharSink {
+    base_addr: usize,
+}
+
 
 impl SerialCharSink {
-    pub fn open(_port: u16) -> SerialCharSink {
-        SerialCharSink
+    pub fn open(port: usize) -> SerialCharSink {
+        SerialCharSink { base_addr: port }
     }
 }
 
 impl CharSink for SerialCharSink {
-    unsafe fn putc(&self, _ch: u8) {}
+    unsafe fn putc(&self, ch: u8) {
+        core::ptr::write_volatile((self.base_addr) as *mut u8, ch);
+    }
 
     unsafe fn flush(&self) {}
 }
 
 pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0));
+    // do nothing, actual initialization is done in parse_devices when we parse the device tree and find the pl011 uart
 }

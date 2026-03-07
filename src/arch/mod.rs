@@ -127,6 +127,7 @@ pub trait ArchTrait {
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
+    fn parse_devices();
     fn halt() -> !;
 }
 

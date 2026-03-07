@@ -25,6 +25,7 @@ spin = "0.10.0"
 static_cell = "2.1.1"
 talc = "4.4.3"
 uart_16550 = "0.4.0"
+fdt = "0.1.5"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 

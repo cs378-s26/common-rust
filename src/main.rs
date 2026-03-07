@@ -162,6 +162,7 @@ unsafe extern "C" fn system_main() -> ! {
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
 
+    Arch::parse_devices();
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
     // or just spam OnceCell
