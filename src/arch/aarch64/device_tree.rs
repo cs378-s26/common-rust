@@ -7,7 +7,8 @@ use fdt::Fdt;
 pub struct DeviceInfo {
     pub name: &'static str,
     pub compatible: Vec<&'static str>,
-    pub mmio: Option<(u64, u64)>, // (base address, size in bytes)
+    pub mmio: Option<(u64, u64)>,      // physical (base address, size in bytes) from device tree
+    pub mmio_virt: Option<usize>,       // kernel virtual address after mapping; None until Step 4 maps it
 }
 
 // all devices found during boot-time device tree walk
@@ -47,6 +48,7 @@ pub unsafe fn walk_device_tree(dtb_ptr: *const ()) -> DeviceRegistry {
             name: node.name,
             compatible,
             mmio,
+            mmio_virt: None,
         });
     }
 

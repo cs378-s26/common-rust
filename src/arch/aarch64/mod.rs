@@ -90,24 +90,70 @@ impl ArchTrait for Arch {
 
     fn init_device_discovery() {
         if let Some(dtb) = crate::DEVICE_TREE_BLOB_REQUEST.get_response() {
-            // safety: limine guarantees this pointer is valid for the lifetime of the kernel
-            let registry = unsafe { device_tree::walk_device_tree(dtb.dtb_ptr()) };
+            // limine guarantees this pointer is valid for the lifetime of the kernel
+            let mut registry = unsafe { device_tree::walk_device_tree(dtb.dtb_ptr()) };
+
+            let space = vmm::get_address_space();
+
+            for dev in &mut registry.devices {
+                let (phys_base, size) = match dev.mmio {
+                    Some((b, s)) => (b, s),
+                    None => continue, // no reg property (like cpus) nothing to map
+                };
+
+                // page-align the base down track offset so mmio_virt points at the real registers
+                let page_offset = phys_base as usize & 0xFFF;
+                let aligned_phys = phys_base as usize & !0xFFF;
+                let aligned_size = (size as usize + page_offset + 0xFFF) & !0xFFF;
+
+                if aligned_size == 0 {
+                    continue; // size was 0 in the dtb -> nothing to map
+                }
+
+                // map each page of the mmio region device memory not cacheable
+                let virt_base = crate::virtual_memory::VirtualMemoryAllocation::new(
+                    space,
+                    aligned_size,
+                    None, // map pages manually below so control the physical address
+                    crate::virtual_memory::PagingOptions::PRESENT | crate::virtual_memory::PagingOptions::WRITABLE,
+                );
+
+                let mut i = 0;
+                while i < aligned_size {
+                    vmm::vmap(
+                        space,
+                        (virt_base.base + i) as u64,
+                        (aligned_phys + i) as u64,
+                        crate::virtual_memory::PagingOptions::PRESENT | crate::virtual_memory::PagingOptions::WRITABLE,
+                    );
+                    i += Arch::PAGE_SIZE;
+                }
+
+                dev.mmio_virt = Some(virt_base.base + page_offset);
+
+                // permanent kernel mapping intentionally prevent Drop from unmapping it
+                core::mem::forget(virt_base);
+            }
 
             for dev in &registry.devices {
                 let compat = dev.compatible.first().copied().unwrap_or("(none)");
-                match dev.mmio {
-                    Some((base, size)) => crate::print::kprintln!(
-                        "  device: {}  compatible: {}  mmio: {:#x} size: {:#x}",
+                match (dev.mmio, dev.mmio_virt) {
+                    (Some((base, size)), Some(virt)) => crate::print::kprintln!(
+                        "  device: {}  compatible: {}  phys: {:#x} size: {:#x} virt: {:#x}",
+                        dev.name, compat, base, size, virt
+                    ),
+                    (Some((base, size)), None) => crate::print::kprintln!(
+                        "  device: {}  compatible: {}  phys: {:#x} size: {:#x} virt: (failed)",
                         dev.name, compat, base, size
                     ),
-                    None => crate::print::kprintln!(
+                    _ => crate::print::kprintln!(
                         "  device: {}  compatible: {}  mmio: none",
                         dev.name, compat
                     ),
                 }
             }
 
-            // store registry so other parts of the kernel can query it later
+            // store registry so other parts of the kernel can get it later
             DEVICE_REGISTRY.call_once(|| registry);
         } else {
             crate::print::kprintln!("device_tree: no dtb from bootloader");
