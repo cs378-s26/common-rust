@@ -1,4 +1,3 @@
-
 // Minimal interrupt context placeholder; real implementation TBD.
 #[repr(C)]
 pub struct InterruptContext;
