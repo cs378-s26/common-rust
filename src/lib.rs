@@ -41,8 +41,10 @@ use limine::firmware_type::FirmwareType;
 use limine::request::{
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
+use physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use spin::{Barrier, Once};
 use talc::Span;
+use virtual_memory::init_virtual_memory_allocator;
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -68,10 +70,6 @@ pub static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]
 pub static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-// heap
-// TODO: use virtual memory herez
-pub static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
@@ -102,6 +100,8 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
     }
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
+    init_physical_memory_allocator();
+    init_virtual_memory_allocator();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
