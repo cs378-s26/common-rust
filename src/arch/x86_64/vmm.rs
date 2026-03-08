@@ -22,6 +22,7 @@ unsafe impl FrameAllocator<Size4KiB> for FrameAllocatorWrapper {
         PhysFrame::from_start_address(PhysAddr::new((self.inner)() as u64)).ok()
     }
 }
+
 pub struct FrameDeallocatorWrapper {
     pub inner: fn(usize) -> (),
 }

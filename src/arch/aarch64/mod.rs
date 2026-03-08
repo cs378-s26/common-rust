@@ -3,21 +3,24 @@ use core::arch::asm;
 use spin::Once;
 
 use crate::print::CharSink;
+use crate::virtual_memory::PagingOptions;
 
+pub mod apic;
 mod asm;
 mod context;
 mod interrupt;
 mod mp;
 
+pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
-pub use interrupt::IrqState;
-use interrupt::{disable, enable};
+pub use interrupt::*;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
+mod vmm;
 
 pub use crate::arch::{ArchTrait, UnwindContextTrait};
 
@@ -47,7 +50,7 @@ impl ArchTrait for Arch {
     }
 
     fn irq_is_enabled() -> bool {
-        !IrqState::save().is_masked()
+        irq_is_enabled()
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
@@ -68,11 +71,11 @@ impl ArchTrait for Arch {
         init_cpu_local_ptr(core_id);
     }
 
-    fn get_thread_local_pointer() -> u64 {
+    unsafe fn get_thread_local_pointer() -> u64 {
         unsafe { get_thread_local_pointer() }
     }
 
-    fn set_thread_local_pointer(base: *const u64) {
+    unsafe fn set_thread_local_pointer(base: *const u64) {
         unsafe { set_thread_local_pointer(base) };
     }
 
@@ -83,15 +86,15 @@ impl ArchTrait for Arch {
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
-        panic!("unimplemented get_address_space");
+        vmm::get_address_space()
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-        panic!("unimplemented virtual_map");
+        vmm::vmap(space, vaddr, paddr, options)
     }
 
-    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
-        panic!("unimplemented virtual_unmap");
+    fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
+        vmm::vunmap(_space, _vaddr)
     }
 
     fn shutdown(_err_code: u16) {

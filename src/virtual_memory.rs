@@ -32,11 +32,11 @@ bitflags! {
 }
 
 struct VirtualMemoryEntry {
-    base: usize,
-    length: usize,
+    pub base: usize,
+    pub length: usize,
     // future proofing
     #[allow(unused)]
-    options: PagingOptions,
+    pub options: PagingOptions,
     link: RBTreeLink,
 }
 // https://docs.rs/intrusive-collections/latest/intrusive_collections/
@@ -106,9 +106,9 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
 }
 
 pub struct VirtualMemoryAllocation {
-    space: u64,
-    base: usize,
-    length: usize,
+    pub space: u64,
+    pub base: usize,
+    pub length: usize,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -124,10 +124,12 @@ impl VirtualMemoryAllocation {
             .get()
             .expect("virtual allocation attempted before virtual memory allocator was initialized")
             .lock();
+
         let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
         let mut chosen = cursor
             .remove()
             .expect("free VME collection error during allocation"); // best-fit allocation
+
         assert!(chosen.length >= length); // can remove once we're confident in this data structure lol
         vmes.active.insert(Box::new(VirtualMemoryEntry {
             base: chosen.base,
@@ -135,6 +137,7 @@ impl VirtualMemoryAllocation {
             options,
             link: RBTreeLink::new(),
         }));
+
         let base = chosen.base;
         if chosen.length != length {
             // don't reinsert duds
@@ -142,6 +145,7 @@ impl VirtualMemoryAllocation {
             chosen.length -= length;
             vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
         }
+
         if let Some(physical) = backing {
             let mut i = 0;
             while i < length {
@@ -149,6 +153,7 @@ impl VirtualMemoryAllocation {
                 i += Arch::PAGE_SIZE;
             }
         }
+
         VirtualMemoryAllocation {
             space,
             base,
@@ -239,10 +244,9 @@ mod test {
                 kprintln!("starting thread");
                 let vaddr: u64 = 0x10000000 * tid; // unsafe!
                 let frame_1: usize = frame_alloc();
-                kprintln!("frame 1: {:x}", frame_1);
+                frame_dealloc(frame_1);
                 let frame_2: usize = frame_alloc();
                 kprintln!("frame 2: {:x}", frame_2);
-                frame_dealloc(frame_1);
 
                 kprintln!("manually mapping vmem");
                 Arch::virtual_map(
