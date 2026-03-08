@@ -35,7 +35,3 @@ pub fn sleep_core() {
         asm!("wfi", options(nomem, nostack, preserves_flags));
     }
 }
-
-pub unsafe extern "C" fn switch_stack(_stack_top: u64, _f: extern "C" fn() -> !) -> ! {
-    panic!("switch_stack not implemented on aarch64");
-}

@@ -69,7 +69,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
         let l3: &mut [u64] =
             core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
 
-        l3[index_3] = (paddr & !0xFFF) as u64 | create_aarch64_attributes(options);
+        l3[index_3] = (paddr & !0xFFF) | create_aarch64_attributes(options);
     }
 }
 
@@ -179,25 +179,25 @@ fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64]
     let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
     let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
 
-    for i in 0..512 {
-        if (l3[i] & 0b11) != 0 {
+    for entry in l3.iter().take(512) {
+        if (entry & 0b11) != 0 {
             return; // valid entry in this table, can't free
         }
     }
     l2[index_2] = 0;
     frame_dealloc((l3.as_mut_ptr() as usize) - hhdm_offset);
 
-    for i in 0..512 {
-        if (l2[i] & 0b11) != 0 {
-            return;
+    for entry in l2.iter().take(512) {
+        if (entry & 0b11) != 0 {
+            return; // valid entry in this table, can't free
         }
     }
     l1[index_1] = 0;
     frame_dealloc((l2.as_mut_ptr() as usize) - hhdm_offset);
 
-    for i in 0..512 {
-        if (l1[i] & 0b11) != 0 {
-            return;
+    for entry in l1.iter().take(512) {
+        if (entry & 0b11) != 0 {
+            return; // valid entry in this table, can't free
         }
     }
     l0[index_0] = 0;
