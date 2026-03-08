@@ -10,6 +10,7 @@ mod asm;
 mod context;
 mod device_tree;
 use device_tree::DeviceRegistry;
+mod driver_registry;
 mod interrupt;
 mod mp;
 
@@ -152,6 +153,8 @@ impl ArchTrait for Arch {
                     ),
                 }
             }
+
+            driver_registry::probe_drivers(&registry);
 
             // store registry so other parts of the kernel can get it later
             DEVICE_REGISTRY.call_once(|| registry);
