@@ -9,6 +9,8 @@ pub struct DeviceInfo {
     pub compatible: Vec<&'static str>,
     pub mmio: Option<(u64, u64)>,      // physical (base address, size in bytes) from device tree
     pub mmio_virt: Option<usize>,       // kernel virtual address after mapping; None until Step 4 maps it
+    pub virtio_device_id: Option<u32>, // set by virtio_mmio driver; None for non-virtio devices
+    pub virtio_version: Option<u32>,   // set by virtio_mmio driver; None for non-virtio devices
 }
 
 // all devices found during boot-time device tree walk
@@ -49,6 +51,8 @@ pub unsafe fn walk_device_tree(dtb_ptr: *const ()) -> DeviceRegistry {
             compatible,
             mmio,
             mmio_virt: None,
+            virtio_device_id: None,
+            virtio_version: None,
         });
     }
 
