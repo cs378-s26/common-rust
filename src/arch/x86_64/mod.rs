@@ -1,49 +1,134 @@
 use core::cell::SyncUnsafeCell;
 
+use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
+mod debug;
 mod interrupt;
 mod mp;
 mod tables;
-mod debug;
+pub mod tsc;
+mod vmm;
 
 pub use asm::*;
-pub use context::*;
+pub use context::Context;
+use context::save_context;
 pub use interrupt::*;
-pub use mp::*;
-pub use debug::*;
+use mp::{
+    get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
+    set_thread_local_pointer,
+};
+pub use vmm::*;
+use x86::bits64::rflags::{self, RFlags};
+use x86::irq;
 
+pub use crate::arch::{ArchTrait, UnwindContextTrait};
+use crate::mp::CoreId;
 use crate::print::CharSink;
+use crate::virtual_memory::PagingOptions;
+pub struct Arch;
+
+impl ArchTrait for Arch {
+    type Context = Context;
+
+    fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
+        let resp = req
+            .get_response()
+            .expect("Failed to get response from MpRequest.");
+        cpu.lapic_id == resp.bsp_lapic_id()
+    }
+
+    unsafe fn initialize_core(cpu: &Cpu) {
+        unsafe { initialize_core(cpu) };
+    }
+
+    fn set_irq_enabled(enabled: bool) {
+        unsafe {
+            if enabled {
+                irq::enable();
+            } else {
+                irq::disable();
+            }
+        }
+    }
+
+    fn irq_is_enabled() -> bool {
+        rflags::read().contains(RFlags::FLAGS_IF)
+    }
+
+    unsafe fn save_context<T: FnOnce() -> !>(
+        temp_stack: &[u8],
+        ctx: spin::MutexGuard<'static, Self::Context>,
+        fwd: T,
+    ) {
+        unsafe { save_context(temp_stack, ctx, fwd) };
+    }
+
+    fn get_cpu_local_pointer() -> u64 {
+        get_cpu_local_pointer()
+    }
+
+    fn set_cpu_local_pointer(core_id: CoreId) {
+        init_cpu_local_ptr(core_id);
+    }
+
+    unsafe fn get_thread_local_pointer() -> u64 {
+        unsafe { get_thread_local_pointer() }
+    }
+
+    unsafe fn set_thread_local_pointer(base: *const u64) {
+        unsafe { set_thread_local_pointer(base) };
+    }
+
+    fn read_cycle_counter() -> u64 {
+        asm::read_cycle_counter()
+    }
+
+    const PAGE_SIZE: usize = 4096;
+
+    fn get_address_space() -> u64 {
+        get_address_space()
+    }
+
+    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+        vmap(space, vaddr, paddr, options);
+    }
+
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap(space, vaddr)
+    }
+
+    fn shutdown(err_code: u16) {
+        debug::shutdown(err_code);
+    }
+
+    fn halt() -> ! {
+        halt()
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct UnwindContext {
     ptr: *const u64,
 }
 
-impl UnwindContext {
+impl UnwindContextTrait for UnwindContext {
+    fn from_ptr(ptr: *const u64) -> UnwindContext {
+        UnwindContext { ptr }
+    }
+    fn get_ptr(&self) -> *const u64 {
+        self.ptr
+    }
     #[inline(always)]
-    pub unsafe fn get() -> UnwindContext {
+    unsafe fn get() -> UnwindContext {
         UnwindContext {
             ptr: rbp() as *const u64,
-        }
-    }
-
-    pub unsafe fn valid(&self) -> bool {
-        (unsafe { self.return_address() }) != 0
-    }
-
-    pub unsafe fn return_address(&self) -> u64 {
-        unsafe { self.ptr.wrapping_add(1).read() }
-    }
-
-    pub unsafe fn next(&self) -> UnwindContext {
-        UnwindContext {
-            ptr: unsafe { self.ptr.read() } as *const u64,
         }
     }
 }

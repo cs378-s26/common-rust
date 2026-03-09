@@ -1,10 +1,16 @@
-/build/
-
 .vim
+.zed/
 
-target/
+# rust source tree
+target
 buildtool-cache/
 run/
 Cargo.lock
 
 qemu.log
+
+.direnv/
+.vscode/
+.zed/settings.json
+
+disk.img

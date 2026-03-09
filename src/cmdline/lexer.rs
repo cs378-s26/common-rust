@@ -164,7 +164,7 @@ impl<'a> CmdlineLexer<'a> {
         Ok(())
     }
 
-    pub fn next(&mut self) -> Result<CmdlineToken<'a>, CmdlineParseError<'a>> {
+    pub fn next_tok(&mut self) -> Result<CmdlineToken<'a>, CmdlineParseError<'a>> {
         let mut tok;
 
         match self.lexer.next() {
@@ -190,7 +190,7 @@ impl<'a> CmdlineLexer<'a> {
     }
 
     pub fn expect(&mut self, tok: CmdlineTokenData<'static>) -> Result<(), CmdlineParseError<'a>> {
-        let CmdlineToken(data, range) = self.next()?;
+        let CmdlineToken(data, range) = self.next_tok()?;
 
         if data != tok {
             Err(CmdlineParseError(
@@ -219,7 +219,7 @@ impl<'a> CmdlineLexer<'a> {
                     break;
                 }
 
-                self.next()?;
+                self.next_tok()?;
             }
         }
 
@@ -263,19 +263,19 @@ mod test {
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("hello")
         );
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("world")
         );
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("_underscore")
         );
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("identifier")
         );
     }
@@ -285,10 +285,10 @@ mod test {
         let data = "123 0x1a3 075 -42";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Number(123));
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Number(0x1a3));
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Number(0o75));
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Number(-42));
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Number(123));
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Number(0x1a3));
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Number(0o75));
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Number(-42));
     }
 
     #[test_case]
@@ -297,17 +297,17 @@ mod test {
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd1")
         );
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Comma);
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Comma);
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd2")
         );
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Colon);
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Colon);
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd3")
         );
     }
@@ -317,17 +317,17 @@ mod test {
         let data = "{cmd1, cmd2}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::OpenBrace);
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::OpenBrace);
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd1")
         );
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::Comma);
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::Comma);
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd2")
         );
-        assert_eq!(lexer.next().unwrap().0, CmdlineTokenData::ClosedBrace);
+        assert_eq!(lexer.next_tok().unwrap().0, CmdlineTokenData::ClosedBrace);
     }
 
     #[test_case]
@@ -335,7 +335,7 @@ mod test {
         let data = "cmd1 @ cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
-        assert_eq!(lexer.next().unwrap_err().0, CmdlineErrorCode::BadToken);
+        assert_eq!(lexer.next_tok().unwrap_err().0, CmdlineErrorCode::BadToken);
     }
 
     #[test_case]
@@ -343,10 +343,15 @@ mod test {
         let data = "cmd1 : cmd2";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
+        assert_eq!(
+            lexer.next_tok().unwrap().0,
+            CmdlineTokenData::Identifier("cmd1")
+        );
+
         lexer.expect(CmdlineTokenData::Colon).unwrap();
 
         assert_eq!(
-            lexer.next().unwrap().0,
+            lexer.next_tok().unwrap().0,
             CmdlineTokenData::Identifier("cmd2")
         );
     }
@@ -359,15 +364,15 @@ mod test {
         assert_eq!(
             lexer.expect(CmdlineTokenData::Comma).unwrap_err().0,
             CmdlineErrorCode::ExpectedToken {
-                actual: CmdlineTokenData::Colon,
+                actual: CmdlineTokenData::Identifier("cmd1"),
                 expected: CmdlineTokenData::Comma
             }
         );
     }
 
     #[test_case]
-    fn test_parse_block_with_delimiter() {
-        let data = "{cmd1, cmd2, cmd3}";
+    fn test_parse_block() {
+        let data = "cmd1, cmd2, cmd3}";
         let mut lexer = CmdlineLexer::new(data).unwrap();
 
         lexer
@@ -375,25 +380,7 @@ mod test {
                 CmdlineTokenData::ClosedBrace,
                 CmdlineTokenData::Comma,
                 |lexer| {
-                    let ident = lexer.next().unwrap();
-                    assert!(matches!(ident.0, CmdlineTokenData::Identifier(_)));
-                    Ok(())
-                },
-            )
-            .unwrap();
-    }
-
-    #[test_case]
-    fn test_parse_block_end_token() {
-        let data = "{cmd1 cmd2}";
-        let mut lexer = CmdlineLexer::new(data).unwrap();
-
-        lexer
-            .parse_block(
-                CmdlineTokenData::ClosedBrace,
-                CmdlineTokenData::Comma,
-                |lexer| {
-                    let ident = lexer.next().unwrap();
+                    let ident = lexer.next_tok().unwrap();
                     assert!(matches!(ident.0, CmdlineTokenData::Identifier(_)));
                     Ok(())
                 },

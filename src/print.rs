@@ -12,7 +12,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
-use crate::arch::{self, SerialCharSink, UnwindContext};
+use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
 use crate::sync::IntMutex;
 
 #[derive(Clone, Copy)]
@@ -127,8 +127,12 @@ impl_for!(LowerExp);
 impl_for!(UpperExp);
 
 pub trait CharSink: Send + Sync {
+    /// # Safety
+    /// Not thread safe, must be locked.
     unsafe fn putc(&self, ch: u8);
 
+    /// # Safety
+    /// Not thread safe, must be locked.
     unsafe fn flush(&self);
 }
 
@@ -203,7 +207,8 @@ impl FlanTermSink {
 impl CharSink for FlanTermSink {
     unsafe fn putc(&self, ch: u8) {
         unsafe {
-            flanterm_write(self.0, ptr::from_ref(&(ch as i8)), 1);
+            let cch = ch as core::ffi::c_char;
+            flanterm_write(self.0, ptr::from_ref(&cch), 1);
 
             if ch == b'\n' {
                 flanterm_flush(self.0);

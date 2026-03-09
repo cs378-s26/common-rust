@@ -3,7 +3,7 @@ use core::arch::asm;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use alloc::boxed::Box;
-use limine::{mp::Cpu, request::MpRequest};
+use limine::mp::Cpu;
 use spin::Once;
 use x86::msr::IA32_FS_BASE;
 use x86::{
@@ -15,16 +15,13 @@ use crate::arch::x86_64::slice_stack_pointer;
 use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
+use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
 use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
-    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for, init_cpu_local_table},
+    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::{kprint, kprintln},
 };
-
-#[used]
-#[unsafe(link_section = ".limine_requests")]
-static MP_REQUEST: MpRequest = MpRequest::new();
 
 static CPU_ID_PRINT: Once<()> = Once::new();
 
@@ -36,7 +33,7 @@ core_local! {
 }
 
 // Gheith uses FSGSBASE instructions here, but the MSR is older and doesn't need to be enabled
-fn init_cpu_local_ptr(core_id: CoreId) {
+pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe { wrmsr(IA32_GS_BASE, ptr) };
 }
@@ -73,58 +70,11 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
     val
 }
 
-pub fn core_count() -> usize {
-    MP_REQUEST.get_response().unwrap().cpus().len()
-}
-
-// initialization routines
-
-pub unsafe extern "C" fn dummy() -> ! {
-    loop{}
-}
-
-static mut KERN_MAIN_PTR : unsafe extern "C" fn() -> ! = dummy;
-
-pub fn initialize_mp(func: unsafe extern "C" fn() -> !) -> ! {
-    let response = MP_REQUEST.get_response().expect("mp response not received");
-
-    let n_cores = response.cpus().len();
-    kprintln!("x86::initialize_mp(): bootstrapping {} cores", n_cores);
-
-    init_cpu_local_table(n_cores);
-
-    let mut core_id: u64 = 1;
-    let bsp_id = response.bsp_lapic_id();
-
-    let mut core_self = None;
-
-    unsafe { KERN_MAIN_PTR = func; }
-
-    for cpu in response.cpus() {
-        if bsp_id != cpu.lapic_id {
-            cpu.extra.store(core_id, Ordering::SeqCst);
-            core_id += 1;
-            cpu.goto_address.write(initialize_core);
-        } else {
-            core_self = Some(cpu);
-        }
-    }
-
-    unsafe { initialize_core(core_self.expect("limine did not give current CPU in MP response")) };
-}
-
-unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
-    // kprintln!("hello from x86::initialize_core");
+pub unsafe fn initialize_core(cpu: &Cpu) {
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     LAPIC_ID.store(cpu.lapic_id, Ordering::Relaxed);
-    kprintln!(
-        "done init core {}, CLS base={:x}, GSBASE={:x}",
-        id,
-        get_cpu_local_pointer(),
-        get_cpu_local_pointer_for(id)
-    );
 
     let cpu_id = CpuId::new();
 
@@ -134,12 +84,14 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
         slice_stack_pointer(unsafe { &*Box::into_raw(aligned_slice(pages * 4096, 4096)) })
     }
 
+    // stores the stacks we switch to when interrupts occur
     let ist = IST.call_once(|| InterruptStackTable {
         reserved0: 0,
         rsp0: 0,
         rsp1: 0,
         rsp2: 0,
         reserved1: 0,
+        // allocate interrupt stacks
         ist1: allocate_sp(32),
         ist2: allocate_sp(32),
         ist3: allocate_sp(32),
@@ -156,11 +108,49 @@ unsafe extern "C" fn initialize_core(cpu: &Cpu) -> ! {
     let idt = IDT.call_once(InterruptDescriptorTable::new);
 
     unsafe { gdt.load() };
-    // unsafe { idt.load() };
+    unsafe { idt.load() };
 
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
+    if !apic::enable_x2apic() {
+        panic!("Failed to enable x2APIC");
+    }
+    apic::init_lapic();
+    apic::disable_pic();
 
-    unsafe { KERN_MAIN_PTR(); }
+    // Calibrate timers once on BSP, store frequencies for all cores
+    static TIMER_CALIBRATION: Once<(u64, u64)> = Once::new();
+    let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
+        kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
+
+        let tsc_freq = tsc::calibrate_tsc_with_pit();
+        kprintln!(
+            "[Core {}] TSC frequency: {} MHz",
+            CORE_ID.get(),
+            tsc_freq / 1_000_000
+        );
+
+        let apic_freq =
+            apic::calibrate_apic_timer_with_tsc(tsc_freq).expect("Failed to calibrate APIC timer");
+        kprintln!(
+            "[Core {}] APIC timer frequency: {} MHz",
+            CORE_ID.get(),
+            apic_freq / 1_000_000
+        );
+
+        (tsc_freq, apic_freq)
+    });
+
+    {
+        let timer_hz = 500;
+        let initial_count = (apic_freq / timer_hz) as u32;
+        apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
+        kprintln!(
+            "[Core {}] Timer configured: {} Hz ({}ms intervals)",
+            CORE_ID.get(),
+            timer_hz,
+            1000 / timer_hz
+        );
+    }
 }

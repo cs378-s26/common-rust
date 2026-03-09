@@ -10,9 +10,9 @@ impl<'a> Display for Features<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn format(flag: bool) -> ANSIFormatter<'static, &'static str> {
             if flag {
-                Color::RED.format(&"not present")
-            } else {
                 Color::GREEN.format(&"present")
+            } else {
+                Color::RED.format(&"not present")
             }
         }
 

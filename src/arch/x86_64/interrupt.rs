@@ -1,55 +1,29 @@
+use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
 use core::arch::naked_asm;
+use core::sync::atomic::{AtomicU64, Ordering};
 
-use x86::{
-    bits64::rflags::{self, RFlags},
-    controlregs::cr2,
-    irq,
-};
+use x86::controlregs::cr2;
+use x86_64::structures::idt::PageFaultErrorCode;
 
-#[repr(transparent)]
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct IrqState(bool);
+use super::apic;
 
-impl IrqState {
-    #[inline(always)]
-    pub fn save() -> IrqState {
-        IrqState(rflags::read().contains(RFlags::FLAGS_IF))
-    }
+static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
-    #[inline(always)]
-    pub fn restore(self) {
-        if self.0 {
-            unsafe { irq::disable() };
-        } else {
-            unsafe { irq::enable() };
-        }
-    }
-
-    pub fn is_masked(self) -> bool {
-        !self.0
-    }
-}
-
-#[inline(always)]
-pub fn irq_disable() {
-    unsafe { irq::disable() };
-}
-
-#[inline(always)]
-pub fn irq_enable() {
-    unsafe { irq::enable() };
+pub fn timer_ticks() -> u64 {
+    TIMER_TICKS.load(Ordering::Relaxed)
 }
 
 #[repr(C)]
-struct InterruptContext {
-    regs: [u64; 14],
-    id: u64,
-    err: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
+pub struct InterruptContext {
+    pub regs: [u64; 14],
+    pub rbp: u64, // For preemptive context restore.
+    pub id: u64,
+    pub err: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
 }
 
 // IDT magic
@@ -81,8 +55,9 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn irq_handler_t0() -> ! {
+unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
+        "pushq %rbp",
         "pushq %rax",
         "pushq %rcx",
         "pushq %rdx",
@@ -98,7 +73,7 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
         "pushq %r14",
         "pushq %r15",
 
-        // point to top of stack
+        // point to top of stack (1st arg: InterruptContext*)
         "movq %rsp, %rdi",
 
         // simulate the call frame
@@ -130,6 +105,7 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
         "popq %rdx",
         "popq %rcx",
         "popq %rax",
+        "popq %rbp",
 
         "addq $16, %rsp",
         "iretq",
@@ -138,12 +114,56 @@ pub unsafe extern "C" fn irq_handler_t0() -> ! {
     );
 }
 
+pub const TIMER_INTERRUPT_VECTOR: u8 = 0x20;
+pub const IPI_WAKE_VECTOR: u8 = 0x21;
+
+pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
+    TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    apic::eoi();
+
+    unsafe { crate::thread::preempt_from_interrupt(ctx) };
+}
+
+pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
+    apic::eoi();
+}
+
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
-    // we are in a very fragile context here
-    // we should probably tell the threading module that we are no longer in a thread...
-    // TODO: implement that logic :D
-    panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
-        cr2()
-    });
+    match context.id as u8 {
+        14 => {
+            if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
+                // seems like kind of a lot of overhead for interface translation...
+                let mut cause = PageFaultConditions::empty();
+                if code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {
+                    cause.insert(PageFaultConditions::PRESENT);
+                }
+                if code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
+                    cause.insert(PageFaultConditions::WRITE);
+                }
+                if code.contains(PageFaultErrorCode::USER_MODE) {
+                    cause.insert(PageFaultConditions::USER);
+                }
+                if code.contains(PageFaultErrorCode::MALFORMED_TABLE) {
+                    cause.insert(PageFaultConditions::CORRUPT);
+                }
+                if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
+                    cause.insert(PageFaultConditions::FETCH);
+                }
+                handle_page_fault(cause, unsafe { cr2() });
+            } else {
+                panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
+                    cr2()
+                });
+            }
+        }
+        TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
+        IPI_WAKE_VECTOR => ipi_wake_handler(context),
+        _ => panic!(
+            "Unhandled interrupt #{}: err={}, cr2={:x}",
+            context.id,
+            context.err,
+            unsafe { cr2() }
+        ),
+    }
 }

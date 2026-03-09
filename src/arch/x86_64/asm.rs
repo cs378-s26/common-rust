@@ -1,6 +1,23 @@
 use core::arch::asm;
 use core::arch::naked_asm;
 
+use crate::arch::{Arch, ArchTrait};
+pub fn read_cycle_counter() -> u64 {
+    let lo: u32;
+    let hi: u32;
+
+    unsafe {
+        asm!(
+            "rdtsc",
+            out("eax") lo,
+            out("edx") hi,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+
+    ((hi as u64) << 32) | (lo as u64)
+}
+
 pub fn halt() -> ! {
     #[cfg(target_arch = "x86_64")]
     unsafe {
@@ -12,14 +29,18 @@ pub fn halt() -> ! {
 }
 
 pub fn sleep_core() {
+    debug_assert!(
+        Arch::irq_is_enabled(),
+        "sleep_core: Interrupts not enabled! Core will not wake."
+    );
     unsafe {
-        asm!("hlt");
+        asm!("hlt", options(nomem, nostack));
     }
 }
 
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *mut u8 {
+unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *mut u8 {
     naked_asm!(
         "mov rax, rdi",
         "mov rcx, rdx",
@@ -34,7 +55,7 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, len: usize) -> *m
 
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memset(dest: *mut u8, byte: i32, len: usize) -> *mut u8 {
+unsafe extern "C" fn memset(dest: *mut u8, byte: i32, len: usize) -> *mut u8 {
     naked_asm!(
         "mov r11, rdi",
         "mov rcx, rdx",

@@ -2,12 +2,15 @@ extern crate alloc;
 
 use core::ops::DerefMut;
 use core::{
-    arch::naked_asm,
     cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
     ffi::c_void,
+    pin::Pin,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -16,19 +19,18 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{
-        Context, IrqState, get_thread_local_pointer, irq_disable, irq_enable, save_context,
-        set_thread_local_pointer, sleep_core,
+        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqState, apic,
+        sleep_core,
     },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
-    print::kprintln,
-    sync::{IntMutex, MutexLike},
+    mp::{MP_STAGE, MPStage, core_local},
+    sync::MutexLike,
 };
 
 pub struct Thread {
     pub link: LinkedListAtomicLink,
     #[allow(unused)]
-    pub tls: Box<[u8]>,
+    pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
 }
 
@@ -39,7 +41,7 @@ impl Thread {
 
         let handle = Arc::new(Thread {
             link: LinkedListAtomicLink::new(),
-            tls,
+            tls: Pin::new(tls),
             tls_addr,
         });
 
@@ -86,7 +88,7 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
 
     fn get_base() -> u64 {
         assert!(is_on_thread());
-        unsafe { get_thread_local_pointer() }
+        unsafe { Arch::get_thread_local_pointer() }
     }
 }
 
@@ -156,10 +158,10 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Once<IntMutex<ThreadQueue>> = Once::new();
+static GLOBAL_WORK_QUEUE: Once<Mutex<ThreadQueue>> = Once::new();
 
 pub fn init_threading() {
-    GLOBAL_WORK_QUEUE.call_once(|| IntMutex::new(new_thread_queue()));
+    GLOBAL_WORK_QUEUE.call_once(|| Mutex::new(new_thread_queue()));
 }
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
@@ -167,13 +169,13 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
 }
 
 fn thread_enter(thread: Arc<Thread>) {
-    unsafe { set_thread_local_pointer(&thread.tls_addr) };
+    unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
     CURRENT_THREAD.set(None);
-    unsafe { set_thread_local_pointer(ptr::null()) };
+    unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
@@ -214,6 +216,9 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
+    // Ensure IRQs are enabled so sleep_core (hlt) can be woken by IPIs/timer.
+    Arch::set_irq_enabled(true);
+
     loop {
         loop {
             let Some(thread) = local_work_queue().pop_front() else {
@@ -231,8 +236,6 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            irq_enable(); // unmask interrupts
-            kprintln!("core {}: sleeping because no tasks", CORE_ID.get());
             sleep_core();
             continue;
         };
@@ -242,17 +245,58 @@ pub fn poll_tasks() -> ! {
 }
 
 pub fn can_yield() -> bool {
-    // we can only yield if we are in a thread context
-    // and the current thread can yield (for instance, idle cannot yield)
+    // we can only yield if we are in a thread context,
+    // the current thread can yield (for instance, idle cannot yield),
+    // and interrupts are enabled (if IRQs are disabled we're likely in an
+    // interrupt handler or critical section).
+    Arch::irq_is_enabled()
+        && MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
+        && is_on_thread()
+        && CAN_YIELD.load(Ordering::Relaxed)
+}
+
+/// Handles preemption from an interrupt context.
+/// # Safety
+/// This is sketchy
+pub unsafe fn preempt_from_interrupt(ctx: &InterruptContext) {
+    if !can_yield_for_preempt() {
+        return;
+    }
+    unsafe { do_preempt(ctx) }
+}
+
+// Like `can_yield` but skips the IRQ-enabled check.
+// we call this from the timer ISR where IRQs are already disabled by the CPU,
+// but we still want to preempt.
+fn can_yield_for_preempt() -> bool {
     MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
         && is_on_thread()
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
+// Handles preemption.
+unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
+    // Save the interrupted context and release the CONTEXT lock.
+    let mut guard = CTX_GUARD
+        .take()
+        .expect("CTX_GUARD not set during preemption");
+    guard.save_from_interrupt(ctx);
+    drop(guard);
+
+    let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
+
+    thread_exit();
+
+    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+
+    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
+}
+
 // flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let irq_state = IrqState::save();
-    irq_disable();
+    Arch::set_irq_enabled(false);
 
     assert!(
         is_on_thread(),
@@ -263,7 +307,7 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
     unsafe {
-        save_context(&(*CTX_SWITCH_STACK).0, context, move || {
+        Arch::save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
             action(thread);
             go_to_thread(target);
@@ -292,8 +336,8 @@ where
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    // we need to lock *before* suspend_impl, because interrupts are blocked there, and we
-    // shouldn't deal with that
+    // We need to lock *before* suspend_impl, because interrupts are blocked there, and we shouldn't deal with
+    // that when in the limbo state.
     let mut queue = queue.lock();
 
     suspend_impl(
@@ -316,21 +360,21 @@ pub fn yield_thread() {
     suspend_to_queue(queue);
 }
 
-pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
     unsafe extern "C" fn thread_entry<T: FnOnce()>(task: *mut T) -> ! {
         {
             let task = unsafe { Box::from_raw(task) };
             task();
         }
 
-        todo!()
+        suspend_to_thread(IDLE.get().unwrap().clone());
+        unreachable!()
     }
 
-    // need to push zero because of SysV abi:
-    // "the stack frame needs to be 16-byte aligned before a call, and 8 byte misaligned after the
-    // call"
+    #[cfg(target_arch = "x86_64")]
     #[unsafe(naked)]
     unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        // SysV ABI: emulate a call frame so the callee entry stack layout is what Rust expects.
         naked_asm!(
             "pushq $0",
             "jmp {0}",
@@ -339,15 +383,25 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
         )
     }
 
+    #[cfg(target_arch = "aarch64")]
+    unsafe extern "C" fn thread_entry0<T: FnOnce()>(task: *mut T) -> ! {
+        unsafe { thread_entry(task) }
+    }
+
     let thread = Thread::new();
 
     {
-        let mut ctx = CONTEXT.read_for(&thread).lock();
         let task = Box::into_raw(Box::new(task));
-        ctx.setup_for_call(&STACK.read_for(&thread).0, thread_entry0, task);
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_kthread(&STACK.read_for(&thread).0, thread_entry0, task);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()
+}
 
+pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
+    let thread = make_thread(task);
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
 }

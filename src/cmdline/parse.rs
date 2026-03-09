@@ -10,7 +10,7 @@ pub trait CmdlineParsable {
 
 impl CmdlineParsable for bool {
     fn parse<'a>(&mut self, lexer: &mut CmdlineLexer<'a>) -> Result<(), CmdlineParseError<'a>> {
-        let tok = lexer.next()?;
+        let tok = lexer.next_tok()?;
 
         match tok.0 {
             CmdlineTokenData::Identifier("true") => *self = true,
@@ -32,10 +32,10 @@ impl<T: ParsableFlags> CmdlineParsable for T {
             let neg = lexer.peek().0 == CmdlineTokenData::Not;
 
             if neg {
-                lexer.next()?;
+                lexer.next_tok()?;
             }
 
-            let id_tok = lexer.next()?;
+            let id_tok = lexer.next_tok()?;
             let id = id_tok.unwrap_ident()?;
             let Some(item) = T::FLAGS.iter().find(|f| f.name().eq_ignore_ascii_case(id)) else {
                 // TODO
@@ -54,7 +54,7 @@ impl<T: ParsableFlags> CmdlineParsable for T {
 macro impl_int_parsable($int_type:ident) {
     impl CmdlineParsable for $int_type {
         fn parse<'a>(&mut self, lexer: &mut CmdlineLexer<'a>) -> Result<(), CmdlineParseError<'a>> {
-            let tok = lexer.next()?;
+            let tok = lexer.next_tok()?;
 
             match tok.0 {
                 CmdlineTokenData::Number(x) => {

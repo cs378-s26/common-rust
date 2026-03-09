@@ -4,5 +4,5 @@ buildtool = "run -r --package buildtool --"
 [target.x86_64-unknown-none]
 rustflags = ["-C", "relocation-model=static"]
 
-[target.'cfg(target_os = "none")']
-runner = "target/release/run_kernel"
+[target.aarch64-unknown-none]
+rustflags = ["-C", "relocation-model=static"]

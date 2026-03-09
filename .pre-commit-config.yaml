@@ -1,0 +1,10 @@
+repos:
+    - repo: local
+      hooks:
+          - id: clippy
+            name: Clippy
+            entry: bash -c 'cargo clippy --all-targets -- -D warnings'
+            language: system
+            types: [rust]
+            # Optionally, you can add more parameters, e.g. for nightly builds or specific features
+            # entry: bash -c 'export NIGHTLY_VERSION=nightly-2024-09-24 && cargo +${NIGHTLY_VERSION} clippy --all -- --deny warnings'
