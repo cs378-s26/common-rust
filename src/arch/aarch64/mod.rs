@@ -179,8 +179,14 @@ impl ArchTrait for Arch {
     }
 
     fn shutdown(_err_code: u16) {
-        // TODO implement this
-        halt();
+        // PSCI SYSTEM_OFF (0x84000008) via HVC — tells QEMU virt to power off cleanly
+        unsafe {
+            core::arch::asm!(
+                "hvc #0",
+                in("x0") 0x84000008u64,
+                options(noreturn)
+            );
+        }
     }
 
     fn halt() -> ! {

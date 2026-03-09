@@ -1,0 +1,19 @@
+{
+    "is_unittest": false,
+    "test_name": "aarch64_device_discovery",
+    "n_runs": 1,
+    "timeout_ms": 60000,
+    "expected_output_path": "test_cfgs/aarch64_device_discovery/out.txt",
+    "target": "aarch64",
+    "qemu_args": [
+        "-machine", "virt",
+        "-cpu", "cortex-a72",
+        "-bios", "{PATH_TO_EFI}",
+        "-drive", "if=none,id=hd0,file={PATH_TO_IMG},format=raw",
+        "-device", "virtio-blk-device,drive=hd0",
+        "-no-reboot",
+        "-m", "4G",
+        "-smp", "4",
+        "-display", "none"
+    ]
+}
