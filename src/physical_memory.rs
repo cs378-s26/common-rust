@@ -3,8 +3,6 @@
 pub static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
 use crate::arch::{Arch, ArchTrait};
-use crate::print::kprintln;
-use alloc::string::{String, ToString};
 use core::mem::drop;
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{HhdmRequest, MemoryMapRequest};
@@ -33,37 +31,9 @@ static END: Mutex<FrameLocation> = Mutex::new(FrameLocation {
 static REGIONS: Once<&[&Entry]> = Once::new();
 static HHDM_OFFSET: Once<usize> = Once::new();
 
-fn display_entry_type(et: EntryType) -> String {
-    match et {
-        EntryType::USABLE => "Usable",
-        EntryType::RESERVED => "Reserved permanently",
-        EntryType::ACPI_RECLAIMABLE => "Reclaimable from ACPI",
-        EntryType::ACPI_NVS => "Reserved for ACPI",
-        EntryType::BAD_MEMORY => "Unusable hardware",
-        EntryType::BOOTLOADER_RECLAIMABLE => "Reclaimable from Limine",
-        EntryType::EXECUTABLE_AND_MODULES => "Reserved for kernel code",
-        EntryType::FRAMEBUFFER => "Reserved for frame buffer",
-        _ => panic!("Unexpected Limine memory map entry type"),
-    }
-    .to_string()
-}
-
 pub fn init_physical_memory_allocator() {
     HHDM_OFFSET.call_once(|| HHDM_REQUEST.get_response().unwrap().offset() as usize);
-    REGIONS.call_once(|| {
-        let entries = MEMMAP_REQUEST.get_response().unwrap().entries();
-        kprintln!("\nLimine Memory Map:");
-        for entry in entries {
-            kprintln!(
-                "{:016x}-{:016x} ({})",
-                entry.base,
-                entry.base + entry.length,
-                display_entry_type(entry.entry_type)
-            );
-        }
-        kprintln!("");
-        entries
-    });
+    REGIONS.call_once(|| MEMMAP_REQUEST.get_response().unwrap().entries());
 
     let mut end = END.lock(); // the first memory region served wasn't checked to be usable
     let regions = unwrap(&REGIONS);

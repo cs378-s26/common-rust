@@ -17,10 +17,7 @@ use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter}
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{
-        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqState, apic,
-        sleep_core,
-    },
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqState},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
     sync::MutexLike,
@@ -215,7 +212,7 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    // Ensure IRQs are enabled so sleep_core (hlt) can be woken by IPIs/timer.
+    // Ensure IRQs are enabled so Arch::sleep_core can be woken by IPIs/timer.
     Arch::set_irq_enabled(true);
 
     loop {
@@ -235,7 +232,7 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            sleep_core();
+            Arch::sleep_core();
             continue;
         };
 
@@ -287,7 +284,7 @@ unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
     thread_exit();
 
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    Arch::wake_other_cores();
 
     unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
 }
@@ -385,5 +382,5 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    Arch::wake_other_cores();
 }

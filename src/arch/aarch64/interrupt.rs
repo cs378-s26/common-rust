@@ -6,11 +6,11 @@ pub const IPI_WAKE_VECTOR: u8 = 0;
 
 const DAIF_IRQ_BIT: u64 = 1 << 7;
 
-pub unsafe fn disable() {
+pub fn disable() {
     unsafe { core::arch::asm!("msr daifset, #2", options(nomem, nostack, preserves_flags)) }
 }
 
-pub unsafe fn enable() {
+pub fn enable() {
     unsafe { core::arch::asm!("msr daifclr, #2", options(nomem, nostack, preserves_flags)) }
 }
 

@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-# lto = "fat"
+lto = "fat"
 
 [profile.dev]
 panic = "abort"
@@ -11,6 +11,11 @@ debug = "full"
 name = "kernel_common"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "kernel_common"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 atomic_enum = "0.3.0"

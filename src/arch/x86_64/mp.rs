@@ -20,7 +20,7 @@ use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
-    print::{kprint, kprintln},
+    print::kprint,
 };
 
 static CPU_ID_PRINT: Once<()> = Once::new();
@@ -113,8 +113,8 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
-    if !apic::enable_x2apic() {
-        panic!("Failed to enable x2APIC");
+    if !apic::enable_apic() {
+        panic!("Failed to enable APIC");
     }
     apic::init_lapic();
     apic::disable_pic();
@@ -122,22 +122,10 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // Calibrate timers once on BSP, store frequencies for all cores
     static TIMER_CALIBRATION: Once<(u64, u64)> = Once::new();
     let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
-        kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
-
         let tsc_freq = tsc::calibrate_tsc_with_pit();
-        kprintln!(
-            "[Core {}] TSC frequency: {} MHz",
-            CORE_ID.get(),
-            tsc_freq / 1_000_000
-        );
 
         let apic_freq =
             apic::calibrate_apic_timer_with_tsc(tsc_freq).expect("Failed to calibrate APIC timer");
-        kprintln!(
-            "[Core {}] APIC timer frequency: {} MHz",
-            CORE_ID.get(),
-            apic_freq / 1_000_000
-        );
 
         (tsc_freq, apic_freq)
     });
@@ -146,11 +134,5 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         let timer_hz = 500;
         let initial_count = (apic_freq / timer_hz) as u32;
         apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
-        kprintln!(
-            "[Core {}] Timer configured: {} Hz ({}ms intervals)",
-            CORE_ID.get(),
-            timer_hz,
-            1000 / timer_hz
-        );
     }
 }

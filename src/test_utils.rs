@@ -21,6 +21,6 @@ pub fn rust_panic_test_impl(info: &core::panic::PanicInfo) -> ! {
         ),
     };
 
-    Arch::shutdown(10 as u16);
+    Arch::shutdown(10_u16);
     Arch::halt()
 }

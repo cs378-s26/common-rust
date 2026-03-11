@@ -1,35 +1,35 @@
 name: PR - Clippy Reviewdog
 on: [pull_request]
 jobs:
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-    - uses: giraffate/clippy-action@v1
-      with:
-        reporter: 'github-pr-review'
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        fail_on_error: true
-        clippy_flags: --target x86_64-unknown-none -Zbuild-std=core,alloc
-    - uses: giraffate/clippy-action@v1
-      with:
-        reporter: 'github-pr-review'
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        fail_on_error: true
-        clippy_flags: --target aarch64-unknown-none -Zbuild-std=core,alloc
-    - uses: giraffate/clippy-action@v1
-      with:
-        reporter: 'github-pr-review'
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        fail_on_error: true
-        clippy_flags: --tests --target x86_64-unknown-none -Zbuild-std=core,alloc
-    - uses: giraffate/clippy-action@v1
-      with:
-        reporter: 'github-pr-review'
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        fail_on_error: true
-        clippy_flags: --tests --target aarch64-unknown-none -Zbuild-std=core,alloc
+    clippy:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions-rust-lang/setup-rust-toolchain@v1
+            - uses: giraffate/clippy-action@v1
+              with:
+                  reporter: "github-pr-review"
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  fail_on_error: true
+                  clippy_flags: --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
+            - uses: giraffate/clippy-action@v1
+              with:
+                  reporter: "github-pr-review"
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  fail_on_error: true
+                  clippy_flags: --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
+            - uses: giraffate/clippy-action@v1
+              with:
+                  reporter: "github-pr-review"
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  fail_on_error: true
+                  clippy_flags: --tests --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
+            - uses: giraffate/clippy-action@v1
+              with:
+                  reporter: "github-pr-review"
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  fail_on_error: true
+                  clippy_flags: --tests --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
 permissions:
-  contents: read
-  pull-requests: write
+    contents: read
+    pull-requests: write

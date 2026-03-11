@@ -47,7 +47,7 @@ impl KernelEntryTrait for TestKernelEntry {
             })
             .wait();
 
-        let idle = set_up_idle();
+        set_up_idle();
 
         init_coroutine_executor();
         kprintln!("Coroutine executor initialized.");

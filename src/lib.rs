@@ -28,23 +28,85 @@ pub mod virtual_memory;
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
 use crate::cmdline::parse_kernel_cmdline;
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use crate::heap::init_malloc;
 use crate::mp::init_cpu_local_table;
-use crate::mp::{MP_STAGE, MPStage};
 use crate::print::{StackTrace, init_tty, kprintln};
-use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
 use alloc::sync::Arc;
-use core::sync::atomic::Ordering;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use physical_memory::{THE_HEAP, init_physical_memory_allocator};
-use spin::{Barrier, Once};
+use spin::Barrier;
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
+
+#[cfg(test)]
+mod test {
+    use super::{Arch, ArchTrait, KernelEntryTrait, MP_REQUEST};
+    use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+    use crate::mp::{MP_STAGE, MPStage};
+    use crate::print::kprintln;
+    use crate::test_utils;
+    use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+    use core::sync::atomic::Ordering;
+    use spin::{Barrier, Once};
+
+    static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+    static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+    static MAKE_TEST_THREAD: Once<()> = Once::new();
+
+    pub struct TestKernelEntry;
+
+    impl KernelEntryTrait for TestKernelEntry {
+        fn kernel_main() -> ! {
+            let mp_res = MP_REQUEST
+                .get_response()
+                .expect("Expected to find MpResponse, found None.");
+            let core_count = mp_res.cpus().len();
+
+            INIT_THREADING_BARRIER
+                .call_once(|| {
+                    kprintln!("Starting Testing Code...");
+                    init_threading();
+                    init_coroutine_queue();
+                    Barrier::new(core_count)
+                })
+                .wait();
+
+            set_up_idle();
+
+            init_coroutine_executor();
+            kprintln!("Coroutine executor initialized.");
+
+            MP_PREEMPT_ENTER_BARRIER
+                .call_once(|| Barrier::new(core_count))
+                .wait();
+
+            MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+            MAKE_TEST_THREAD.call_once(|| {
+                spawn_thread(move || {
+                    crate::test_main();
+                })
+            });
+
+            Arch::set_irq_enabled(true);
+            poll_tasks()
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn system_main() -> ! {
+        crate::system_init::<Arch, TestKernelEntry>();
+    }
+
+    #[panic_handler]
+    fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+        test_utils::rust_panic_test_impl(info);
+    }
+}
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -113,65 +175,6 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
         .expect("Expected to find MpResponse, found None.");
     init_cpu_local_table(mp_res.cpus().len());
     A::initialize_mp::<K>(&MP_REQUEST)
-}
-
-#[cfg(test)]
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-#[cfg(test)]
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-#[cfg(test)]
-static MAKE_TEST_THREAD: Once<()> = Once::new();
-#[cfg(test)]
-pub struct TestKernelEntry;
-#[cfg(test)]
-impl KernelEntryTrait for TestKernelEntry {
-    fn kernel_main() -> ! {
-        let mp_res = MP_REQUEST
-            .get_response()
-            .expect("Expected to find MpResponse, found None.");
-        let core_count = mp_res.cpus().len();
-
-        INIT_THREADING_BARRIER
-            .call_once(|| {
-                kprintln!("Starting Testing Code...");
-                init_threading();
-                init_coroutine_queue();
-                Barrier::new(core_count)
-            })
-            .wait();
-
-        let idle = set_up_idle();
-
-        init_coroutine_executor();
-        kprintln!("Coroutine executor initialized.");
-
-        MP_PREEMPT_ENTER_BARRIER
-            .call_once(|| Barrier::new(core_count))
-            .wait();
-
-        MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-        MAKE_TEST_THREAD.call_once(|| {
-            spawn_thread(move || {
-                crate::test_main();
-            })
-        });
-
-        Arch::set_irq_enabled(true);
-        poll_tasks()
-    }
-}
-
-#[cfg(test)]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn system_main() -> ! {
-    crate::system_init::<Arch, TestKernelEntry>();
-}
-
-#[cfg(test)]
-#[panic_handler]
-fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    test_utils::rust_panic_test_impl(info);
 }
 
 // also copy-pasted from the tutorial

@@ -145,8 +145,8 @@ pub fn download_ovmf(target: Target) -> Result<PathBuf> {
 pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
     let mut args = vec![
         "build",
-        "--message-format=json-render-diagnostics",
         "-Zbuild-std=core,alloc",
+        "--message-format=json-render-diagnostics",
         "--target",
     ];
 
