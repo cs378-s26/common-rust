@@ -35,22 +35,28 @@ impl ArchTrait for Arch {
         cpu.mpidr == resp.bsp_mpidr()
     }
 
-    unsafe fn initialize_core(cpu: &limine::mp::Cpu) -> () {
+    unsafe fn initialize_core(cpu: &limine::mp::Cpu) {
         unsafe { initialize_core(cpu) };
     }
 
     fn set_irq_enabled(enabled: bool) {
-        unsafe {
-            if enabled {
-                enable();
-            } else {
-                disable();
-            }
+        if enabled {
+            enable();
+        } else {
+            disable();
         }
     }
 
     fn irq_is_enabled() -> bool {
         irq_is_enabled()
+    }
+
+    fn sleep_core() {
+        asm::sleep_core();
+    }
+
+    fn wake_other_cores() {
+        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

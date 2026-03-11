@@ -577,6 +577,8 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
     let target = test_cfg.target.to_target();
     let mut args = vec![
         "test",
+        "-Zbuild-std=core,alloc",
+        "-Zpanic-abort-tests",
         "--message-format=json-render-diagnostics",
         "--no-run",
         "--target",
