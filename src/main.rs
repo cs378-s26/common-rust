@@ -207,7 +207,7 @@ unsafe extern "C" fn system_main() -> ! {
 
     init_device_tree();
 
-    map_virtio_devices();
+    // map_virtio_devices();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
