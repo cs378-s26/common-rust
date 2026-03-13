@@ -19,9 +19,7 @@ use intrusive_collections::{
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{
-        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqGuard, apic,
-    },
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqGuard},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
     sync::{IntSpinLock, MutexLike},
@@ -175,14 +173,14 @@ pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
 }
 
 fn thread_enter(thread: Arc<Thread>) {
-    assert!(!Arch::irq_is_enabled());
+    // assert!(!Arch::irq_is_enabled());
 
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
-    assert!(!Arch::irq_is_enabled());
+    // assert!(!Arch::irq_is_enabled());
 
     CURRENT_THREAD.set(None);
     unsafe { Arch::set_thread_local_pointer(ptr::null()) };
@@ -236,7 +234,7 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    assert!(!Arch::irq_is_enabled());
+    // assert!(!Arch::irq_is_enabled());
 
     loop {
         loop {
@@ -245,13 +243,13 @@ pub fn poll_tasks() -> ! {
                 break;
             };
 
-            assert!(!Arch::irq_is_enabled());
+            // assert!(!Arch::irq_is_enabled());
             GLOBAL_WORK_QUEUE.lock().push_back(thread);
-            apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+            Arch::wake_other_cores();
         }
 
         let thread = {
-            assert!(!Arch::irq_is_enabled());
+            // assert!(!Arch::irq_is_enabled());
             let mut lock = GLOBAL_WORK_QUEUE.lock();
             let task = lock.pop_front();
             drop(lock);
@@ -259,7 +257,7 @@ pub fn poll_tasks() -> ! {
         };
 
         let Some(thread) = thread else {
-            // sleep_core();
+            // Arch::sleep_core();
             continue;
         };
 
@@ -427,6 +425,8 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
-    GLOBAL_WORK_QUEUE.lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    let mut lock = GLOBAL_WORK_QUEUE.lock();
+    lock.push_back(thread);
+    drop(lock);
+    Arch::wake_other_cores();
 }

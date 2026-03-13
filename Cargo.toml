@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-# lto = "fat"
+lto = "fat"
 
 [profile.dev]
 panic = "abort"
@@ -11,6 +11,11 @@ debug = "full"
 name = "kernel_common"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "kernel_common"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 atomic_enum = "0.3.0"
@@ -29,8 +34,8 @@ proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_64 = "0.15.4"
 x86 = "0.52.0"
+x86_64 = "0.15.4"
 
 [features]
 default = ["sched_eevdf"]

@@ -71,17 +71,10 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
 }
 
 pub unsafe fn initialize_core(cpu: &Cpu) {
-    // kprintln!("hello from x86::initialize_core");
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     LAPIC_ID.store(cpu.lapic_id, Ordering::Relaxed);
-    kprintln!(
-        "done init core {}, CLS base={:x}, GSBASE={:x}",
-        id,
-        get_cpu_local_pointer(),
-        get_cpu_local_pointer_for(id)
-    );
 
     let cpu_id = CpuId::new();
 
@@ -120,8 +113,8 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
-    if !apic::enable_x2apic() {
-        panic!("Failed to enable x2APIC");
+    if !apic::enable_apic() {
+        panic!("Failed to enable APIC");
     }
     apic::init_lapic();
     apic::disable_pic();
@@ -129,8 +122,6 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // Calibrate timers once on BSP, store frequencies for all cores
     static TIMER_CALIBRATION: Once<(u64, u64)> = Once::new();
     let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
-        kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
-
         let tsc_freq = tsc::calibrate_tsc_with_pit();
 
         kprintln!(
@@ -155,11 +146,5 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         let timer_hz = 500;
         let initial_count = (apic_freq / timer_hz) as u32;
         apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
-        kprintln!(
-            "[Core {}] Timer configured: {} Hz ({}ms intervals)",
-            CORE_ID.get(),
-            timer_hz,
-            1000 / timer_hz
-        );
     }
 }

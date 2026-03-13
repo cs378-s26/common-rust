@@ -1,0 +1,9 @@
+Starting Testing Code...
+manually mapping vmem
+writing to manually mapped vmem
+reading from manually mapped vmem
+manually unmapping vmem
+properly mapping vmem
+writing to properly mapped vmem
+reading from properly mapped vmem
+properly unmapping vmem
