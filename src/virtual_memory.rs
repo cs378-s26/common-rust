@@ -237,7 +237,8 @@ mod test {
     #[test_case]
     fn test_virtual_memory() {
         let barrier = Arc::new(AtomicI64::new(1));
-        for tid in 1..2 { // single-threaded for now
+        for tid in 1..2 {
+            // single-threaded for now
             let b = barrier.clone();
             spawn_thread(move || {
                 let vaddr: u64 = 0x10000000 * tid; // unsafe!
