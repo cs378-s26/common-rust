@@ -68,7 +68,6 @@ mod test {
 
             INIT_THREADING_BARRIER
                 .call_once(|| {
-                    kprintln!("Starting Testing Code...");
                     init_threading();
                     init_coroutine_queue();
                     Barrier::new(core_count)
@@ -87,6 +86,7 @@ mod test {
             MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
             MAKE_TEST_THREAD.call_once(|| {
+                kprintln!("Starting Testing Code...");
                 spawn_thread(move || {
                     crate::test_main();
                 })

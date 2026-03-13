@@ -334,7 +334,7 @@ fn write_failure_artifacts(
         total_runs: summary.total_runs,
         passed: false,
         failed_at_run: if summary.total_runs > 0 {
-            Some(1)
+            Some(summary.total_runs)
         } else {
             None
         },
@@ -499,7 +499,8 @@ fn assert_output_match(
 }
 
 fn normalize_output(output: &str) -> String {
-    output.replace("\r\n", "\n")
+    let truncated = &output[output.find("Starting Testing Code...").unwrap()..];
+    truncated.replace("\r\n", "\n")
 }
 
 fn strip_ansi_escape_codes(output: &str) -> String {
