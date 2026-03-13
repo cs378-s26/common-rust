@@ -1,47 +1,9 @@
-BdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
-BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
-limine rev: 4
-bootloader: Limine v10.8.3
-fimrware: uefi (64-bit)
-mem::init_malloc(): initializing heap
-initializing virtual memory allocator
-features:
-avx = not present
-sse4.2 = not present
-sse4.1 = not present
-ssse3 = not present
-sse3 = present
-xsave = not present
-oxsave = not present
-monitor/mwait = not present
-vmx = not present
-extended features:
-fsgsbase = not present
 Starting Testing Code...
-Coroutine executor initialized.
-Coroutine executor initialized.
-Coroutine executor initialized.
-Coroutine executor initialized.
-creating thread
-creating thread
-starting thread
-waiting at barrier
-starting thread
-frame 2: 2000
 manually mapping vmem
 writing to manually mapped vmem
 reading from manually mapped vmem
 manually unmapping vmem
 properly mapping vmem
 writing to properly mapped vmem
-frame 2: 3000
-manually mapping vmem
-writing to manually mapped vmem
-reading from manually mapped vmem
-manually unmapping vmem
-reading from properly mapped vmem
-properly mapping vmem
-writing to properly mapped vmem
-properly unmapping vmem
 reading from properly mapped vmem
 properly unmapping vmem

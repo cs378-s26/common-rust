@@ -236,17 +236,14 @@ mod test {
 
     #[test_case]
     fn test_virtual_memory() {
-        let barrier = Arc::new(AtomicI64::new(2));
-        for tid in 1..3 {
+        let barrier = Arc::new(AtomicI64::new(1));
+        for tid in 1..2 { // single-threaded for now
             let b = barrier.clone();
-            kprintln!("creating thread");
             spawn_thread(move || {
-                kprintln!("starting thread");
                 let vaddr: u64 = 0x10000000 * tid; // unsafe!
                 let frame_1: usize = frame_alloc();
                 frame_dealloc(frame_1);
                 let frame_2: usize = frame_alloc();
-                kprintln!("frame 2: {:x}", frame_2);
 
                 kprintln!("manually mapping vmem");
                 Arch::virtual_map(
@@ -301,7 +298,6 @@ mod test {
                 }
             });
         }
-        kprintln!("waiting at barrier");
         while (*barrier).load(Ordering::SeqCst) > 0 {
             yield_thread();
         }

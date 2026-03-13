@@ -29,6 +29,8 @@ static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 #[cfg(test)]
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 #[cfg(test)]
+static MAKE_TEST_THREAD: Once<()> = Once::new();
+#[cfg(test)]
 pub struct TestKernelEntry;
 #[cfg(test)]
 impl KernelEntryTrait for TestKernelEntry {
@@ -40,7 +42,6 @@ impl KernelEntryTrait for TestKernelEntry {
 
         INIT_THREADING_BARRIER
             .call_once(|| {
-                kprintln!("Starting Testing Code...");
                 init_threading();
                 init_coroutine_queue();
                 Barrier::new(core_count)
@@ -58,8 +59,11 @@ impl KernelEntryTrait for TestKernelEntry {
 
         MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
 
-        spawn_thread(move || {
-            crate::test_main();
+        MAKE_TEST_THREAD.call_once(|| {
+            spawn_thread(move || {
+                kprintln!("Starting Testing Code...");
+                crate::test_main();
+            })
         });
 
         Arch::set_irq_enabled(true);
@@ -80,4 +84,5 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 #[test_case]
 fn hello_world() {
     kprintln!("Hello world");
+    Arch::shutdown(0);
 }
