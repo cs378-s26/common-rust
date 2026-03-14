@@ -90,7 +90,7 @@ fn work(i: u64) -> u64 {
     sum
 }
 
-const THREADS: usize = 64;
+const THREADS: usize = 16;
 static LATCH: AtomicUsize = AtomicUsize::new(0);
 const UPPER: usize = 23; // precisely tuned value for runtime
 static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
