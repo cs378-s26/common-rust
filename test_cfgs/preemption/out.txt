@@ -21,4 +21,7 @@ work(20): 549755289600
 work(21): 2199022206976
 work(22): 8796090925056
 spawning infinite loop threads
+spawned first thread
+returned from yielding to first thread
 yay we seem to have actually preempted
+test complete!

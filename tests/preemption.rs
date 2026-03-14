@@ -98,7 +98,6 @@ static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
 #[test_case]
 fn hello_world() {
     // stress preemption, yielding, and blocking interactions
-
     kprintln!("spawning busyworking threads");
     for _ in 0..THREADS {
         spawn_thread(|| {
@@ -117,14 +116,29 @@ fn hello_world() {
         yield_thread();
     }
     while LATCH.load(Ordering::SeqCst) != THREADS {} // spin
+    LATCH.store(0, Ordering::SeqCst);
 
-    kprintln!("spawning infinite loop threads");
     // are we actually preempting?
-    for _ in 0..64 {
-        spawn_thread(|| loop {});
+    kprintln!("spawning infinite loop threads");
+    for i in 0..THREADS {
+        spawn_thread(|| {
+            loop {
+                LATCH.fetch_add(1, Ordering::SeqCst);
+                let value = work(48); // should never actually finish
+                kprintln!("{}", value); // appease linter
+            }
+        });
+        if i == 0 {
+            kprintln!("spawned first thread")
+        };
         yield_thread();
+        if i == 0 {
+            kprintln!("returned from yielding to first thread")
+        };
     }
+    while LATCH.load(Ordering::SeqCst) != THREADS {} // spin
     kprintln!("yay we seem to have actually preempted");
 
+    kprintln!("test complete!");
     Arch::shutdown(0);
 }
