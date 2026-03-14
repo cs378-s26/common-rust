@@ -97,8 +97,8 @@ static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
 
 #[test_case]
 fn hello_world() {
-    // stress preemption, yielding, and blocking interactions  
-    
+    // stress preemption, yielding, and blocking interactions
+
     kprintln!("spawning busyworking threads");
     for _ in 0..THREADS {
         spawn_thread(|| {
@@ -121,9 +121,7 @@ fn hello_world() {
     kprintln!("spawning infinite loop threads");
     // are we actually preempting?
     for _ in 0..64 {
-        spawn_thread(|| {
-            loop {}
-        });
+        spawn_thread(|| loop {});
         yield_thread();
     }
     kprintln!("yay we seem to have actually preempted");
