@@ -1,0 +1,24 @@
+Starting Testing Code...
+spawning busyworking threads
+work(3): 28
+work(4): 120
+work(5): 496
+work(6): 2016
+work(7): 8128
+work(8): 32640
+work(9): 130816
+work(10): 523776
+work(11): 2096128
+work(12): 8386560
+work(13): 33550336
+work(14): 134209536
+work(15): 536854528
+work(16): 2147450880
+work(17): 8589869056
+work(18): 34359607296
+work(19): 137438691328
+work(20): 549755289600
+work(21): 2199022206976
+work(22): 8796090925056
+spawning infinite loop threads
+yay we seem to have actually preempted
