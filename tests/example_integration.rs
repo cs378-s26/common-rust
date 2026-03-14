@@ -21,7 +21,7 @@ use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::mp::{MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
-use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
 use spin::{Barrier, Once};
 
 #[cfg(test)]
@@ -42,7 +42,6 @@ impl KernelEntryTrait for TestKernelEntry {
 
         INIT_THREADING_BARRIER
             .call_once(|| {
-                init_threading();
                 init_coroutine_queue();
                 Barrier::new(core_count)
             })

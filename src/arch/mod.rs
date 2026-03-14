@@ -150,4 +150,36 @@ impl IrqState {
     pub fn is_masked(&self) -> bool {
         !self.0
     }
+
+    pub const fn new(value: bool) -> IrqState {
+        IrqState(value)
+    }
+}
+
+#[repr(transparent)]
+pub struct IrqGuard(IrqState);
+
+impl IrqGuard {
+    pub fn disabled_guard() -> IrqGuard {
+        let state = IrqState::save();
+        Arch::set_irq_enabled(false);
+        IrqGuard(state)
+    }
+
+    pub fn enable_guard() -> IrqGuard {
+        let state = IrqState::save();
+        Arch::set_irq_enabled(true);
+        IrqGuard(state)
+    }
+
+    pub fn guard() -> IrqGuard {
+        let state = IrqState::save();
+        IrqGuard(state)
+    }
+}
+
+impl Drop for IrqGuard {
+    fn drop(&mut self) {
+        self.0.restore();
+    }
 }

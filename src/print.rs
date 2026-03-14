@@ -13,7 +13,7 @@ use limine::request::FramebufferRequest;
 use spin::Once;
 
 use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
-use crate::sync::IntMutex;
+use crate::sync::{IntMutex, MutexLike};
 
 #[derive(Clone, Copy)]
 pub struct Color(pub u8, pub u8, pub u8);
@@ -277,8 +277,10 @@ pub fn init_tty() {
 pub macro kprint {
     ($($arg:tt)*) => {{
         use $crate::print::PrintWriter;
+        use $crate::sync::MutexLike;
         let _guard = $crate::print::LOCK_KPRINT.lock();
         let _ = PrintWriter.write_fmt(::core::format_args!($($arg)*));
+        drop(_guard);
     }}
 }
 

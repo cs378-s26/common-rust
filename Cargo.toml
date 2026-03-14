@@ -22,7 +22,7 @@ atomic_enum = "0.3.0"
 bitflags = "2.10.0"
 derive_more = { version = "2.0.1", default-features = false, features = ["add_assign", "add", "constructor", "mul", "display", "debug"] }
 flanterm = { version = "0.1.0", path = "flanterm" }
-intrusive-collections = "0.10.0"
+intrusive-collections = { version = "0.10.0", features = ["nightly"] }
 limine = "0.5.0"
 lock_api = "0.4.14"
 seq-macro = "0.3.6"
@@ -36,6 +36,10 @@ logos = { version = "0.16.1", default-features = false, features = ["export_deri
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"
 x86_64 = "0.15.4"
+
+[features]
+default = ["sched_eevdf"]
+sched_eevdf = []
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]

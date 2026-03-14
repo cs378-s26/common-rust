@@ -20,7 +20,7 @@ use crate::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
-    print::kprint,
+    print::{kprint, kprintln},
 };
 
 static CPU_ID_PRINT: Once<()> = Once::new();
@@ -124,8 +124,20 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
         let tsc_freq = tsc::calibrate_tsc_with_pit();
 
+        kprintln!(
+            "[Core {}] TSC frequency: {} MHz",
+            CORE_ID.get(),
+            tsc_freq / 1_000_000
+        );
+
         let apic_freq =
             apic::calibrate_apic_timer_with_tsc(tsc_freq).expect("Failed to calibrate APIC timer");
+
+        kprintln!(
+            "[Core {}] APIC timer frequency: {} MHz",
+            CORE_ID.get(),
+            apic_freq / 1_000_000
+        );
 
         (tsc_freq, apic_freq)
     });

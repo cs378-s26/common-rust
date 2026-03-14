@@ -11,7 +11,7 @@
 
 extern crate alloc;
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // For coroutines.
 use core::future::Future;
@@ -22,7 +22,7 @@ use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
-use kernel_common::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
 use spin::{Barrier, Once};
 
 // For async/await testing. Move if/when we have a better testing setup.
@@ -83,6 +83,8 @@ static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 
 pub fn kernel_main() -> ! {
+    assert!(!Arch::irq_is_enabled());
+
     // kprintln!("we are the MPCorelings! please feed us!");
     let mp_res = kernel_common::MP_REQUEST
         .get_response()
@@ -93,7 +95,6 @@ pub fn kernel_main() -> ! {
         .call_once(|| {
             kprintln!("preparing common tasks on {}", CORE_ID.get());
             kprintln!("there are {} cores total", core_count);
-            init_threading();
             init_coroutine_queue();
             Barrier::new(core_count)
         })
@@ -115,12 +116,14 @@ pub fn kernel_main() -> ! {
     if CORE_ID.get().0 == 0 {
         spawn_coroutine(async_task(1624252));
 
-        let num_threads = 20;
+        let num_threads = 2000;
         kprintln!(
             "Spawning {} test threads across {} cores",
             num_threads,
             core_count
         );
+
+        static EXPECTED: AtomicU64 = AtomicU64::new(0);
 
         for i in 0..num_threads {
             spawn_thread(move || {
@@ -147,11 +150,20 @@ pub fn kernel_main() -> ! {
                     end_core.0,
                     end_tick - start_tick,
                 );
+
+                if EXPECTED.fetch_add(1, Ordering::SeqCst) + 1 == num_threads {
+                    kprintln!("testcase done");
+                }
             });
         }
+
+        kprintln!(
+            "Done spawning {} test threads across {} cores",
+            num_threads,
+            core_count
+        );
     }
 
-    Arch::set_irq_enabled(true);
     poll_tasks()
 }
 

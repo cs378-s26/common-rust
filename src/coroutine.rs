@@ -13,7 +13,7 @@ use spin::{Once, RwLock};
 // TODO: use a blocking RwLock.
 
 use crate::{
-    sync::IntMutex,
+    sync::{IntMutex, MutexLike},
     thread::{spawn_thread, yield_thread},
 };
 

@@ -49,7 +49,7 @@ mod test {
     use crate::mp::{MP_STAGE, MPStage};
     use crate::print::kprintln;
     use crate::test_utils;
-    use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
+    use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
     use core::sync::atomic::Ordering;
     use spin::{Barrier, Once};
 
@@ -68,7 +68,6 @@ mod test {
 
             INIT_THREADING_BARRIER
                 .call_once(|| {
-                    init_threading();
                     init_coroutine_queue();
                     Barrier::new(core_count)
                 })

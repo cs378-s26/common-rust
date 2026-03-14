@@ -130,9 +130,11 @@ impl UnwindContextTrait for UnwindContext {
     fn from_ptr(ptr: *const u64) -> UnwindContext {
         UnwindContext { ptr }
     }
+
     fn get_ptr(&self) -> *const u64 {
         self.ptr
     }
+
     #[inline(always)]
     unsafe fn get() -> UnwindContext {
         UnwindContext {
