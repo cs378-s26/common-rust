@@ -12,6 +12,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
+use crate::MODULE_REQUEST;
 use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
 use crate::sync::{IntMutex, MutexLike};
 
@@ -307,6 +308,113 @@ impl StackTrace {
     pub fn current() -> StackTrace {
         Self::new(unsafe { UnwindContext::get() })
     }
+
+    fn details(&self, f: &mut fmt::Formatter<'_>, i: i32, addr: u64) -> Result {
+        let response = MODULE_REQUEST
+            .get_response()
+            .expect("could not load limine modules for stack trace");
+        let module = response.modules()[0];
+        let db = unsafe { core::slice::from_raw_parts(module.addr(), module.size() as usize) };
+        let mut u32_buffer = [0u8; 4];
+
+        u32_buffer.copy_from_slice(&db[0..4]);
+        let deindexing_table_offset = u32::from_le_bytes(u32_buffer);
+
+        u32_buffer.copy_from_slice(&db[4..8]);
+        let string_table_offset = u32::from_le_bytes(u32_buffer);
+
+        u32_buffer.copy_from_slice(&db[8..12]);
+        let instruction_table_offset = u32::from_le_bytes(u32_buffer);
+
+        u32_buffer.copy_from_slice(&db[12..16]);
+        let total_size = u32::from_le_bytes(u32_buffer);
+
+        const BASE_ADDRESS: u64 = 0xffffffff80000000;
+        let instruction_count = (total_size - instruction_table_offset) / 12;
+        let mut l = 0u32;
+        let mut r = instruction_count - 1;
+        let mut ans = None;
+        while l <= r {
+            let m = (r - l) / 2 + l;
+            let start = (m * 12 + instruction_table_offset) as usize;
+            u32_buffer.copy_from_slice(&db[start..start + 4]);
+            let candidate_addr = u32::from_le_bytes(u32_buffer) as u64 + BASE_ADDRESS;
+            if candidate_addr == addr {
+                ans = Some(m);
+                break;
+            } else if candidate_addr < addr {
+                if m == u32::MAX {
+                    break;
+                }
+                l = m + 1;
+            } else {
+                if m == 0 {
+                    break;
+                }
+                r = m - 1;
+            }
+        }
+        write!(f, "#{}: 0x{:x} =>", i, addr)?;
+
+        if ans.is_none() {
+            writeln!(f, " {}", "???")?;
+            return Ok(());
+        }
+
+        let ans = ans.unwrap();
+        let start = (ans * 12 + instruction_table_offset) as usize;
+        let mut u16_buffer = [0u8; 2];
+
+        u16_buffer.copy_from_slice(&db[start + 4..start + 6]);
+        let file_index = u16::from_le_bytes(u16_buffer);
+
+        u16_buffer.copy_from_slice(&db[start + 6..start + 8]);
+        let function_index = u16::from_le_bytes(u16_buffer);
+
+        u16_buffer.copy_from_slice(&db[start + 8..start + 10]);
+        let line = u16::from_le_bytes(u16_buffer);
+
+        u16_buffer.copy_from_slice(&db[start + 10..start + 12]);
+        let column = u16::from_le_bytes(u16_buffer);
+
+        let start = (deindexing_table_offset + (4 * file_index as u32)) as usize;
+        u32_buffer.copy_from_slice(&db[start..start + 4]);
+        let file_offset = u32::from_le_bytes(u32_buffer);
+
+        let start = (string_table_offset + file_offset) as usize;
+        u16_buffer.copy_from_slice(&db[start..start + 2]);
+        let file_name_length = u16::from_le_bytes(u16_buffer);
+        let mut big_buffer = [0u8; 512];
+        let capped_length = file_name_length.min(512) as usize;
+        big_buffer[..capped_length].copy_from_slice(&db[start + 2..start + 2 + capped_length]);
+
+        write!(
+            f,
+            " {}:{}:{}",
+            str::from_utf8(&big_buffer[..capped_length]).unwrap(),
+            line,
+            column
+        )?;
+
+        let start = (deindexing_table_offset + (4 * function_index as u32)) as usize;
+        u32_buffer.copy_from_slice(&db[start..start + 4]);
+        let function_offset = u32::from_le_bytes(u32_buffer);
+
+        let start = (string_table_offset + function_offset) as usize;
+        u16_buffer.copy_from_slice(&db[start..start + 2]);
+        let file_name_length = u16::from_le_bytes(u16_buffer);
+        let mut big_buffer = [0u8; 512];
+        let capped_length = file_name_length.min(512) as usize;
+        big_buffer[..capped_length].copy_from_slice(&db[start + 2..start + 2 + capped_length]);
+
+        writeln!(
+            f,
+            " {}",
+            str::from_utf8(&big_buffer[..capped_length]).unwrap()
+        )?;
+
+        Ok(())
+    }
 }
 
 impl Display for StackTrace {
@@ -316,7 +424,7 @@ impl Display for StackTrace {
         let mut i = 0;
         while unsafe { context.valid() } {
             let addr = unsafe { context.return_address() };
-            writeln!(f, "#{}: {:#016x}", i, addr)?;
+            self.details(f, i, addr)?;
             i += 1;
             context = unsafe { context.next() };
         }

@@ -35,7 +35,8 @@ use alloc::sync::Arc;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+    BootloaderInfoRequest, FirmwareTypeRequest, ModuleRequest, MpRequest, RequestsEndMarker,
+    RequestsStartMarker,
 };
 use physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use spin::Barrier;
@@ -184,3 +185,7 @@ pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
     }
     Arch::shutdown(0);
 }
+
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();

@@ -83,14 +83,6 @@ pub fn gen_debug_module(
         });
     }
 
-    // Deindexing
-    let mut deindexing_list = vec![];
-    let mut string_table_size: u32 = 0;
-    for s in &string_list {
-        deindexing_list.push(string_table_size);
-        string_table_size += (s.len() as u32) + 2;
-    }
-
     // String prefix reduction (by crate)
     let mut new_string_list = vec![];
     for s in &string_list {
@@ -122,10 +114,19 @@ pub fn gen_debug_module(
             };
         }
         if !found {
-            bail!("a valid crate file cannot be matched up!");
+            bail!("a valid crate file cannot be matched up '{}'!", s);
         }
     }
+    assert!(string_list.len() == new_string_list.len());
     string_list = new_string_list;
+
+    // Deindexing
+    let mut deindexing_list = vec![];
+    let mut string_table_size: u32 = 0;
+    for s in &string_list {
+        deindexing_list.push(string_table_size);
+        string_table_size += (s.len() as u32) + 2;
+    }
 
     // Output
     let mut output = Cursor::new(Vec::new());
