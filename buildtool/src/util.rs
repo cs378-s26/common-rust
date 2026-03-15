@@ -142,21 +142,7 @@ pub fn download_ovmf(target: Target) -> Result<PathBuf> {
     Ok(path)
 }
 
-pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
-    let mut args = vec![
-        "build",
-        "-Zbuild-std=core,alloc",
-        "--message-format=json-render-diagnostics",
-        "--target",
-    ];
-
-    let target_triple = target.target_triple();
-    args.push(target_triple);
-
-    if release {
-        args.push("--release");
-    }
-
+pub fn get_crate_paths() -> Result<Vec<(String, PathBuf)>> {
     let mut crate_paths: Vec<(String, PathBuf)> = MetadataCommand::new()
         .exec()?
         .packages
@@ -192,6 +178,25 @@ pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(Stri
         "builtin::compiler-builtins".into(),
         sys_root.join("lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins"),
     ));
+    Ok(crate_paths)
+}
+
+pub fn build_kernel(release: bool, target: Target) -> Result<(PathBuf, Vec<(String, PathBuf)>)> {
+    let mut args = vec![
+        "build",
+        "-Zbuild-std=core,alloc",
+        "--message-format=json-render-diagnostics",
+        "--target",
+    ];
+
+    let target_triple = target.target_triple();
+    args.push(target_triple);
+
+    if release {
+        args.push("--release");
+    }
+
+    let crate_paths = get_crate_paths()?;
 
     let mut cmd = Command::new("cargo");
     cmd.args(args)

@@ -10,7 +10,9 @@ use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
+use crate::util::{
+    Target, build_image_with_tag, cache_dir, download_ovmf, get_crate_paths, path_to_string,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -152,7 +154,7 @@ fn run_with_config(
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
     let kernel_path = build_test_binary(test_cfg, release)?;
     let img_path = build_image_with_tag(
-        &(kernel_path.clone(), vec![]),
+        &(kernel_path.clone(), get_crate_paths()?),
         release,
         target,
         Some(&display_name),
