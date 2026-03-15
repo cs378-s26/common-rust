@@ -339,10 +339,8 @@ impl StackTrace {
             let start = (m * 12 + instruction_table_offset) as usize;
             u32_buffer.copy_from_slice(&db[start..start + 4]);
             let candidate_addr = u32::from_le_bytes(u32_buffer) as u64 + BASE_ADDRESS;
-            if candidate_addr == addr {
+            if candidate_addr <= addr {
                 ans = Some(m);
-                break;
-            } else if candidate_addr < addr {
                 if m == u32::MAX {
                     break;
                 }

@@ -61,10 +61,10 @@ a string record for a string of size `n`.
 A record in the instruction table is 12 bytes. The records should be
 sorted by `address`.
 
-| Field Name       | Offset | Size | Description                                                  |
-|------------------|--------|------|--------------------------------------------------------------|
-| `address`        | 0      | 4    | Address of instruction, subtracted by `0xffffffff80000000`.  |
-| `file_index`     | 4      | 2    | The index of the file name in the deindexing table.          |
-| `function_index` | 6      | 2    | The index of the function name in the deindexing table.      |
-| `line`           | 8      | 2    | The line number corresponding to this instruction address.   |
-| `column`         | 10     | 2    | The column number corresponding to this instruction address. |
+| Field Name       | Offset | Size | Description                                                                       |
+|------------------|--------|------|-----------------------------------------------------------------------------------|
+| `address`        | 0      | 4    | Address of instruction, subtracted by `0xffffffff80000000`.                       |
+| `file_index`     | 4      | 2    | The index of the file name in the deindexing table.                               |
+| `function_index` | 6      | 2    | The index of the function name in the deindexing table.                           |
+| `line`           | 8      | 2    | The line number corresponding to this instruction address (0 if not available).   |
+| `column`         | 10     | 2    | The column number corresponding to this instruction address (0 if not available). |
