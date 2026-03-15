@@ -1,11 +1,12 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_REQUEST, frame_alloc},
+    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
     print::kprintln,
 };
 use alloc::boxed::Box;
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
+use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
 use spin::{Mutex, Once};
 
 bitflags! {
@@ -28,16 +29,17 @@ bitflags! {
         const WRITE_THROUGH = 1 << 4;
         const CACHEABLE = 1 << 5;
         const GLOBAL = 1 << 6;
+        const FIXED = 1 << 7;
+        const SHADOW = 1 << 8;
     }
 }
 
 struct VirtualMemoryEntry {
-    pub base: usize,
-    pub length: usize,
-    // future proofing
+    pub base: usize,   // lowest address in range
+    pub length: usize, // size of range
     #[allow(unused)]
-    pub options: PagingOptions,
-    link: RBTreeLink,
+    pub options: PagingOptions, // architecture-independent
+    link: RBTreeLink,  // for the intrustive trees
 }
 // https://docs.rs/intrusive-collections/latest/intrusive_collections/
 intrusive_adapter!(ActiveTreeAdapter = Box<VirtualMemoryEntry>: VirtualMemoryEntry { link => RBTreeLink });
@@ -55,28 +57,79 @@ impl<'a> KeyAdapter<'a> for FreeTreeAdapter {
     }
 }
 
+// bad bad bad no spinning :( but we can't block yet
+static VMES: Once<Mutex<VirtualMemoryEntryContainer>> = Once::new(); // TODO RWLock
+
+#[unsafe(link_section = ".limine_requests")]
+static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressRequest::new();
+
 struct VirtualMemoryEntryContainer {
+    low: usize,
+    high: usize,
     active: RBTree<ActiveTreeAdapter>,
     free: RBTree<FreeTreeAdapter>,
 }
-// bad bad bad no spinning :( but we can't block yet
-static VMES: Once<Mutex<VirtualMemoryEntryContainer>> = Once::new(); // TODO RWLock
+
+impl VirtualMemoryEntryContainer {
+    pub fn new(low: usize, high: usize) -> VirtualMemoryEntryContainer {
+        let mut free = RBTree::new(FreeTreeAdapter::new());
+        free.insert(Box::new(VirtualMemoryEntry {
+            base: low,
+            length: high - low,
+            options: PagingOptions::empty(),
+            link: RBTreeLink::new(),
+        }));
+        VirtualMemoryEntryContainer {
+            low,
+            high,
+            active: RBTree::new(ActiveTreeAdapter::new()),
+            free,
+        }
+    }
+}
 
 pub fn init_virtual_memory_allocator() {
     kprintln!("initializing virtual memory allocator");
     VMES.call_once(|| {
-        let mut free = RBTree::new(FreeTreeAdapter::new());
-        free.insert(Box::new(VirtualMemoryEntry {
-            base: Arch::PAGE_SIZE,
-            length: HHDM_REQUEST.get_response().unwrap().offset() as usize - Arch::PAGE_SIZE,
-            options: PagingOptions::empty(),
-            link: RBTreeLink::new(),
-        }));
-        Mutex::new(VirtualMemoryEntryContainer {
-            active: RBTree::new(ActiveTreeAdapter::new()),
-            free, // one big-ass free block
-        })
+        Mutex::new(VirtualMemoryEntryContainer::new(
+            *HHDM_OFFSET.get().unwrap(),
+            usize::MAX & !(Arch::PAGE_SIZE - 1),
+        ))
     });
+    let mut executable_length = 0;
+    for region in *REGIONS.get().unwrap() {
+        // if you need to map over one of these, just change backing and options accordingly
+        VirtualMemoryAllocation::new(
+            Arch::get_address_space(),
+            Some(HHDM_OFFSET.get().unwrap() + region.base as usize),
+            region.length as usize,
+            None,
+            PagingOptions::SHADOW,
+        );
+        if region.entry_type == EntryType::EXECUTABLE_AND_MODULES {
+            assert!(
+                executable_length == 0,
+                "multiple executable sections, kernel mapping unknown"
+            );
+            executable_length = region.length;
+        }
+    }
+    let executable_start = EXECUTABLE_ADDRESS_REQUEST
+        .get_response()
+        .unwrap()
+        .virtual_base() as usize;
+    kprintln!(
+        "kernel virtually mapped from {:x} to {:x}",
+        executable_start,
+        executable_start + executable_length as usize
+    );
+    VirtualMemoryAllocation::new(
+        Arch::get_address_space(),
+        Some(executable_start),
+        executable_length as usize,
+        None,
+        PagingOptions::SHADOW,
+    );
 }
 
 // can't block! (as of now)
@@ -92,7 +145,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
                 let frame = frame_alloc();
                 Arch::virtual_map(
                     Arch::get_address_space(),
-                    address as u64 & (!0xFFF),
+                    address as u64 & !(Arch::PAGE_SIZE as u64 - 1),
                     frame as u64,
                     PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
                 );
@@ -114,29 +167,57 @@ pub struct VirtualMemoryAllocation {
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
 impl VirtualMemoryAllocation {
     pub fn new(
-        space: u64,
-        length: usize,
-        backing: Option<usize>,
-        options: PagingOptions,
-    ) -> VirtualMemoryAllocation {
-        assert!(length & 0xFFF == 0);
+        space: u64,             // address space identifier
+        start: Option<usize>,   // fixed mapping location
+        length: usize,          // requested size in bytes
+        backing: Option<usize>, // physical frames used
+        options: PagingOptions, // similar to mmap flags
+    ) -> Option<VirtualMemoryAllocation> {
+        assert!(length.is_multiple_of(Arch::PAGE_SIZE));
         let mut vmes = VMES
             .get()
             .expect("virtual allocation attempted before virtual memory allocator was initialized")
             .lock();
 
-        let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
-        let mut chosen = cursor
-            .remove()
-            .expect("free VME collection error during allocation"); // best-fit allocation
-
+        let mut chosen = if let Some(base) = start {
+            // TODO there ought to be a better way to find the free region that contains this fixed region
+            let mut cursor = vmes.active.upper_bound(Bound::Excluded(&base));
+            let bottom = if let Some(entry) = cursor.get() {
+                entry.base + entry.length
+            } else {
+                vmes.low
+            };
+            cursor.move_next();
+            let top = if let Some(entry) = cursor.get() {
+                entry.base
+            } else {
+                vmes.high
+            };
+            let mut chosen = vmes
+                .free
+                .find_mut(&(top - bottom, bottom))
+                .remove()
+                .expect("fixed mapping attempted at unavailable base");
+            if chosen.base < base {
+                // cut off bottom part
+                vmes.free.insert(Box::new(VirtualMemoryEntry {
+                    base: chosen.base,
+                    length: base - chosen.base,
+                    options: PagingOptions::empty(),
+                    link: RBTreeLink::new(),
+                }));
+                chosen.length -= base - chosen.base;
+                chosen.base = base;
+            }
+            chosen
+        } else {
+            // find best (smallest) fit
+            vmes.free
+                .lower_bound_mut(Bound::Included(&(length, 0)))
+                .remove()
+                .expect("free VME collection error during allocation") // best-fit allocation
+        };
         assert!(chosen.length >= length); // can remove once we're confident in this data structure lol
-        vmes.active.insert(Box::new(VirtualMemoryEntry {
-            base: chosen.base,
-            length,
-            options,
-            link: RBTreeLink::new(),
-        }));
 
         let base = chosen.base;
         if chosen.length != length {
@@ -146,6 +227,15 @@ impl VirtualMemoryAllocation {
             vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
         }
 
+        vmes.active.insert(Box::new(VirtualMemoryEntry {
+            base,
+            length,
+            options,
+            link: RBTreeLink::new(),
+        }));
+
+        drop(vmes); // not using these anymore
+
         if let Some(physical) = backing {
             let mut i = 0;
             while i < length {
@@ -154,10 +244,18 @@ impl VirtualMemoryAllocation {
             }
         }
 
-        VirtualMemoryAllocation {
-            space,
-            base,
-            length,
+        if options.contains(PagingOptions::SHADOW) {
+            None
+        } else {
+            Some(VirtualMemoryAllocation {
+                space,
+                base,
+                length: if options.contains(PagingOptions::SHADOW) {
+                    0
+                } else {
+                    length
+                }, // TODO Option type
+            })
         }
     }
 }
@@ -166,8 +264,9 @@ impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
         while self.length > 0 {
-            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
+            // remove pages within range from page table
             self.length -= Arch::PAGE_SIZE;
+            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
         }
         let mut vmes = VMES
             .get()
@@ -221,6 +320,7 @@ impl Drop for VirtualMemoryAllocation {
             found.base = front.base;
             found.length += front.length;
         }
+        free.insert(found);
     }
 }
 
@@ -270,13 +370,15 @@ mod test {
                 kprintln!("properly mapping vmem");
                 let mmapped = VirtualMemoryAllocation::new(
                     Arch::get_address_space(),
+                    None,
                     0x3000,
                     None,
                     PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
                         | PagingOptions::CACHEABLE
                         | PagingOptions::GLOBAL,
-                );
+                )
+                .unwrap();
                 kprintln!("writing to properly mapped vmem");
                 for i in 0..4096 {
                     unsafe { *((mmapped.base + i) as *mut u8) = i as u8 };
