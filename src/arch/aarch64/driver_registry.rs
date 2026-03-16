@@ -17,10 +17,6 @@ pub static DRIVERS: &[DriverEntry] = &[
         compatible: "virtio,mmio",
         init: super::drivers::virtio_mmio::virtio_mmio_init,
     },
-    DriverEntry {
-        compatible: "arm,pl011",
-        init: super::drivers::pl011::pl011_init,
-    },
 ];
 
 // walk every device and call the first matching driver
