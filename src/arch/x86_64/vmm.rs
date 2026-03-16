@@ -118,7 +118,7 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         let _ = VMM_PROTECTOR.lock();
         mapper.unmap(vpage)
     } {
-        toilet.flush(); // this handles all the TLB clearing for us, but not the IPI... // TODO! TLB shootdown
+        toilet.flush(); // this handles this core's TLB clearing for us, but not the IPI... // TODO! TLB shootdown
         unsafe {
             FrameDeallocatorWrapper {
                 inner: frame_dealloc,

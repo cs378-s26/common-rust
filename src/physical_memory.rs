@@ -114,6 +114,7 @@ pub fn frame_alloc() -> usize {
         frame
     } else {
         let first: usize = *head;
+        assert!(first.is_multiple_of(Arch::PAGE_SIZE));
         *head = unsafe { *((unwrap(&HHDM_OFFSET) + first) as *const usize) };
         first
     }
@@ -144,6 +145,7 @@ pub fn alloc_frames(frames: usize) -> usize {
 }
 
 pub fn frame_dealloc(frame: usize) {
+    assert!(frame.is_multiple_of(Arch::PAGE_SIZE));
     let mut head = HEAD.lock();
     unsafe {
         *((unwrap(&HHDM_OFFSET) + frame) as *mut usize) = *head;
