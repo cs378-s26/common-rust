@@ -188,7 +188,7 @@ fn thread_exit() {
 }
 
 pub fn is_on_thread() -> bool {
-    let _guard = FlagGuard::<IrqState>::guard(Some(false));
+    let _guard = StateGuard::<IrqState>::guard(Some(false));
 
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
@@ -309,34 +309,35 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
 
 // for saving and restoring interrupts, preemption, core pinning, ...
 // TODO can this be generic-ified from Booleans?
-pub trait FlagState where Self: Sized { 
-    fn new(val: bool) -> Self; // makes a new state object
-    fn get() -> bool; // gets the current actual state of the flag
-    fn set(val: bool); // sets the current actual state of the flag
-    fn me(&self) -> bool; // gets the state saved within this object
+pub trait StateSaver where Self: Sized { 
+    type Value;
+    fn new(val: Self::Value) -> Self; // makes a new state object
+    fn get() -> Self::Value; // gets the current actual state of the thing
+    fn set(val: Self::Value); // sets the current actual state of the thing
+    fn me(&self) -> Self::Value; // gets the state saved within this object
     fn save() -> Self { // creates object to represent the current actual state
         Self::new(Self::get())
     }
-    fn restore(&self) { // sets actual state of flag to this saved state
+    fn restore(&self) { // sets actual state of thing to this saved state
         Self::set(self.me())
     }
 }
 
-pub struct FlagGuard<T: FlagState> {
+pub struct StateGuard<T: StateSaver> {
     state: T,
 }
 
-impl<T: FlagState> FlagGuard<T> {
-    pub fn guard(on: Option<bool>) -> FlagGuard<T> {
+impl<T: StateSaver> StateGuard<T> {
+    pub fn guard(on: Option<T::Value>) -> StateGuard<T> {
         let state = T::save();
         if let Some(val) = on {
             T::set(val);
         }
-        FlagGuard{state}
+        StateGuard{state}
     }
 }
 
-impl<T: FlagState> Drop for FlagGuard<T> {
+impl<T: StateSaver> Drop for StateGuard<T> {
     fn drop(&mut self) {
         self.state.restore();
     }
@@ -345,7 +346,8 @@ impl<T: FlagState> Drop for FlagGuard<T> {
 #[derive(Clone, Copy)]
 pub struct IrqState(bool);
 
-impl FlagState for IrqState {
+impl StateSaver for IrqState {
+    type Value = bool;
     #[inline(always)]
     fn new(val: bool) -> IrqState {
         IrqState(val)
@@ -367,7 +369,8 @@ impl FlagState for IrqState {
 #[derive(Clone, Copy)]
 pub struct PinState(bool);
 
-impl FlagState for PinState {
+impl StateSaver for PinState {
+    type Value = bool;
     #[inline(always)]
     fn new(val: bool) -> PinState {
         PinState(val)
@@ -423,7 +426,7 @@ pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    let _guard = FlagGuard::<IrqState>::guard(None);
+    let _guard = StateGuard::<IrqState>::guard(None);
 
     let mut queue = queue.lock_no_restore_irq();
 
@@ -447,7 +450,7 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
-    let _guard = FlagGuard::<IrqState>::guard(Some(false));
+    let _guard = StateGuard::<IrqState>::guard(Some(false));
     suspend_impl(drop, thread);
 }
 
