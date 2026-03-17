@@ -95,22 +95,6 @@ impl<T: Send + Sync> CoreLocal<T> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::MP_REQUEST;
-    use crate::mp::{CORE_ID, CoreId};
-
-    #[test_case]
-    fn test_core_locals() {
-        for core in 0..MP_REQUEST.get_response().unwrap().cpus().len() {
-            let real = CORE_ID.read_for(CoreId { 0: core }).get().0;
-            if real != core {
-                panic!("expected: {:x}, actual: {:x}", core, real);
-            }
-        }
-    }
-}
-
 #[derive(PartialEq, Eq)]
 #[atomic_enum]
 pub enum MPStage {

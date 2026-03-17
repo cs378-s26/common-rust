@@ -3,7 +3,7 @@ use core::sync::atomic::Ordering;
 
 // for saving and restoring interrupts, preemption, core pinning, ...
 pub trait StateTrait {
-    type Value: Copy;
+    type Value: Copy; // the type of value that represents this state
     fn get() -> Self::Value; // gets the current actual state of the thing
     fn set(val: Self::Value); // sets the current actual state of the thing
     fn exchange_guarded() -> Self::Value; // "locks down" the actual state
