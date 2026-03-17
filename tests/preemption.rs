@@ -21,8 +21,9 @@ use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
+use kernel_common::state::{CorePin, StateGuard};
 use kernel_common::sync::{IntMutex, MutexLike};
-use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread, yield_thread, PinState, StateGuard};
+use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread, yield_thread};
 use spin::{Barrier, Once};
 
 #[cfg(test)]
@@ -92,7 +93,7 @@ fn work(i: u64) -> u64 {
 
 const THREADS: usize = 16;
 static LATCH: AtomicUsize = AtomicUsize::new(0);
-const UPPER: usize = 23; // precisely tuned value for runtime
+const UPPER: usize = 21; // precisely tuned value for runtime
 static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
 
 #[test_case]
@@ -102,11 +103,22 @@ fn hello_world() {
     for _ in 0..THREADS {
         spawn_thread(|| {
             for i in 3..UPPER {
-                let _guard: Option<StateGuard<PinState>> = if i.is_multiple_of(3) {Some(StateGuard::<PinState>::guard(Some(true)))} else {None};
-                let core = (*CORE_ID).get();
-                let value = work(i as u64);
-                if i.is_multiple_of(3) {
-                    assert!(core == (*CORE_ID).get());
+                let _guard = if i.is_multiple_of(2) {
+                    Some(StateGuard::<CorePin>::guard())
+                } else {
+                    None
+                };
+                let core = CORE_ID.get();
+                let value = if i.is_multiple_of(3) {
+                    let lock = VALUES.lock();
+                    let val = work(i as u64);
+                    drop(lock);
+                    val
+                } else {
+                    work(i as u64)
+                };
+                if i.is_multiple_of(2) {
+                    assert!(core == CORE_ID.get());
                 }
                 let mut lock = VALUES.lock();
                 if lock[i] == 0 {

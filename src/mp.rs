@@ -11,7 +11,7 @@ use alloc::boxed::Box;
 
 use crate::{
     arch::{Arch, ArchTrait},
-    local_storage::{LocalStorageHandler, impl_local_storage},
+    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
 };
 
 #[repr(transparent)]
@@ -70,8 +70,7 @@ impl<T> CoreLocal<T> {
 
 impl_local_storage!(CoreLocal, CoreLocalStorageHandler);
 
-// offset storage
-
+// stores the pointer to the start of each CPU's core-local section
 static OFFSET_ARRAY: Once<Vec<u64>> = Once::new();
 
 pub fn get_cpu_local_pointer_for(core: CoreId) -> u64 {
@@ -92,7 +91,23 @@ core_local! {
 
 impl<T: Send + Sync> CoreLocal<T> {
     pub fn read_for(&self, core: CoreId) -> &T {
-        unsafe { &*(get_cpu_local_pointer_for(core) as *const T) }
+        unsafe { &*((OFFSET_ARRAY.get().unwrap()[core.0] + self.offset()) as *const T) }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::MP_REQUEST;
+    use crate::mp::{CORE_ID, CoreId};
+
+    #[test_case]
+    fn test_core_locals() {
+        for core in 0..MP_REQUEST.get_response().unwrap().cpus().len() {
+            let real = CORE_ID.read_for(CoreId { 0: core }).get().0;
+            if real != core {
+                panic!("expected: {:x}, actual: {:x}", core, real);
+            }
+        }
     }
 }
 

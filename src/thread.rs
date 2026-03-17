@@ -1,18 +1,20 @@
 extern crate alloc;
 
 use core::{
-    cell::{Cell, OnceCell, RefCell, RefMut},
+    cell::{Cell, OnceCell},
     ffi::c_void,
     pin::Pin,
     ptr,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::naked_asm;
 
-use alloc::boxed::Box;
-use alloc::sync::{Arc, Weak};
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
 use intrusive_collections::{
     LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
 };
@@ -21,7 +23,8 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{MP_STAGE, MPStage, core_local},
+    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
+    state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
 
@@ -151,7 +154,7 @@ core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
     CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
-    LOCAL_WORK_QUEUE: RefCell<ThreadQueue> = RefCell::new(new_thread_queue());
+    pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
 
 thread_local! {
@@ -159,7 +162,8 @@ thread_local! {
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
-    CORE_PINNED: AtomicBool = AtomicBool::new(false);
+    pub PINNED_TO_CORE: AtomicBool = AtomicBool::new(false);
+    pub CORE_PINNED_TO: AtomicUsize = AtomicUsize::new(usize::MAX);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -168,10 +172,6 @@ thread_local! {
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
 static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
-
-pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
-    LOCAL_WORK_QUEUE.borrow_mut()
-}
 
 fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
@@ -188,7 +188,7 @@ fn thread_exit() {
 }
 
 pub fn is_on_thread() -> bool {
-    let _guard = StateGuard::<IrqState>::guard(Some(false));
+    let _guard = StateGuard::<Irq>::guard();
 
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
@@ -237,14 +237,14 @@ pub fn poll_tasks() -> ! {
 
     let mut counter = false;
     loop {
-        while let Some(thread) = {local_work_queue().pop_front()} {
-            if CORE_PINNED.read_for(&thread).load(Ordering::Relaxed) {
+        while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
+            if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
                 if counter {
                     counter = false;
                     suspend_to_thread(thread); // TODO scheduled unfairly often
                     continue;
                 } else {
-                    local_work_queue().push_back(thread);
+                    LOCAL_WORK_QUEUE.lock().push_back(thread);
                     counter = true;
                     break;
                 }
@@ -253,7 +253,7 @@ pub fn poll_tasks() -> ! {
                 Arch::wake_other_cores();
             }
         }
-        if let Some(thread) = {GLOBAL_WORK_QUEUE.lock().pop_front()} {
+        if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
             suspend_to_thread(thread);
         }
     }
@@ -301,92 +301,10 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
 
     // can't queue idle
     if !is_idle {
-        local_work_queue().push_back(thread);
+        LOCAL_WORK_QUEUE.lock().push_back(thread);
     }
 
     unsafe { go_to_thread(target) }
-}
-
-// for saving and restoring interrupts, preemption, core pinning, ...
-// TODO can this be generic-ified from Booleans?
-pub trait StateSaver where Self: Sized { 
-    type Value;
-    fn new(val: Self::Value) -> Self; // makes a new state object
-    fn get() -> Self::Value; // gets the current actual state of the thing
-    fn set(val: Self::Value); // sets the current actual state of the thing
-    fn me(&self) -> Self::Value; // gets the state saved within this object
-    fn save() -> Self { // creates object to represent the current actual state
-        Self::new(Self::get())
-    }
-    fn restore(&self) { // sets actual state of thing to this saved state
-        Self::set(self.me())
-    }
-}
-
-pub struct StateGuard<T: StateSaver> {
-    state: T,
-}
-
-impl<T: StateSaver> StateGuard<T> {
-    pub fn guard(on: Option<T::Value>) -> StateGuard<T> {
-        let state = T::save();
-        if let Some(val) = on {
-            T::set(val);
-        }
-        StateGuard{state}
-    }
-}
-
-impl<T: StateSaver> Drop for StateGuard<T> {
-    fn drop(&mut self) {
-        self.state.restore();
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct IrqState(bool);
-
-impl StateSaver for IrqState {
-    type Value = bool;
-    #[inline(always)]
-    fn new(val: bool) -> IrqState {
-        IrqState(val)
-    }
-    #[inline(always)]
-    fn set(val: bool) {
-        Arch::set_irq_enabled(val);
-    }
-    #[inline(always)]
-    fn get() -> bool {
-        Arch::irq_is_enabled()
-    }
-    #[inline(always)]
-    fn me(&self) -> bool {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct PinState(bool);
-
-impl StateSaver for PinState {
-    type Value = bool;
-    #[inline(always)]
-    fn new(val: bool) -> PinState {
-        PinState(val)
-    }
-    #[inline(always)]
-    fn set(val: bool) {
-        CORE_PINNED.store(val, Ordering::Release);
-    }
-    #[inline(always)]
-    fn get() -> bool {
-        CORE_PINNED.load(Ordering::Acquire)
-    }
-    #[inline(always)]
-    fn me(&self) -> bool {
-        self.0
-    }
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
@@ -426,7 +344,13 @@ pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    let _guard = StateGuard::<IrqState>::guard(None);
+    let guard = StateGuard::<Irq>::guard();
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
+    }
+    drop(guard);
+
+    let _guard = StateGuard::<Irq>::preserve();
 
     let mut queue = queue.lock_no_restore_irq();
 
@@ -450,13 +374,13 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
-    let _guard = StateGuard::<IrqState>::guard(Some(false));
+    let _guard = StateGuard::<Irq>::guard();
     suspend_impl(drop, thread);
 }
 
 #[inline(always)]
 pub fn yield_thread() {
-    if CORE_PINNED.load(Ordering::Relaxed) { 
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
         // TODO suspend to local instead
     } else {
         suspend_to_queue(&GLOBAL_WORK_QUEUE);
