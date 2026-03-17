@@ -19,7 +19,7 @@ use intrusive_collections::{
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqGuard},
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
     sync::{IntSpinLock, MutexLike},
@@ -159,6 +159,7 @@ thread_local! {
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
+    CORE_PINNED: AtomicBool = AtomicBool::new(false);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -187,7 +188,7 @@ fn thread_exit() {
 }
 
 pub fn is_on_thread() -> bool {
-    let _guard = IrqGuard::disabled_guard();
+    let _guard = FlagGuard::<IrqState>::guard(Some(false));
 
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
@@ -234,34 +235,27 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    // assert!(!Arch::irq_is_enabled());
-
+    let mut counter = false;
     loop {
-        loop {
-            // TEMP: need to replace with IntRefCell
-            let Some(thread) = local_work_queue().pop_front() else {
-                break;
-            };
-
-            // assert!(!Arch::irq_is_enabled());
-            GLOBAL_WORK_QUEUE.lock().push_back(thread);
-            Arch::wake_other_cores();
+        while let Some(thread) = {local_work_queue().pop_front()} {
+            if CORE_PINNED.read_for(&thread).load(Ordering::Relaxed) {
+                if counter {
+                    counter = false;
+                    suspend_to_thread(thread); // TODO scheduled unfairly often
+                    continue;
+                } else {
+                    local_work_queue().push_back(thread);
+                    counter = true;
+                    break;
+                }
+            } else {
+                GLOBAL_WORK_QUEUE.lock().push_back(thread);
+                Arch::wake_other_cores();
+            }
         }
-
-        let thread = {
-            // assert!(!Arch::irq_is_enabled());
-            let mut lock = GLOBAL_WORK_QUEUE.lock();
-            let task = lock.pop_front();
-            drop(lock);
-            task
-        };
-
-        let Some(thread) = thread else {
-            // Arch::sleep_core();
-            continue;
-        };
-
-        suspend_to_thread(thread);
+        if let Some(thread) = {GLOBAL_WORK_QUEUE.lock().pop_front()} {
+            suspend_to_thread(thread);
+        }
     }
 }
 
@@ -313,6 +307,85 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
     unsafe { go_to_thread(target) }
 }
 
+// for saving and restoring interrupts, preemption, core pinning, ...
+// TODO can this be generic-ified from Booleans?
+pub trait FlagState where Self: Sized { 
+    fn new(val: bool) -> Self; // makes a new state object
+    fn get() -> bool; // gets the current actual state of the flag
+    fn set(val: bool); // sets the current actual state of the flag
+    fn me(&self) -> bool; // gets the state saved within this object
+    fn save() -> Self { // creates object to represent the current actual state
+        Self::new(Self::get())
+    }
+    fn restore(&self) { // sets actual state of flag to this saved state
+        Self::set(self.me())
+    }
+}
+
+pub struct FlagGuard<T: FlagState> {
+    state: T,
+}
+
+impl<T: FlagState> FlagGuard<T> {
+    pub fn guard(on: Option<bool>) -> FlagGuard<T> {
+        let state = T::save();
+        if let Some(val) = on {
+            T::set(val);
+        }
+        FlagGuard{state}
+    }
+}
+
+impl<T: FlagState> Drop for FlagGuard<T> {
+    fn drop(&mut self) {
+        self.state.restore();
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct IrqState(bool);
+
+impl FlagState for IrqState {
+    #[inline(always)]
+    fn new(val: bool) -> IrqState {
+        IrqState(val)
+    }
+    #[inline(always)]
+    fn set(val: bool) {
+        Arch::set_irq_enabled(val);
+    }
+    #[inline(always)]
+    fn get() -> bool {
+        Arch::irq_is_enabled()
+    }
+    #[inline(always)]
+    fn me(&self) -> bool {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PinState(bool);
+
+impl FlagState for PinState {
+    #[inline(always)]
+    fn new(val: bool) -> PinState {
+        PinState(val)
+    }
+    #[inline(always)]
+    fn set(val: bool) {
+        CORE_PINNED.store(val, Ordering::Release);
+    }
+    #[inline(always)]
+    fn get() -> bool {
+        CORE_PINNED.load(Ordering::Acquire)
+    }
+    #[inline(always)]
+    fn me(&self) -> bool {
+        self.0
+    }
+}
+
 // flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
     assert!(
@@ -350,7 +423,7 @@ pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    let _guard = IrqGuard::guard();
+    let _guard = FlagGuard::<IrqState>::guard(None);
 
     let mut queue = queue.lock_no_restore_irq();
 
@@ -374,13 +447,17 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
-    let _guard = IrqGuard::disabled_guard();
+    let _guard = FlagGuard::<IrqState>::guard(Some(false));
     suspend_impl(drop, thread);
 }
 
 #[inline(always)]
 pub fn yield_thread() {
-    suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    if CORE_PINNED.load(Ordering::Relaxed) { 
+        // TODO suspend to local instead
+    } else {
+        suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    }
 }
 
 pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
@@ -425,8 +502,6 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
-    let mut lock = GLOBAL_WORK_QUEUE.lock();
-    lock.push_back(thread);
-    drop(lock);
+    GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }

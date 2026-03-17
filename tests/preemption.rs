@@ -19,10 +19,10 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use kernel_common::MP_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
-use kernel_common::mp::{MP_STAGE, MPStage};
+use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
 use kernel_common::sync::{IntMutex, MutexLike};
-use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread, yield_thread};
+use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread, yield_thread, PinState, FlagGuard};
 use spin::{Barrier, Once};
 
 #[cfg(test)]
@@ -102,7 +102,12 @@ fn hello_world() {
     for _ in 0..THREADS {
         spawn_thread(|| {
             for i in 3..UPPER {
+                let _guard: Option<FlagGuard<PinState>> = if i.is_multiple_of(3) {Some(FlagGuard::<PinState>::guard(Some(true)))} else {None};
+                let core = (*CORE_ID).get();
                 let value = work(i as u64);
+                if i.is_multiple_of(3) {
+                    assert!(core == (*CORE_ID).get());
+                }
                 let mut lock = VALUES.lock();
                 if lock[i] == 0 {
                     lock[i] = value;

@@ -6,8 +6,8 @@ use core::{
 };
 
 use crate::{
-    arch::{Arch, ArchTrait, IrqState},
-    thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
+    arch::{Arch, ArchTrait},
+    thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue, FlagState, IrqState},
 };
 
 pub struct IntMutexGuard<'a, T> {

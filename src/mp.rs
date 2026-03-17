@@ -90,6 +90,12 @@ core_local! {
     pub CORE_ID: Cell<CoreId> = Cell::new(CoreId(0));
 }
 
+impl<T: Send + Sync> CoreLocal<T> {
+    pub fn read_for(&self, core: CoreId) -> &T {
+        unsafe { &*(get_cpu_local_pointer_for(core) as *const T) }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 #[atomic_enum]
 pub enum MPStage {
