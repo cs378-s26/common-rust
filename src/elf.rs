@@ -1,8 +1,7 @@
 use crate::{
-    arch::{Arch, ArchTrait},
-    fs::vfs::FileTrait,
     print::kprintln,
-    virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    // arch::Arch,
+    // virtual_memory::{PagingOptions, VirtualMemoryAllocation},
 };
 
 mod eh_constants {
@@ -140,6 +139,11 @@ impl ProgramHeader {
     }
 }
 
+// TODO: replace with the interface our file system supports.
+trait File {
+    fn read_all(&self, offset: usize, buffer: &mut [u8], size: usize) -> usize;
+}
+
 pub struct Elf;
 
 pub enum ElfError {
@@ -195,63 +199,24 @@ impl Elf {
         Ok(())
     }
 
-    fn load(file: &dyn FileTrait) -> Result<u64, ElfError> {
+    fn load(file: &dyn File) -> Result<u64, ElfError> {
         const EHSIZE: usize = eh_constants::E_EHSIZE as usize;
-        let first_page_vm = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
-            None,
-            Arch::PAGE_SIZE,
-            None,
-            PagingOptions::PRESENT | PagingOptions::WRITABLE,
-            true,
-        )
-        .unwrap();
-        file.read_page(first_page_vm.base as *mut u8, 0)
-            .map_err(|_| ElfError::EHFileReadError)?;
-        // TODO: can you do this without unsafe?
-        let header_buffer =
-            unsafe { core::slice::from_raw_parts(first_page_vm.base as *const u8, EHSIZE) };
+        let mut header_buffer = [0u8; EHSIZE];
+        if file.read_all(0, &mut header_buffer, EHSIZE) != EHSIZE {
+            return Err(ElfError::EHFileReadError);
+        }
 
-        let header = ElfHeader::parse(header_buffer);
+        let header = ElfHeader::parse(&header_buffer);
         Self::validate_elf_header(&header)?;
 
         let phoff = header.e_phoff as usize;
         let phnum = header.e_phnum as usize;
-        let entry = header.e_entry;
-
         const PHENTSIZE: usize = eh_constants::E_PHENTSIZE as usize;
-        let ph_page = first_page_vm;
-        let mut ph_page_offset = 0;
 
         for i in 0..phnum {
-            // TODO: maybe read the file in a better way.
-            if phoff + i * PHENTSIZE >= ph_page_offset + Arch::PAGE_SIZE {
-                // On different page.
-                // Round down to page boundary.
-                ph_page_offset = (phoff + i * PHENTSIZE) & !(Arch::PAGE_SIZE - 1);
-                file.read_page(ph_page.base as *mut u8, ph_page_offset)
-                    .map_err(|_| ElfError::PHFileReadError)?;
-            }
-            let size_to_read =
-                PHENTSIZE.min((ph_page_offset + Arch::PAGE_SIZE) - (phoff + i * PHENTSIZE));
             let mut ph_buffer = [0u8; PHENTSIZE];
-            ph_buffer[..size_to_read].copy_from_slice(unsafe {
-                core::slice::from_raw_parts(
-                    (ph_page.base + (phoff + i * PHENTSIZE - ph_page_offset)) as *const u8,
-                    size_to_read,
-                )
-            });
-            if size_to_read < PHENTSIZE {
-                // Need to read next page.
-                ph_page_offset += Arch::PAGE_SIZE;
-                file.read_page(ph_page.base as *mut u8, ph_page_offset)
-                    .map_err(|_| ElfError::PHFileReadError)?;
-                ph_buffer[size_to_read..].copy_from_slice(unsafe {
-                    core::slice::from_raw_parts(
-                        (ph_page.base + (phoff + i * PHENTSIZE - ph_page_offset)) as *const u8,
-                        PHENTSIZE - size_to_read,
-                    )
-                });
+            if file.read_all(phoff + i * PHENTSIZE, &mut ph_buffer, PHENTSIZE) != PHENTSIZE {
+                return Err(ElfError::PHFileReadError);
             }
 
             let ph = ProgramHeader::parse(&ph_buffer, 0);
@@ -267,37 +232,14 @@ impl Elf {
                         return Err(ElfError::PHInvalidMemSize);
                     }
 
-                    // kprintln!(
-                    //     "Load segment. vaddr: {:#x}, memsz: {:#x}, filesz: {:#x}, offset: {:#x}",
-                    //     vaddr,
-                    //     memsz,
-                    //     filesz,
-                    //     offset
-                    // );
                     // TODO: mmap this when we can mmap from a file.
-                    let segment_vm = VirtualMemoryAllocation::new(
-                        Arch::get_address_space(),
-                        Some(vaddr),
+                    kprintln!(
+                        "Load segment. vaddr: {:#x}, memsz: {:#x}, filesz: {:#x}, offset: {:#x}",
+                        vaddr,
                         memsz,
-                        None,
-                        PagingOptions::PRESENT | PagingOptions::WRITABLE,
-                        false, // Don't unmap when out of scope.
-                    )
-                    .unwrap();
-                    for page in 0..filesz.div_ceil(Arch::PAGE_SIZE) {
-                        let page_offset = offset + page * Arch::PAGE_SIZE;
-                        let page_paddr = segment_vm.base + page * Arch::PAGE_SIZE;
-                        file.read_page(page_paddr as *mut u8, page_offset)
-                            .map_err(|_| ElfError::PHFileReadError)?;
-                    }
-                    // Zero out rest of memory.
-                    if memsz > filesz {
-                        let zero_start = segment_vm.base + filesz;
-                        let zero_length = memsz - filesz;
-                        for i in 0..zero_length {
-                            unsafe { *(zero_start as *mut u8).add(i) = 0 };
-                        }
-                    }
+                        filesz,
+                        offset
+                    );
                 }
                 _ => {
                     let segment_type = ph.p_type;
@@ -306,9 +248,7 @@ impl Elf {
                 }
             }
         }
-
-        drop(ph_page);
-        Ok(entry)
+        Ok(header.e_entry)
     }
 }
 
