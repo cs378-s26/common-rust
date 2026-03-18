@@ -165,3 +165,14 @@ pub trait Arch {
     - done by suspend_impl which takes a target thread & an action to perform on the current one
     - this calls save_context on the current thread & context, and exits the thread while performing the action 
     - TODO: got lazy & didn't finish :P but pretty straight forward from here
+### stackless coroutines
+- `kernel_main` also sets up coroutines, which sit on top of threads, via the following sequence of steps:
+    - One core initializes the global coroutine ready queue before the barrier mentioned in [threading](#threading).
+    - Once the barrier is passed, all cores set up a executor thread.
+#### coroutine lifecycle
+- Coroutines are created via `spawn_coroutine` which takes a Future (e.g., output of an async fn call) and adds it to the coroutine ready queue.
+- **polling**:
+    - The compiler does magic and generates code to allow Futures to work. Each one has a `poll` function to make some progress.
+    - Each executor thread waits on the coroutine ready queue to poll Futures in a loop (with `yield_thread` after a batch number).
+    - It is the responsibility of the Future to call its Waker when it is ready to make more progress, which adds it back into the coroutine ready queue.
+        - You do not need to worry about this unless you are implementing your own Future, as correctly implemented Futures already do this.
