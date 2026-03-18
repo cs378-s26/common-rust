@@ -24,6 +24,7 @@ pub mod sync;
 pub mod test_utils;
 pub mod thread;
 pub mod virtual_memory;
+pub mod devices;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
