@@ -165,10 +165,15 @@ impl VirtualMemoryAllocation {
 impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
-        while self.length > 0 {
-            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
-            self.length -= Arch::PAGE_SIZE;
+        let mut length = self.length;
+        while length > 0 {
+            Arch::virtual_unmap(self.space, (self.base + length) as u64);
+            length -= Arch::PAGE_SIZE;
         }
+
+        // invalidate all cores' TLBs
+        Arch::shootdown_tlbs(self.space, self.base, self.length);
+
         let mut vmes = VMES
             .get()
             .expect(

@@ -99,8 +99,12 @@ impl ArchTrait for Arch {
         vmm::vmap(space, vaddr, paddr, options)
     }
 
-    fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
-        vmm::vunmap(_space, _vaddr)
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+        vmm::vunmap(space, vaddr)
+    }
+
+    fn shootdown_tlbs(space: u64, base: usize, length: usize) {
+        panic!("TLB shootdown not implemented for aarch64");
     }
 
     fn shutdown(_err_code: u16) {

@@ -15,6 +15,7 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
+pub mod event;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -47,6 +48,7 @@ use virtual_memory::init_virtual_memory_allocator;
 mod test {
     use super::{Arch, ArchTrait, KernelEntryTrait, MP_REQUEST};
     use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+    use crate::event::init_event_handler;
     use crate::mp::{MP_STAGE, MPStage};
     use crate::print::kprintln;
     use crate::test_utils;
@@ -75,6 +77,7 @@ mod test {
                 .wait();
 
             set_up_idle();
+            init_event_handler();
 
             init_coroutine_executor();
             kprintln!("Coroutine executor initialized.");

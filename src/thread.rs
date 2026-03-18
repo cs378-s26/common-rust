@@ -279,32 +279,33 @@ pub fn can_yield_for_preempt() -> bool {
 /// Handles preemption. Resumes execution on the target thread.
 /// # Safety
 /// Can only be called from IRQ
-pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
+pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) {
     // idle thread is allowed to call preempt_to
-    assert!(can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed));
-    assert!(
-        !Arch::irq_is_enabled(),
-        "IRQ cannot be enabled on preempt_to"
-    );
+    if can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed) {
+        assert!(
+            !Arch::irq_is_enabled(),
+            "IRQ cannot be enabled on preempt_to"
+        );
 
-    // Save the interrupted context and release the CONTEXT lock.
-    let mut guard = CTX_GUARD
-        .take()
-        .expect("CTX_GUARD not set during preemption");
-    guard.save_from_interrupt(ctx);
-    drop(guard);
+        // Save the interrupted context and release the CONTEXT lock.
+        let mut guard = CTX_GUARD
+            .take()
+            .expect("CTX_GUARD not set during preemption");
+        guard.save_from_interrupt(ctx);
+        drop(guard);
 
-    let thread = this_thread();
-    let is_idle = IS_IDLE.load(Ordering::Relaxed);
+        let thread = this_thread();
+        let is_idle = IS_IDLE.load(Ordering::Relaxed);
 
-    thread_exit();
+        thread_exit();
 
-    // can't queue idle
-    if !is_idle {
-        LOCAL_WORK_QUEUE.lock().push_back(thread);
+        // can't queue idle
+        if !is_idle {
+            LOCAL_WORK_QUEUE.lock().push_back(thread);
+        }
+
+        unsafe { go_to_thread(target) }
     }
-
-    unsafe { go_to_thread(target) }
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
@@ -338,7 +339,7 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
 /// Preempt to the idle thread, for general purpose rescheduling.
 /// # Safety
 /// Can only be called from IRQ
-pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
+pub unsafe fn preempt_to_idle(ctx: &InterruptContext) {
     unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
 }
 

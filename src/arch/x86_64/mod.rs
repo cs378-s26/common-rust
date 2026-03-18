@@ -1,5 +1,8 @@
-use core::cell::SyncUnsafeCell;
-
+use alloc::sync::Arc;
+use core::{
+    cell::SyncUnsafeCell,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
@@ -20,18 +23,30 @@ pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
+pub use irq_vector::IPI_WAKE;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
 pub use vmm::*;
-use x86::bits64::rflags::{self, RFlags};
-use x86::irq;
+use x86::{
+    bits64::rflags::{self, RFlags},
+    irq,
+    tlb::flush,
+};
 
-pub use crate::arch::{ArchTrait, UnwindContextTrait};
-use crate::mp::CoreId;
-use crate::print::CharSink;
-use crate::virtual_memory::PagingOptions;
+use crate::{
+    MP_REQUEST,
+    arch::{
+        ArchTrait, UnwindContextTrait, apic::send_ipi_all_except_self, irq_vector::TLB_SHOOTDOWN,
+    },
+    event::{Event::Shootdown, push_event},
+    mp::{CORE_ID, CoreId},
+    print::CharSink,
+    state::{Preemption, StateGuard},
+    thread::yield_thread,
+    virtual_memory::PagingOptions,
+};
 pub struct Arch;
 
 impl ArchTrait for Arch {
@@ -67,7 +82,7 @@ impl ArchTrait for Arch {
     }
 
     fn wake_other_cores() {
-        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+        apic::send_ipi_all_except_self(IPI_WAKE);
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
@@ -110,6 +125,37 @@ impl ArchTrait for Arch {
 
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
         vunmap(space, vaddr)
+    }
+
+    fn virtual_invalidate(vaddr: u64) {
+        unsafe { flush(vaddr as usize) };
+    }
+
+    fn shootdown_tlbs(space: u64, base: usize, length: usize) {
+        let num_cores = MP_REQUEST.get_response().unwrap().cpus().len();
+        let latch = Arc::new(AtomicUsize::new(num_cores - 1)); // there had better be at least one lol
+        let preempt_guard = StateGuard::<Preemption>::guard(); // TODO understand why this can't just pin to a core
+        let me = CORE_ID.get();
+        for core in 0..num_cores {
+            if core != me.0 {
+                // TODO avoid sending this when not needed
+                push_event(
+                    Shootdown {
+                        space,
+                        base,
+                        length,
+                        latch: latch.clone(),
+                    },
+                    CoreId(core),
+                );
+            }
+        }
+
+        send_ipi_all_except_self(TLB_SHOOTDOWN);
+        drop(preempt_guard);
+        while latch.load(Ordering::Acquire) != 0 {
+            yield_thread(); // TODO block on this
+        }
     }
 
     fn shutdown(err_code: u16) {

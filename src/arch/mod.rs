@@ -128,6 +128,8 @@ pub trait ArchTrait {
     fn get_address_space() -> u64;
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
+    fn virtual_invalidate(vaddr: u64);
+    fn shootdown_tlbs(space: u64, base: usize, length: usize);
     fn shutdown(err_code: u16);
     fn halt() -> !;
 }
