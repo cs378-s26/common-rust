@@ -1,11 +1,13 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_REQUEST, frame_alloc},
+    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
     print::kprintln,
+    state::{CorePin, StateGuard},
 };
 use alloc::boxed::Box;
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
+use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
 use spin::{Mutex, Once};
 
 bitflags! {
@@ -28,16 +30,17 @@ bitflags! {
         const WRITE_THROUGH = 1 << 4;
         const CACHEABLE = 1 << 5;
         const GLOBAL = 1 << 6;
+        const FIXED = 1 << 7;
+        const SHADOW = 1 << 8;
     }
 }
 
 struct VirtualMemoryEntry {
-    pub base: usize,
-    pub length: usize,
-    // future proofing
+    pub base: usize,   // lowest address in range
+    pub length: usize, // size of range
     #[allow(unused)]
-    pub options: PagingOptions,
-    link: RBTreeLink,
+    pub options: PagingOptions, // architecture-independent
+    link: RBTreeLink,  // for the intrustive trees
 }
 // https://docs.rs/intrusive-collections/latest/intrusive_collections/
 intrusive_adapter!(ActiveTreeAdapter = Box<VirtualMemoryEntry>: VirtualMemoryEntry { link => RBTreeLink });
@@ -55,28 +58,79 @@ impl<'a> KeyAdapter<'a> for FreeTreeAdapter {
     }
 }
 
+// bad bad bad no spinning :( but we can't block yet
+static VMES: Once<Mutex<VirtualMemoryEntryContainer>> = Once::new(); // TODO RWLock
+
+#[unsafe(link_section = ".limine_requests")]
+static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressRequest::new();
+
 struct VirtualMemoryEntryContainer {
+    low: usize,
+    high: usize,
     active: RBTree<ActiveTreeAdapter>,
     free: RBTree<FreeTreeAdapter>,
 }
-// bad bad bad no spinning :( but we can't block yet
-static VMES: Once<Mutex<VirtualMemoryEntryContainer>> = Once::new(); // TODO RWLock
+
+impl VirtualMemoryEntryContainer {
+    pub fn new(low: usize, high: usize) -> VirtualMemoryEntryContainer {
+        let mut free = RBTree::new(FreeTreeAdapter::new());
+        free.insert(Box::new(VirtualMemoryEntry {
+            base: low,
+            length: high - low,
+            options: PagingOptions::empty(),
+            link: RBTreeLink::new(),
+        }));
+        VirtualMemoryEntryContainer {
+            low,
+            high,
+            active: RBTree::new(ActiveTreeAdapter::new()),
+            free,
+        }
+    }
+}
 
 pub fn init_virtual_memory_allocator() {
     kprintln!("initializing virtual memory allocator");
     VMES.call_once(|| {
-        let mut free = RBTree::new(FreeTreeAdapter::new());
-        free.insert(Box::new(VirtualMemoryEntry {
-            base: Arch::PAGE_SIZE,
-            length: HHDM_REQUEST.get_response().unwrap().offset() as usize - Arch::PAGE_SIZE,
-            options: PagingOptions::empty(),
-            link: RBTreeLink::new(),
-        }));
-        Mutex::new(VirtualMemoryEntryContainer {
-            active: RBTree::new(ActiveTreeAdapter::new()),
-            free, // one big-ass free block
-        })
+        Mutex::new(VirtualMemoryEntryContainer::new(
+            *HHDM_OFFSET.get().unwrap(),
+            usize::MAX & !(Arch::PAGE_SIZE - 1),
+        ))
     });
+    let mut executable_length = 0;
+    for region in *REGIONS.get().unwrap() {
+        // if you need to map over one of these, just change backing and options accordingly
+        VirtualMemoryAllocation::new(
+            Arch::get_address_space(),
+            Some(HHDM_OFFSET.get().unwrap() + region.base as usize),
+            region.length as usize,
+            None,
+            PagingOptions::SHADOW,
+        );
+        if region.entry_type == EntryType::EXECUTABLE_AND_MODULES {
+            assert!(
+                executable_length == 0,
+                "multiple executable sections, kernel mapping unknown"
+            );
+            executable_length = region.length;
+        }
+    }
+    let executable_start = EXECUTABLE_ADDRESS_REQUEST
+        .get_response()
+        .unwrap()
+        .virtual_base() as usize;
+    kprintln!(
+        "kernel virtually mapped from {:x} to {:x}",
+        executable_start,
+        executable_start + executable_length as usize
+    );
+    VirtualMemoryAllocation::new(
+        Arch::get_address_space(),
+        Some(executable_start),
+        executable_length as usize,
+        None,
+        PagingOptions::SHADOW,
+    );
 }
 
 // can't block! (as of now)
@@ -86,21 +140,30 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
             .get()
             .expect("page fault occurred before virtual memory allocator was initialized")
             .lock();
-        if let Some(below) = vmes.active.upper_bound_mut(Bound::Included(&address)).get() {
-            assert!(below.base <= address); // can remove once we're confident in this data structure lol
-            if below.base + below.length > address {
-                let frame = frame_alloc();
-                Arch::virtual_map(
-                    Arch::get_address_space(),
-                    address as u64 & (!0xFFF),
-                    frame as u64,
-                    PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
-                );
-            } else {
-                panic!("*** PAGE FAULT AT {:x} outside mapped region ***", address);
-            }
+        if let Some(below) = vmes.active.upper_bound_mut(Bound::Included(&address)).get() // TODO drop VME lock here
+            && below.base + below.length > address
+        {
+            let frame = frame_alloc();
+            Arch::virtual_map(
+                Arch::get_address_space(),
+                address as u64 & !(Arch::PAGE_SIZE as u64 - 1),
+                frame as u64,
+                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+            );
         } else {
-            panic!("*** PAGE FAULT AT {:x} with no VMEs ***", address);
+            for vme in vmes.active.iter() {
+                kprintln!(
+                    "mapping from {:x} to {:x}: {}",
+                    vme.base,
+                    vme.base + vme.length,
+                    if vme.options.contains(PagingOptions::SHADOW) {
+                        "shadow"
+                    } else {
+                        "real"
+                    }
+                ) // TODO expand dump
+            }
+            panic!("*** PAGE FAULT AT {:x} outside mapped region ***", address);
         }
     }
 }
@@ -114,37 +177,74 @@ pub struct VirtualMemoryAllocation {
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
 impl VirtualMemoryAllocation {
     pub fn new(
-        space: u64,
-        length: usize,
-        backing: Option<usize>,
-        options: PagingOptions,
-    ) -> VirtualMemoryAllocation {
-        assert!(length & 0xFFF == 0);
+        space: u64,             // address space identifier
+        start: Option<usize>,   // fixed mapping location
+        length: usize,          // requested size in bytes
+        backing: Option<usize>, // physical frames used
+        options: PagingOptions, // similar to mmap flags
+    ) -> Option<VirtualMemoryAllocation> {
+        assert!(length.is_multiple_of(Arch::PAGE_SIZE));
         let mut vmes = VMES
             .get()
             .expect("virtual allocation attempted before virtual memory allocator was initialized")
             .lock();
 
-        let cursor = &mut vmes.free.lower_bound_mut(Bound::Included(&(length, 0)));
-        let mut chosen = cursor
-            .remove()
-            .expect("free VME collection error during allocation"); // best-fit allocation
-
+        let mut chosen = if let Some(base) = start {
+            // TODO there ought to be a better way to find the free region that contains this fixed region
+            let mut cursor = vmes.active.upper_bound(Bound::Excluded(&base));
+            let bottom = if let Some(entry) = cursor.get() {
+                entry.base + entry.length
+            } else {
+                vmes.low
+            };
+            cursor.move_next();
+            let top = if let Some(entry) = cursor.get() {
+                entry.base
+            } else {
+                vmes.high
+            };
+            let mut chosen = vmes
+                .free
+                .find_mut(&(top - bottom, bottom))
+                .remove()
+                .expect("fixed mapping attempted at unavailable base");
+            if chosen.base < base {
+                // cut off bottom part
+                vmes.free.insert(Box::new(VirtualMemoryEntry {
+                    base: chosen.base,
+                    length: base - chosen.base,
+                    options: PagingOptions::empty(),
+                    link: RBTreeLink::new(),
+                }));
+                chosen.length -= base - chosen.base;
+                chosen.base = base;
+            }
+            chosen
+        } else {
+            // find best (smallest) fit
+            vmes.free
+                .lower_bound_mut(Bound::Included(&(length, 0)))
+                .remove()
+                .expect("free VME collection error during allocation") // best-fit allocation
+        };
         assert!(chosen.length >= length); // can remove once we're confident in this data structure lol
+
+        // reinsert remaining piece (if any) of free block
+        let base = chosen.base;
+        if chosen.length != length {
+            chosen.base += length;
+            chosen.length -= length;
+            vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
+        }
+
         vmes.active.insert(Box::new(VirtualMemoryEntry {
-            base: chosen.base,
+            base,
             length,
             options,
             link: RBTreeLink::new(),
         }));
 
-        let base = chosen.base;
-        if chosen.length != length {
-            // don't reinsert duds
-            chosen.base += length;
-            chosen.length -= length;
-            vmes.free.insert(chosen); // need to remove and reinsert because the key changed anyway
-        }
+        drop(vmes); // not using these anymore
 
         if let Some(physical) = backing {
             let mut i = 0;
@@ -154,10 +254,14 @@ impl VirtualMemoryAllocation {
             }
         }
 
-        VirtualMemoryAllocation {
-            space,
-            base,
-            length,
+        if options.contains(PagingOptions::SHADOW) {
+            None
+        } else {
+            Some(VirtualMemoryAllocation {
+                space,
+                base,
+                length,
+            })
         }
     }
 }
@@ -166,13 +270,15 @@ impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
         let mut length = self.length;
+        let guard = StateGuard::<CorePin>::guard();
         while length > 0 {
-            Arch::virtual_unmap(self.space, (self.base + length) as u64);
             length -= Arch::PAGE_SIZE;
+            Arch::virtual_unmap(self.space, (self.base + length) as u64);
         }
 
         // invalidate all cores' TLBs
         Arch::shootdown_tlbs(self.space, self.base, self.length);
+        drop(guard);
 
         let mut vmes = VMES
             .get()
@@ -191,11 +297,11 @@ impl Drop for VirtualMemoryAllocation {
             if next.base != found.base + found.length {
                 // remove, automagically drop (free), and merge with entry [found.base + found.length, next.base) in free tree
                 let above = free
-                    .find(&(
+                    .find_mut(&(
                         next.base - found.base - found.length,
                         found.base + found.length,
                     ))
-                    .get()
+                    .remove()
                     .expect("tree mismatch 1");
                 found.length += above.length
             }
@@ -207,14 +313,15 @@ impl Drop for VirtualMemoryAllocation {
         }
         cursor.move_prev();
         if let Some(prev) = cursor.get() {
+            assert!(prev.base + prev.length <= found.base);
             if prev.base + prev.length != found.base {
                 // remove, automagically drop (free), and merge with entry [prev.base + prev.length, found.base) in free tree
                 let below = free
-                    .find(&(
+                    .find_mut(&(
                         found.base - prev.base - prev.length,
                         prev.base + prev.length,
                     ))
-                    .get()
+                    .remove()
                     .expect("tree mismatch 2");
                 found.base = below.base;
                 found.length += below.length;
@@ -226,6 +333,7 @@ impl Drop for VirtualMemoryAllocation {
             found.base = front.base;
             found.length += front.length;
         }
+        free.insert(found);
     }
 }
 
@@ -234,78 +342,216 @@ mod test {
     use super::kprintln;
     use crate::arch::{Arch, ArchTrait};
     use crate::physical_memory::{frame_alloc, frame_dealloc};
-    use crate::thread::{spawn_thread, yield_thread};
     use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-    use alloc::sync::Arc;
-    use core::sync::atomic::{AtomicI64, Ordering};
+    use alloc::vec::Vec;
 
     #[test_case]
-    fn test_virtual_memory() {
-        let barrier = Arc::new(AtomicI64::new(1));
-        for tid in 1..2 {
-            // single-threaded for now
-            let b = barrier.clone();
-            spawn_thread(move || {
-                let vaddr: u64 = 0x10000000 * tid; // unsafe!
-                let frame_1: usize = frame_alloc();
-                frame_dealloc(frame_1);
-                let frame_2: usize = frame_alloc();
+    fn test_manual_page_mapping() {
+        kprintln!("virtual memory mapping test started");
+        frame_dealloc(frame_alloc()); // quick check that frame allocator works
+        kprintln!("frame allocator sanity-checked");
+        let vaddr: usize = 0x10000000; // unsafe!
+        let paddr: usize = frame_alloc();
 
-                kprintln!("manually mapping vmem");
-                Arch::virtual_map(
-                    Arch::get_address_space(),
-                    vaddr,
-                    frame_2 as u64,
-                    PagingOptions::PRESENT
-                        | PagingOptions::WRITABLE
-                        | PagingOptions::CACHEABLE
-                        | PagingOptions::GLOBAL,
-                );
-                kprintln!("writing to manually mapped vmem");
-                for i in 0..4096 {
-                    unsafe { *((vaddr + i) as *mut u8) = i as u8 };
-                }
-                kprintln!("reading from manually mapped vmem");
-                for i in 0..4096 {
-                    assert!(unsafe { *((vaddr + i) as *mut u8) } == i as u8);
-                }
-                kprintln!("manually unmapping vmem");
-                Arch::virtual_unmap(Arch::get_address_space(), vaddr);
+        kprintln!("manually mapping vmem");
+        Arch::virtual_map(
+            Arch::get_address_space(),
+            vaddr as u64,
+            paddr as u64,
+            PagingOptions::PRESENT
+                | PagingOptions::WRITABLE
+                | PagingOptions::CACHEABLE
+                | PagingOptions::GLOBAL,
+        );
+        kprintln!("writing to manually mapped vmem");
+        for i in 0..Arch::PAGE_SIZE {
+            unsafe { *((vaddr + i) as *mut u8) = i as u8 };
+        }
+        kprintln!("reading from manually mapped vmem");
+        for i in 0..Arch::PAGE_SIZE {
+            assert!(unsafe { *((vaddr + i) as *mut u8) } == i as u8);
+        }
+        kprintln!("manually unmapping vmem");
+        Arch::virtual_unmap(Arch::get_address_space(), vaddr as u64);
+        kprintln!("virtual memory mapping test complete");
+    }
 
-                kprintln!("properly mapping vmem");
-                let mmapped = VirtualMemoryAllocation::new(
+    #[test_case]
+    fn test_virtual_memory_allocation() {
+        kprintln!("virtual memory allocation test started");
+        const SIZE: usize = 3 * Arch::PAGE_SIZE;
+        kprintln!("properly mapping vmem");
+        let mmapped = (
+            VirtualMemoryAllocation::new(
+                Arch::get_address_space(),
+                None,
+                SIZE,
+                None,
+                PagingOptions::PRESENT
+                    | PagingOptions::WRITABLE
+                    | PagingOptions::CACHEABLE
+                    | PagingOptions::GLOBAL,
+            )
+            .unwrap(),
+            VirtualMemoryAllocation::new(
+                Arch::get_address_space(),
+                None,
+                SIZE,
+                None,
+                PagingOptions::PRESENT
+                    | PagingOptions::WRITABLE
+                    | PagingOptions::CACHEABLE
+                    | PagingOptions::GLOBAL,
+            )
+            .unwrap(),
+        );
+        kprintln!("writing to properly mapped vmem");
+        for i in 0..SIZE {
+            unsafe { *((mmapped.0.base + i) as *mut u8) = i as u8 };
+            unsafe { *((mmapped.1.base + i) as *mut u8) = i as u8 };
+        }
+        kprintln!("reading from properly mapped vmem");
+        for i in 0..SIZE {
+            assert!(unsafe { *((mmapped.0.base + i) as *mut u8) } == i as u8);
+            assert!(unsafe { *((mmapped.1.base + i) as *mut u8) } == i as u8);
+        }
+        kprintln!("properly unmapping vmem");
+        drop(mmapped);
+        kprintln!("virtual memory allocation test complete");
+    }
+
+    #[test_case]
+    fn test_virtual_memory_options() {
+        kprintln!("virtual memory options test started");
+        // TODO!
+        // fixed mappings
+        // specific backings
+        // r/w, u/s, etc...
+        kprintln!("virtual memory options test complete");
+    }
+
+    // the below test cases will be introduced once TLB shootdowns work
+
+    fn rand(seed: &mut u8) -> u8 {
+        *seed = (*seed).wrapping_mul(37);
+        *seed = (*seed).rotate_right(3);
+        *seed ^= 0xA5;
+        *seed
+    }
+
+    #[test_case]
+    fn test_virtual_memory_patterns() {
+        kprintln!("virtual memory patterns test started");
+        const ITERATIONS: usize = 128;
+        let mut seed = 0xed;
+        let mut vmas = Vec::new();
+        for i in 0..ITERATIONS {
+            if vmas.is_empty() || rand(&mut seed).is_multiple_of(2) {
+                let vma = VirtualMemoryAllocation::new(
                     Arch::get_address_space(),
-                    0x3000,
+                    None,
+                    Arch::PAGE_SIZE * rand(&mut seed) as usize,
                     None,
                     PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
                         | PagingOptions::CACHEABLE
                         | PagingOptions::GLOBAL,
+                )
+                .unwrap();
+                kprintln!("iter {}: alloc ({:x}-{:x})", i, vma.base, vma.base + vma.length);
+                for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
+                    // write to every page in the allocation
+                    unsafe { *((vma.base + j) as *mut u8) = j as u8 | 0x80 };
+                }
+                vmas.push(vma);
+            } else {
+                let vma = vmas.remove((rand(&mut seed) as usize) % vmas.len());
+                kprintln!("iter {}: free ({:x})", i, vma.base);
+                for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
+                    // check every page in the allocation
+                    assert!(unsafe { *((vma.base + j) as *mut u8) } == j as u8 | 0x80);
+                }
+            }
+        }
+        while !vmas.is_empty() {
+            let vma = vmas.pop().unwrap();
+            kprintln!("deallocating {:x}: {} len", vma.base, vmas.len());
+            for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
+                // check every page in the allocation
+                assert!(
+                    unsafe { *((vma.base + j) as *mut u8) } == j as u8 | 0x80,
+                    "j = {}",
+                    j
                 );
-                kprintln!("writing to properly mapped vmem");
-                for i in 0..4096 {
-                    unsafe { *((mmapped.base + i) as *mut u8) = i as u8 };
-                }
-                for i in 0..4096 {
-                    unsafe { *((mmapped.base + i) as *mut u8) = i as u8 };
-                }
-                kprintln!("reading from properly mapped vmem");
-                for i in 8192..8192 + 4096 {
-                    unsafe { *((mmapped.base + i) as *mut u8) = i as u8 };
-                }
-                for i in 8192..8192 + 4096 {
-                    unsafe { *((mmapped.base + i) as *mut u8) = i as u8 };
-                }
-                kprintln!("properly unmapping vmem");
-                drop(mmapped);
-                (*b).fetch_add(-1, Ordering::SeqCst);
-                loop {
-                    yield_thread();
-                }
-            });
+            }
         }
-        while (*barrier).load(Ordering::SeqCst) > 0 {
-            yield_thread();
-        }
+        kprintln!("virtual memory patterns test completed");
     }
+
+    // #[test_case]
+    // fn test_virtual_memory_threading() {
+    //     // TODO! why is this only dealloc'ing one VA?
+    //     kprintln!("virtual memory threading test started");
+    //     const THREADS: usize = 1;
+    //     const ITERATIONS: usize = 64;
+    //     let barrier = Arc::new(AtomicUsize::new(THREADS));
+    //     let bases: Arc<Mutex<Vec<VirtualMemoryAllocation>>> = Arc::new(Mutex::new(Vec::new()));
+    //     for _ in 0..THREADS {
+    //         let thread_barrier = barrier.clone();
+    //         let thread_bases = bases.clone();
+    //         spawn_thread(move || {
+    //             for i in 0..ITERATIONS {
+    //                 let size = Arch::PAGE_SIZE * (i + 1);
+    //                 let mmapped = VirtualMemoryAllocation::new(
+    //                     Arch::get_address_space(),
+    //                     None,
+    //                     size,
+    //                     None,
+    //                     PagingOptions::PRESENT
+    //                         | PagingOptions::WRITABLE
+    //                         | PagingOptions::CACHEABLE
+    //                         | PagingOptions::GLOBAL,
+    //                 )
+    //                 .unwrap(); // allocations of increasing sizes
+    //                 for j in (0..size).step_by(Arch::PAGE_SIZE) {
+    //                     // write to every page in the allocation
+    //                     unsafe { *((mmapped.base + j) as *mut u8) = j as u8 };
+    //                 }
+    //                 let mut lock = thread_bases.lock();
+    //                 (*lock).push(mmapped);
+    //                 drop(lock);
+    //                 (*thread_barrier).fetch_add(1, Ordering::SeqCst);
+    //                 while (*thread_barrier).load(Ordering::SeqCst) != 2 * THREADS {
+    //                     yield_thread();
+    //                 }
+    //                 for t in 0..THREADS {
+    //                     let vma: usize;
+    //                     let lock = thread_bases.lock();
+    //                     vma = lock[t].base;
+    //                     drop(lock);
+    //                     for j in (0..size).step_by(Arch::PAGE_SIZE) {
+    //                         // read from every page in every allocation
+    //                         assert!(unsafe { *((vma + j) as *mut u8) } == j as u8);
+    //                     }
+    //                 }
+    //                 (*thread_barrier).fetch_add(1, Ordering::SeqCst);
+    //                 while (*thread_barrier).load(Ordering::SeqCst) != 3 * THREADS {
+    //                     yield_thread();
+    //                 }
+    //                 let mut lock = thread_bases.lock();
+    //                 lock.pop();
+    //                 drop(lock);
+    //                 (*thread_barrier).fetch_sub(2, Ordering::SeqCst);
+    //                 while (*thread_barrier).load(Ordering::SeqCst) != THREADS {
+    //                     yield_thread();
+    //                 }
+    //             }
+    //             (*thread_barrier).fetch_sub(1, Ordering::SeqCst);
+    //         });
+    //     }
+    //     while (*barrier).load(Ordering::SeqCst) != 0 {
+    //         yield_thread();
+    //     }
+    //     kprintln!("virtual memory threading test complete");
+    // }
 }

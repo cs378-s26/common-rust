@@ -71,6 +71,9 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     if options.contains(PagingOptions::WRITABLE) {
         flags.insert(PageTableFlags::WRITABLE)
     };
+    if options.contains(PagingOptions::GLOBAL) {
+        flags.insert(PageTableFlags::GLOBAL)
+    };
     if !options.contains(PagingOptions::EXECUTABLE) {
         flags.insert(PageTableFlags::NO_EXECUTE)
     };

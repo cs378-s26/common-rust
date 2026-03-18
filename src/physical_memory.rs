@@ -2,8 +2,12 @@
 // TODO: use virtual memory herez
 pub static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
-use crate::arch::{Arch, ArchTrait};
-use core::mem::drop;
+use crate::{
+    arch::{Arch, ArchTrait},
+    kprintln,
+};
+use alloc::string::{String, ToString};
+use core::{mem::drop, panic};
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{HhdmRequest, MemoryMapRequest};
 use spin::{Mutex, Once}; // operations are quite short
@@ -28,12 +32,40 @@ static END: Mutex<FrameLocation> = Mutex::new(FrameLocation {
     offset: 0,
 });
 
-static REGIONS: Once<&[&Entry]> = Once::new();
-static HHDM_OFFSET: Once<usize> = Once::new();
+pub static REGIONS: Once<&[&Entry]> = Once::new();
+pub static HHDM_OFFSET: Once<usize> = Once::new();
+
+fn display_entry_type(et: EntryType) -> String {
+    match et {
+        EntryType::USABLE => "Usable",
+        EntryType::RESERVED => "Reserved permanently",
+        EntryType::ACPI_RECLAIMABLE => "Reclaimable from ACPI",
+        EntryType::ACPI_NVS => "Reserved for ACPI",
+        EntryType::BAD_MEMORY => "Unusable hardware",
+        EntryType::BOOTLOADER_RECLAIMABLE => "Reclaimable from Limine",
+        EntryType::EXECUTABLE_AND_MODULES => "Reserved for kernel code",
+        EntryType::FRAMEBUFFER => "Reserved for frame buffer",
+        _ => panic!("Unexpected Limine memory map entry type"),
+    }
+    .to_string()
+}
 
 pub fn init_physical_memory_allocator() {
     HHDM_OFFSET.call_once(|| HHDM_REQUEST.get_response().unwrap().offset() as usize);
-    REGIONS.call_once(|| MEMMAP_REQUEST.get_response().unwrap().entries());
+    REGIONS.call_once(|| {
+        let entries = MEMMAP_REQUEST.get_response().unwrap().entries();
+        kprintln!("\nLimine Memory Map:");
+        for entry in entries {
+            kprintln!(
+                "{:016x}-{:016x} ({})",
+                entry.base,
+                entry.base + entry.length,
+                display_entry_type(entry.entry_type)
+            );
+        }
+        kprintln!("");
+        entries
+    });
 
     let mut end = END.lock(); // the first memory region served wasn't checked to be usable
     let regions = unwrap(&REGIONS);
@@ -70,24 +102,21 @@ pub fn frame_alloc() -> usize {
                 continue;
             }
 
-            // no usable region found — retry allocation
+            // no usable region found - retry allocation
             drop(end);
             return frame_alloc(); // waits for a physical page to be freed
         }
 
         let entry = unwrap(&REGIONS)[end.region];
-        // kprintln!(
-        //     "Bump allocating 0x{:x} sized {} type frame at 0x{:x}",
-        //     entry.length,
-        //     display_entry_type(entry.entry_type),
-        //     entry.base as usize
-        // );
 
         let frame: usize = entry.base as usize + end.offset;
         end.offset += Arch::PAGE_SIZE;
         frame
     } else {
         let first: usize = *head;
+        if !(first.is_multiple_of(Arch::PAGE_SIZE)) {
+            panic!("attempted to allocate unaligned frame {:x}", first);
+        }
         *head = unsafe { *((unwrap(&HHDM_OFFSET) + first) as *const usize) };
         first
     }
@@ -118,6 +147,7 @@ pub fn alloc_frames(frames: usize) -> usize {
 }
 
 pub fn frame_dealloc(frame: usize) {
+    assert!(frame.is_multiple_of(Arch::PAGE_SIZE));
     let mut head = HEAD.lock();
     unsafe {
         *((unwrap(&HHDM_OFFSET) + frame) as *mut usize) = *head;

@@ -42,7 +42,7 @@ use crate::{
     },
     event::{Event::Shootdown, push_event},
     mp::{CORE_ID, CoreId},
-    print::CharSink,
+    print::{CharSink, kprint},
     state::{Preemption, StateGuard},
     thread::yield_thread,
     virtual_memory::PagingOptions,
@@ -132,9 +132,8 @@ impl ArchTrait for Arch {
     }
 
     fn shootdown_tlbs(space: u64, base: usize, length: usize) {
-        let num_cores = MP_REQUEST.get_response().unwrap().cpus().len();
+        let num_cores = MP_REQUEST.get_response().unwrap().cpus().len(); // TODO replace with global variable
         let latch = Arc::new(AtomicUsize::new(num_cores - 1)); // there had better be at least one lol
-        let preempt_guard = StateGuard::<Preemption>::guard(); // TODO understand why this can't just pin to a core
         let me = CORE_ID.get();
         for core in 0..num_cores {
             if core != me.0 {
@@ -148,11 +147,11 @@ impl ArchTrait for Arch {
                     },
                     CoreId(core),
                 ); // TODO avoid sending this when not needed
+                kprint!("b");
             }
         }
 
         send_ipi_all_except_self(TLB_SHOOTDOWN);
-        drop(preempt_guard);
         while latch.load(Ordering::Acquire) != 0 {
             yield_thread(); // TODO block on this
         }

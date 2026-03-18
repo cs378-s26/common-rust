@@ -22,6 +22,7 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
+    event::{EVENT_HANDLER, EVENT_QUEUE},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     state::{Irq, StateGuard},
@@ -234,15 +235,20 @@ pub fn poll_tasks() -> ! {
         Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
-
+    let mut counter: u64 = 0;
     loop {
         while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
                 suspend_to_thread(thread); // TODO scheduled unfairly often
                 break; // give things in the global queue a chance
             } else {
-                GLOBAL_WORK_QUEUE.lock().push_back(thread);
-                Arch::wake_other_cores();
+                counter += 1;
+                if counter.is_multiple_of(42) {
+                    GLOBAL_WORK_QUEUE.lock().push_back(thread);
+                    Arch::wake_other_cores();
+                } else {
+                    suspend_to_thread(thread);
+                }
             }
         }
         if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {

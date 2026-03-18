@@ -1,6 +1,7 @@
 use crate::{
     arch::{Arch, ArchTrait},
     mp::{CORE_ID, CoreId, core_local},
+    print::{kprint, kprintln},
     sync::MutexLike,
     thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
     virtual_memory::{PageFaultConditions, handle_page_fault},
@@ -8,7 +9,7 @@ use crate::{
 use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
-use spin::Mutex;
+use spin::{Mutex, Once};
 
 pub enum Event {
     Shootdown {
@@ -32,6 +33,7 @@ intrusive_adapter!(pub EventAdapter = Box<EventNode>: EventNode { link => Linked
 
 core_local! {
     pub EVENT_QUEUE: Mutex<LinkedList<EventAdapter>> = Mutex::new(LinkedList::new(EventAdapter::NEW));
+    pub EVENT_HANDLER: Once<Arc<Thread>> = Once::new();
 }
 
 pub fn init_event_handler() {
@@ -53,6 +55,7 @@ pub fn init_event_handler() {
                             Arch::virtual_invalidate((base + length) as u64);
                         }
                         latch.fetch_sub(1, Ordering::Release);
+                        kprint!("2");
                     }
                     PageFault {
                         cause,
@@ -60,11 +63,12 @@ pub fn init_event_handler() {
                         thread,
                     } => {
                         handle_page_fault(cause, address);
+                        kprint!("1");
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }
             }
-            yield_thread();
+            yield_thread(); // TODO block somehow
         }
     });
     PINNED_TO_CORE
@@ -73,6 +77,7 @@ pub fn init_event_handler() {
     CORE_PINNED_TO
         .read_for(&thread)
         .store(CORE_ID.get().0, Ordering::Relaxed);
+    EVENT_HANDLER.call_once(|| thread.clone());
     LOCAL_WORK_QUEUE.lock().push_back(thread);
 }
 
@@ -82,8 +87,4 @@ pub fn push_event(event: Event, core: CoreId) {
         event,
         link: LinkedListAtomicLink::new(),
     }));
-}
-
-pub fn is_pending_event() -> bool {
-    !EVENT_QUEUE.lock().front().is_null()
 }

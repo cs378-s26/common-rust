@@ -5,14 +5,13 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use x86::time::rdtsc;
+
 use crate::{
-    arch::{Arch, ArchTrait},
-    mp::CoreId,
-    state::{Irq, State},
-    thread::{
+    arch::{Arch, ArchTrait}, mp::CoreId, print::kprintln, state::{Irq, State}, thread::{
         CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, ThreadQueue, can_yield, new_thread_queue,
         suspend_to_queue,
-    },
+    }
 };
 
 pub struct IntMutexGuard<'a, T> {
