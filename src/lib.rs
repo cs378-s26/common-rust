@@ -19,6 +19,7 @@ pub mod devices;
 pub mod dma;
 pub mod event;
 // pub mod ext2;
+pub mod elf;
 pub mod fs;
 pub mod heap;
 pub mod local_storage;
