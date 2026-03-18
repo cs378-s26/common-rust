@@ -2,7 +2,7 @@ use crate::{
     arch::{Arch, ArchTrait},
     mp::{CORE_ID, CoreId, core_local},
     sync::MutexLike,
-    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, make_thread, yield_thread},
+    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
     virtual_memory::{PageFaultConditions, handle_page_fault},
 };
 use alloc::{boxed::Box, sync::Arc};
@@ -20,6 +20,7 @@ pub enum Event {
     PageFault {
         cause: PageFaultConditions,
         address: usize,
+        thread: Arc<Thread>,
     },
 }
 pub struct EventNode {
@@ -51,10 +52,15 @@ pub fn init_event_handler() {
                             length -= Arch::PAGE_SIZE;
                             Arch::virtual_invalidate((base + length) as u64);
                         }
-                        latch.fetch_sub(1, Ordering::Relaxed);
+                        latch.fetch_sub(1, Ordering::Release);
                     }
-                    PageFault { cause, address } => {
+                    PageFault {
+                        cause,
+                        address,
+                        thread,
+                    } => {
                         handle_page_fault(cause, address);
+                        LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }
             }

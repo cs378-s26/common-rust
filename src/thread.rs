@@ -235,19 +235,11 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    let mut counter = false;
     loop {
         while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
-                if counter {
-                    counter = false;
-                    suspend_to_thread(thread); // TODO scheduled unfairly often
-                    continue;
-                } else {
-                    LOCAL_WORK_QUEUE.lock().push_back(thread);
-                    counter = true;
-                    break;
-                }
+                suspend_to_thread(thread); // TODO scheduled unfairly often
+                break; // give things in the global queue a chance
             } else {
                 GLOBAL_WORK_QUEUE.lock().push_back(thread);
                 Arch::wake_other_cores();
@@ -279,7 +271,7 @@ pub fn can_yield_for_preempt() -> bool {
 /// Handles preemption. Resumes execution on the target thread.
 /// # Safety
 /// Can only be called from IRQ
-pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) {
+pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>, requeue: bool) {
     // idle thread is allowed to call preempt_to
     if can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed) {
         assert!(
@@ -300,7 +292,7 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) {
         thread_exit();
 
         // can't queue idle
-        if !is_idle {
+        if !is_idle && requeue {
             LOCAL_WORK_QUEUE.lock().push_back(thread);
         }
 
@@ -340,7 +332,14 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
 /// # Safety
 /// Can only be called from IRQ
 pub unsafe fn preempt_to_idle(ctx: &InterruptContext) {
-    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone(), true) }
+}
+
+/// Preempt to the idle thread, for general purpose rescheduling.
+/// # Safety
+/// Can only be called from IRQ
+pub unsafe fn block_to_idle(ctx: &InterruptContext) {
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone(), false) }
 }
 
 #[inline(always)]

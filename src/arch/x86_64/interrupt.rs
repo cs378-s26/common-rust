@@ -1,4 +1,7 @@
-use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
+use crate::event::{Event::PageFault, push_event};
+use crate::mp::CORE_ID;
+use crate::thread::this_thread;
+use crate::virtual_memory::PageFaultConditions;
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -155,7 +158,15 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                 if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
                     cause.insert(PageFaultConditions::FETCH);
                 }
-                handle_page_fault(cause, unsafe { cr2() });
+                push_event(
+                    PageFault {
+                        cause,
+                        address: unsafe { cr2() },
+                        thread: this_thread(),
+                    },
+                    CORE_ID.get(),
+                );
+                unsafe { crate::thread::block_to_idle(context) };
             } else {
                 panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
                     cr2()

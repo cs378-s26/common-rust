@@ -19,6 +19,7 @@ use core::sync::atomic::Ordering;
 use kernel_common::MP_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
+use kernel_common::event::init_event_handler;
 use kernel_common::mp::{MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
 use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
@@ -48,6 +49,7 @@ impl KernelEntryTrait for TestKernelEntry {
             .wait();
 
         set_up_idle();
+        init_event_handler();
 
         init_coroutine_executor();
         kprintln!("Coroutine executor initialized.");

@@ -138,7 +138,7 @@ impl ArchTrait for Arch {
         let me = CORE_ID.get();
         for core in 0..num_cores {
             if core != me.0 {
-                // TODO avoid sending this when not needed
+                // vunmap already handles this core
                 push_event(
                     Shootdown {
                         space,
@@ -147,7 +147,7 @@ impl ArchTrait for Arch {
                         latch: latch.clone(),
                     },
                     CoreId(core),
-                );
+                ); // TODO avoid sending this when not needed
             }
         }
 

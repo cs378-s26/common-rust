@@ -20,6 +20,7 @@ use core::task::{Context, Poll};
 
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
+use kernel_common::event::init_event_handler;
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
 use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
@@ -101,6 +102,7 @@ pub fn kernel_main() -> ! {
         .wait();
 
     let idle = set_up_idle();
+    init_event_handler();
 
     kprintln!("init idle tid {} on core {}", idle.tid(), CORE_ID.get());
 
