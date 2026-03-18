@@ -382,7 +382,7 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 #[inline(always)]
 pub fn yield_thread() {
     if PINNED_TO_CORE.load(Ordering::Relaxed) {
-        // TODO suspend to local instead
+        suspend_to_queue(&*LOCAL_WORK_QUEUE);
     } else {
         suspend_to_queue(&GLOBAL_WORK_QUEUE);
     }
