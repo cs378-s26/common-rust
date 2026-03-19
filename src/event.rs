@@ -1,13 +1,8 @@
 use crate::{
-    arch::{Arch, ArchTrait},
-    mp::{CORE_ID, CoreId, core_local},
-    print::{kprint, kprintln},
-    sync::MutexLike,
-    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    virtual_memory::{PageFaultConditions, handle_page_fault},
+    arch::{Arch, ArchTrait}, mp::{CORE_ID, CoreId, core_local}, print::kprint, state::{Irq, StateGuard}, sync::{IntSpinLock, MutexLike}, thread::{CORE_PINNED_TO, GLOBAL_WORK_QUEUE, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread}, virtual_memory::{PageFaultConditions, handle_page_fault}
 };
 use alloc::{boxed::Box, sync::Arc};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{sync::atomic::{AtomicUsize, Ordering}};
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::{Mutex, Once};
 
@@ -32,7 +27,7 @@ pub struct EventNode {
 intrusive_adapter!(pub EventAdapter = Box<EventNode>: EventNode { link => LinkedListAtomicLink });
 
 core_local! {
-    pub EVENT_QUEUE: Mutex<LinkedList<EventAdapter>> = Mutex::new(LinkedList::new(EventAdapter::NEW));
+    pub EVENT_QUEUE: IntSpinLock<LinkedList<EventAdapter>> = IntSpinLock::new(LinkedList::new(EventAdapter::NEW));
     pub EVENT_HANDLER: Once<Arc<Thread>> = Once::new();
 }
 
@@ -55,7 +50,6 @@ pub fn init_event_handler() {
                             Arch::virtual_invalidate((base + length) as u64);
                         }
                         latch.fetch_sub(1, Ordering::Release);
-                        kprint!("2");
                     }
                     PageFault {
                         cause,
@@ -63,7 +57,6 @@ pub fn init_event_handler() {
                         thread,
                     } => {
                         handle_page_fault(cause, address);
-                        kprint!("1");
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }
@@ -83,8 +76,9 @@ pub fn init_event_handler() {
 
 pub fn push_event(event: Event, core: CoreId) {
     let queue = EVENT_QUEUE.read_for(core);
-    queue.lock().push_back(Box::new(EventNode {
+    let node = Box::new(EventNode {
         event,
         link: LinkedListAtomicLink::new(),
-    }));
+    });
+    queue.lock().push_back(node);
 }

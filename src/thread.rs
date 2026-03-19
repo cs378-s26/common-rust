@@ -22,7 +22,6 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
-    event::{EVENT_HANDLER, EVENT_QUEUE},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
     state::{Irq, StateGuard},
@@ -172,7 +171,7 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
+pub static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 
 fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
@@ -240,7 +239,6 @@ pub fn poll_tasks() -> ! {
         while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
                 suspend_to_thread(thread); // TODO scheduled unfairly often
-                break; // give things in the global queue a chance
             } else {
                 counter += 1;
                 if counter.is_multiple_of(42) {
@@ -250,6 +248,7 @@ pub fn poll_tasks() -> ! {
                     suspend_to_thread(thread);
                 }
             }
+            break; // give things in the global queue a chance
         }
         if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
             suspend_to_thread(thread);

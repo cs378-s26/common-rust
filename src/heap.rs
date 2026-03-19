@@ -10,11 +10,11 @@ use talc::{ErrOnOom, Span, Talc};
 
 use crate::{
     print::kprintln,
-    sync::{IntMutex, MutexLike},
+    sync::{IntMutex, IntSpinLock, MutexLike},
 };
 
 struct GlobalAllocImpl {
-    delegate: Once<IntMutex<Talc<ErrOnOom>>>,
+    delegate: Once<IntSpinLock<Talc<ErrOnOom>>>,
 }
 
 unsafe impl GlobalAlloc for GlobalAllocImpl {
@@ -100,7 +100,7 @@ pub fn init_malloc(memory: Span) {
     GLOBAL_ALLOC.delegate.call_once(|| {
         let mut talc = Talc::new(ErrOnOom);
         unsafe { talc.claim(memory).expect("failed to initialize talc") };
-        IntMutex::new(talc)
+        IntSpinLock::new(talc)
     });
 }
 

@@ -1,7 +1,6 @@
 use alloc::sync::Arc;
 use core::{
-    cell::SyncUnsafeCell,
-    sync::atomic::{AtomicUsize, Ordering},
+    cell::SyncUnsafeCell, hint, sync::atomic::{AtomicUsize, Ordering}
 };
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
@@ -43,7 +42,6 @@ use crate::{
     event::{Event::Shootdown, push_event},
     mp::{CORE_ID, CoreId},
     print::{CharSink, kprint},
-    state::{Preemption, StateGuard},
     thread::yield_thread,
     virtual_memory::PagingOptions,
 };
@@ -147,13 +145,13 @@ impl ArchTrait for Arch {
                     },
                     CoreId(core),
                 ); // TODO avoid sending this when not needed
-                kprint!("b");
             }
         }
 
         send_ipi_all_except_self(TLB_SHOOTDOWN);
         while latch.load(Ordering::Acquire) != 0 {
             yield_thread(); // TODO block on this
+            hint::spin_loop();
         }
     }
 

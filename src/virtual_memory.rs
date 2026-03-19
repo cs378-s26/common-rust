@@ -133,7 +133,6 @@ pub fn init_virtual_memory_allocator() {
     );
 }
 
-// can't block! (as of now)
 pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
     if !cause.contains(PageFaultConditions::PRESENT) {
         let mut vmes = VMES
@@ -458,7 +457,12 @@ mod test {
                         | PagingOptions::GLOBAL,
                 )
                 .unwrap();
-                kprintln!("iter {}: alloc ({:x}-{:x})", i, vma.base, vma.base + vma.length);
+                kprintln!(
+                    "iter {}: alloc ({:x}-{:x})",
+                    i,
+                    vma.base,
+                    vma.base + vma.length
+                );
                 for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
                     // write to every page in the allocation
                     unsafe { *((vma.base + j) as *mut u8) = j as u8 | 0x80 };
