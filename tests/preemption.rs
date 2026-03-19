@@ -41,7 +41,7 @@ unsafe extern "C" fn system_main() -> ! {
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    kernel_common::test_utils::rust_panic_test_impl(info);
+    kernel_common::test_utils::rust_panic_impl(info);
 }
 
 #[cfg(test)]

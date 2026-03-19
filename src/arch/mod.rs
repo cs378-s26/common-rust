@@ -12,7 +12,6 @@ pub use self::aarch64::*;
 
 use crate::mp::CoreId;
 use crate::virtual_memory::PagingOptions;
-use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 

@@ -75,10 +75,8 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
-#[cfg(test)]
 pub struct KernelWork;
 
-#[cfg(test)]
 impl KernelWorkTrait for KernelWork {
     fn work() {
         #[cfg(test)]
@@ -204,34 +202,8 @@ pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
     Arch::shutdown(0);
 }
 
-// workaround for rust-analyzer being stupid
-#[inline(always)]
-#[allow(dead_code)]
-fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
-    use arch::halt;
-    use print::kprintln;
-
-    match info.location() {
-        Some(location) => kprintln!(
-            "panic: {}\nat {}:{}:{}\n{}",
-            info.message(),
-            location.file(),
-            location.line(),
-            location.column(),
-            StackTrace::current()
-        ),
-        None => kprintln!(
-            "panic: {}\nat unknown location\n{}",
-            info.message(),
-            StackTrace::current()
-        ),
-    };
-
-    halt()
-}
-
 #[cfg(test)]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    rust_panic_impl(info);
+    test_utils::rust_panic_impl(info);
 }

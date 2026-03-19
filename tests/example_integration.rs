@@ -15,6 +15,7 @@
 use kernel_common::arch::{Arch, ArchTrait};
 use kernel_common::KernelWorkTrait;
 use kernel_common::print::kprintln;
+use kernel_common::system_init;
 
 #[cfg(test)]
 pub struct KernelWork;
@@ -31,12 +32,12 @@ impl KernelWorkTrait for KernelWork {
 #[cfg(test)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
-    kernel_common::system_init::<KernelWork>();
+    system_init::<KernelWork>();
 }
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    kernel_common::test_utils::rust_panic_test_impl(info);
+    kernel_common::test_utils::rust_panic_impl(info);
 }
 
 #[test_case]
