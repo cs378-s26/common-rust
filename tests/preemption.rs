@@ -2,7 +2,6 @@
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![test_runner(kernel_common::test_runner)]
-#![reexport_test_harness_main = "test_main"]
 
 kernel_common::integration_test!({
     use core::sync::atomic::{AtomicUsize, Ordering};
