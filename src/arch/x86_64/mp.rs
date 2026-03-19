@@ -162,18 +162,16 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         // Map the IOAPIC MMIO page and mask all IRQ lines.
         ioapic::init_ioapic(ioapic_phys);
 
-        let kbd_gsi = acpi::find_irq_override(1);
-
-        let bsp_lapic_id = apic::get_lapic_id();
-        ioapic::route_irq(kbd_gsi, KEYBOARD_INTERRUPT_VECTOR, bsp_lapic_id);
-
-        let mouse_gsi = acpi::find_irq_override(12);
-        ioapic::route_irq(mouse_gsi, MOUSE_INTERRUPT_VECTOR, bsp_lapic_id);
-
+        // Initialize PS/2 while IRQ lines are still masked at the IOAPIC
         match keyboard::init_ps2() {
             Ok(()) => kprintln!("[PS2] init succeeded"),
             Err(e) => kprintln!("[PS2] init failed: {}", e),
         }
+
+        // Controller is fully configured — now safe to unmask and route IRQs.
+        let bsp_lapic_id = apic::get_lapic_id();
+        ioapic::route_irq(acpi::find_irq_override(1), KEYBOARD_INTERRUPT_VECTOR, bsp_lapic_id);
+        ioapic::route_irq(acpi::find_irq_override(12), MOUSE_INTERRUPT_VECTOR, bsp_lapic_id);
     });
 
     {
