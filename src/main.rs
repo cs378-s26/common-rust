@@ -9,9 +9,10 @@
 #![feature(never_type)]
 #![feature(sync_unsafe_cell)]
 
-use kernel_common::test_utils;
-use kernel_common::system_init;
 use kernel_common::KernelWork;
+use kernel_common::system_init;
+#[cfg(not(test))]
+use kernel_common::panic;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
@@ -21,5 +22,5 @@ unsafe extern "C" fn system_main() -> ! {
 #[cfg(not(test))]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    test_utils::rust_panic_impl(info);
+    panic::rust_panic_impl(info);
 }

@@ -59,7 +59,7 @@ pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
-    
+
     /// does per core init
     /// this looks like:
     /// 1. setting up the cpu local ptr

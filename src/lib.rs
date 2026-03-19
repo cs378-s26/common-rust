@@ -21,7 +21,7 @@ pub mod mp;
 pub mod physical_memory;
 pub mod print;
 pub mod sync;
-pub mod test_utils;
+pub mod panic;
 pub mod thread;
 pub mod virtual_memory;
 
@@ -33,11 +33,10 @@ use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
-use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
-use limine::mp::Cpu;
 use limine::firmware_type::FirmwareType;
+use limine::mp::Cpu;
 use limine::request::{
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
@@ -81,7 +80,6 @@ impl KernelWorkTrait for KernelWork {
     fn work() {
         #[cfg(test)]
         test_main();
-        Arch::shutdown(0);
     }
 }
 
@@ -195,7 +193,6 @@ pub fn core_init<Work: KernelWorkTrait>() -> ! {
 
 // also copy-pasted from the tutorial
 pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
-    let _barrier = Arc::new(Barrier::new(tests.len()));
     for test in tests {
         test();
     }
@@ -205,5 +202,5 @@ pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
 #[cfg(test)]
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    test_utils::rust_panic_impl(info);
+    panic::rust_panic_impl(info);
 }
