@@ -35,3 +35,38 @@ The build tool will recursively search all directories in `test_cfgs` for files 
 Any `qemu_args` sub string matching the pattern `{PATH_TO_EFI}` and `{PATH_TO_IMG}` will get substituted with the corresponding path.
 
 An example integration test can be found in `tests/example_integration.rs` with the corresponding config json in `test_cfgs/example_integration/example_x86_64_test.json`.
+
+Currently, each integration test must start with the following boilerplate, which defines the entry point of the test and points it to the relevant `KernelWork` implementation. This is required for the test to run, but we may want to abstract this away in the future.
+
+```rust#[cfg(test)]
+#![no_std]
+#![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(kernel_common::test_runner)]
+#![reexport_test_harness_main = "test_main"]
+
+use kernel_common::KernelWorkTrait;
+use kernel_common::system_init;
+
+#[cfg(test)]
+pub struct KernelWork;
+
+#[cfg(test)]
+impl KernelWorkTrait for KernelWork {
+    fn work() {
+        #[cfg(test)]
+        test_main();
+    }
+}
+
+#[cfg(test)]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn system_main() -> ! {
+    system_init::<KernelWork>();
+}
+
+#[panic_handler]
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    kernel_common::panic::rust_panic_impl(info);
+}
+```

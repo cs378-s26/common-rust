@@ -4,51 +4,24 @@
 #![test_runner(kernel_common::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+kernel_common::integration_test!({
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use kernel_common::print::kprintln;
+    use kernel_common::sync::{IntMutex, MutexLike};
+    use kernel_common::thread::{spawn_thread, yield_thread};
 
-use kernel_common::KernelWorkTrait;
-use kernel_common::arch::{Arch, ArchTrait};
-use kernel_common::print::kprintln;
-use kernel_common::sync::{IntMutex, MutexLike};
-use kernel_common::thread::{spawn_thread, yield_thread};
-
-#[cfg(test)]
-pub struct KernelWork;
-
-#[cfg(test)]
-impl KernelWorkTrait for KernelWork {
-    fn work() {
-        #[cfg(test)]
-        test_main();
+    fn work(i: u64) -> u64 {
+        let mut sum = 0;
+        for j in 1..(1 << i) {
+            sum += j;
+        }
+        sum
     }
-}
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn system_main() -> ! {
-    kernel_common::system_init::<KernelWork>();
-}
-
-#[panic_handler]
-fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    kernel_common::panic::rust_panic_impl(info);
-}
-
-#[cfg(test)]
-fn work(i: u64) -> u64 {
-    let mut sum = 0;
-    for j in 1..(1 << i) {
-        sum += j;
-    }
-    sum
-}
-
-const THREADS: usize = 16;
-static LATCH: AtomicUsize = AtomicUsize::new(0);
-const UPPER: usize = 23; // precisely tuned value for runtime
-static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
-
-#[test_case]
-fn hello_world() {
+    const THREADS: usize = 16;
+    static LATCH: AtomicUsize = AtomicUsize::new(0);
+    const UPPER: usize = 23; // precisely tuned value for runtime
+    static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
     // stress preemption, yielding, and blocking interactions
     kprintln!("spawning busyworking threads");
     for _ in 0..THREADS {
@@ -92,5 +65,4 @@ fn hello_world() {
     kprintln!("yay we seem to have actually preempted");
 
     kprintln!("test complete!");
-    Arch::shutdown(0);
-}
+});

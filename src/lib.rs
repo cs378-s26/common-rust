@@ -206,3 +206,31 @@ pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     panic::rust_panic_impl(info);
 }
+
+pub macro integration_test($test:block) {
+    use kernel_common::KernelWorkTrait;
+    use kernel_common::system_init;
+
+    #[cfg(test)]
+    pub struct KernelWork;
+
+    #[cfg(test)]
+    impl KernelWorkTrait for KernelWork {
+        fn work() {
+            #[cfg(test)]
+            $test;
+            Arch::shutdown(0);
+        }
+    }
+
+    #[cfg(test)]
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn system_main() -> ! {
+        system_init::<KernelWork>();
+    }
+
+    #[panic_handler]
+    fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+        kernel_common::panic::rust_panic_impl(info);
+    }
+}
