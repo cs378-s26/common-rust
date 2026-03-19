@@ -7,7 +7,7 @@ const QUEUE_CAP: usize = 64;
 pub struct MousePacket {
     pub buttons: u8, // bit0=left, bit1=right, bit2=middle
     pub dx: i8,      // signed X delta
-    pub dy: i8,      // signed Y delta (positive = up in PS/2 convention)
+    pub dy: i8,      // signed Y delta (positive = down, screen convention)
 }
 
 struct PacketQueue {
@@ -78,7 +78,7 @@ pub fn enqueue_mouse_byte(byte: u8) {
         PACKET_QUEUE.push(MousePacket {
             buttons: raw[0] & 0x07,
             dx: raw[1] as i8,
-            dy: raw[2] as i8,
+            dy: -(raw[2] as i8),
         });
         BYTE_IDX.store(0, Ordering::Relaxed);
     } else {
