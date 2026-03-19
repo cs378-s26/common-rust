@@ -103,7 +103,7 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
-    fn shootdown_tlbs(space: u64, base: usize, length: usize) {
+    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
         panic!("TLB shootdown not implemented for aarch64");
     }
 
