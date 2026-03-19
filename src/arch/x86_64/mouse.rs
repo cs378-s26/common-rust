@@ -1,7 +1,7 @@
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-const QUEUE_CAP: usize = 64;
+const QUEUE_CAP: usize = 256;
 
 /// A decoded PS/2 mouse packet.
 pub struct MousePacket {
