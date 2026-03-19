@@ -10,7 +10,7 @@ use talc::{ErrOnOom, Span, Talc};
 
 use crate::{
     print::kprintln,
-    sync::{IntMutex, IntSpinLock, MutexLike},
+    sync::{IntSpinLock, MutexLike},
 };
 
 struct GlobalAllocImpl {

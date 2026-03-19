@@ -1,10 +1,14 @@
 use crate::{
-    arch::{Arch, ArchTrait}, mp::{CORE_ID, CoreId, core_local}, print::kprint, state::{Irq, StateGuard}, sync::{IntSpinLock, MutexLike}, thread::{CORE_PINNED_TO, GLOBAL_WORK_QUEUE, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread}, virtual_memory::{PageFaultConditions, handle_page_fault}
+    arch::{Arch, ArchTrait},
+    mp::{CORE_ID, CoreId, core_local},
+    sync::{IntSpinLock, MutexLike},
+    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
+    virtual_memory::{PageFaultConditions, handle_page_fault},
 };
 use alloc::{boxed::Box, sync::Arc};
-use core::{sync::atomic::{AtomicUsize, Ordering}};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
-use spin::{Mutex, Once};
+use spin::Once;
 
 pub enum Event {
     Shootdown {

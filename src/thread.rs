@@ -234,21 +234,14 @@ pub fn poll_tasks() -> ! {
         Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
-    let mut counter: u64 = 0;
     loop {
-        while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
+        if let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
                 suspend_to_thread(thread); // TODO scheduled unfairly often
             } else {
-                counter += 1;
-                if counter.is_multiple_of(42) {
-                    GLOBAL_WORK_QUEUE.lock().push_back(thread);
-                    Arch::wake_other_cores();
-                } else {
-                    suspend_to_thread(thread);
-                }
+                GLOBAL_WORK_QUEUE.lock().push_back(thread);
+                Arch::wake_other_cores();
             }
-            break; // give things in the global queue a chance
         }
         if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
             suspend_to_thread(thread);

@@ -1,6 +1,5 @@
 use crate::event::{Event::PageFault, push_event};
 use crate::mp::CORE_ID;
-use crate::print::kprint;
 use crate::thread::this_thread;
 use crate::virtual_memory::PageFaultConditions;
 use core::arch::naked_asm;

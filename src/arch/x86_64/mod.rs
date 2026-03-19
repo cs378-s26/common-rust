@@ -1,6 +1,8 @@
 use alloc::sync::Arc;
 use core::{
-    cell::SyncUnsafeCell, hint, sync::atomic::{AtomicUsize, Ordering}
+    cell::SyncUnsafeCell,
+    hint,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
@@ -41,7 +43,7 @@ use crate::{
     },
     event::{Event::Shootdown, push_event},
     mp::{CORE_ID, CoreId},
-    print::{CharSink, kprint},
+    print::CharSink,
     thread::yield_thread,
     virtual_memory::PagingOptions,
 };
