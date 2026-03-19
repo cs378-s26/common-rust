@@ -56,10 +56,6 @@ pub trait ContextTrait {
     ) -> Self;
 }
 
-pub trait KernelEntryTrait {
-    fn kernel_main() -> !;
-}
-
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor

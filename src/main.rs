@@ -18,7 +18,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait, timer_ticks};
+use kernel_common::arch::{Arch, ArchTrait, timer_ticks};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue, spawn_coroutine};
 use kernel_common::mp::{CORE_ID, MP_STAGE, MPStage};
 use kernel_common::print::kprintln;
@@ -64,107 +64,6 @@ async fn async_task(argument: u64) {
         CORE_ID.get(),
         argument
     );
-}
-
-struct MainKernelEntry;
-
-impl KernelEntryTrait for MainKernelEntry {
-    fn kernel_main() -> ! {
-        kernel_main()
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn system_main() -> ! {
-    kernel_common::system_init::<Arch, MainKernelEntry>()
-}
-
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-
-pub fn kernel_main() -> ! {
-    assert!(!Arch::irq_is_enabled());
-
-    // kprintln!("we are the MPCorelings! please feed us!");
-    let mp_res = kernel_common::MP_REQUEST
-        .get_response()
-        .expect("Expected to find MpResponse, found None.");
-    let core_count = mp_res.cpus().len();
-
-    INIT_THREADING_BARRIER
-        .call_once(|| {
-            kprintln!("preparing common tasks on {}", CORE_ID.get());
-            kprintln!("there are {} cores total", core_count);
-            init_coroutine_queue();
-            Barrier::new(core_count)
-        })
-        .wait();
-
-    let idle = set_up_idle();
-
-    kprintln!("init idle tid {} on core {}", idle.tid(), CORE_ID.get());
-
-    init_coroutine_executor();
-    kprintln!("Coroutine executor initialized.");
-
-    MP_PREEMPT_ENTER_BARRIER
-        .call_once(|| Barrier::new(core_count))
-        .wait();
-
-    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-    if CORE_ID.get().0 == 0 {
-        spawn_coroutine(async_task(1624252));
-
-        let num_threads = 2000;
-        kprintln!(
-            "Spawning {} test threads across {} cores",
-            num_threads,
-            core_count
-        );
-
-        static EXPECTED: AtomicU64 = AtomicU64::new(0);
-
-        for i in 0..num_threads {
-            spawn_thread(move || {
-                let start_core = CORE_ID.get();
-                let start_tick = timer_ticks();
-
-                kprintln!(
-                    "Thread {} started on core {} at tick {}",
-                    i,
-                    start_core.0,
-                    start_tick
-                );
-
-                let cycle_start = Arch::read_cycle_counter();
-                while Arch::read_cycle_counter() < cycle_start + 100_000_000 {}
-
-                let end_core = CORE_ID.get();
-                let end_tick = Arch::read_cycle_counter();
-
-                kprintln!(
-                    "Thread {} finished: started on core {}, ended on core {}, {} ticks elapsed",
-                    i,
-                    start_core.0,
-                    end_core.0,
-                    end_tick - start_tick,
-                );
-
-                if EXPECTED.fetch_add(1, Ordering::SeqCst) + 1 == num_threads {
-                    kprintln!("testcase done");
-                }
-            });
-        }
-
-        kprintln!(
-            "Done spawning {} test threads across {} cores",
-            num_threads,
-            core_count
-        );
-    }
-
-    poll_tasks()
 }
 
 // workaround for rust-analyzer being stupid

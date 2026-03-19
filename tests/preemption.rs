@@ -16,64 +16,27 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use kernel_common::MP_REQUEST;
-use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
-use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
-use kernel_common::mp::{MP_STAGE, MPStage};
+use kernel_common::arch::{Arch, ArchTrait};
+use kernel_common::KernelWorkTrait;
 use kernel_common::print::kprintln;
 use kernel_common::sync::{IntMutex, MutexLike};
-use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread, yield_thread};
-use spin::{Barrier, Once};
+use kernel_common::thread::{spawn_thread, yield_thread};
 
 #[cfg(test)]
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+pub struct KernelWork;
+
 #[cfg(test)]
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-#[cfg(test)]
-static MAKE_TEST_THREAD: Once<()> = Once::new();
-#[cfg(test)]
-pub struct TestKernelEntry;
-#[cfg(test)]
-impl KernelEntryTrait for TestKernelEntry {
-    fn kernel_main() -> ! {
-        let mp_res = MP_REQUEST
-            .get_response()
-            .expect("Expected to find MpResponse, found None.");
-        let core_count = mp_res.cpus().len();
-
-        INIT_THREADING_BARRIER
-            .call_once(|| {
-                init_coroutine_queue();
-                Barrier::new(core_count)
-            })
-            .wait();
-
-        set_up_idle();
-
-        init_coroutine_executor();
-        kprintln!("Coroutine executor initialized.");
-
-        MP_PREEMPT_ENTER_BARRIER
-            .call_once(|| Barrier::new(core_count))
-            .wait();
-
-        MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-        MAKE_TEST_THREAD.call_once(|| {
-            spawn_thread(move || {
-                kprintln!("Starting Testing Code...");
-                crate::test_main();
-            })
-        });
-
-        Arch::set_irq_enabled(true);
-        poll_tasks()
+impl KernelWorkTrait for KernelWork {
+    fn work() {
+        #[cfg(test)]
+        test_main();
+        Arch::shutdown(0);
     }
 }
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
-    kernel_common::system_init::<Arch, TestKernelEntry>();
+    kernel_common::system_init::<KernelWork>();
 }
 
 #[panic_handler]

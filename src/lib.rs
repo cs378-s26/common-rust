@@ -26,7 +26,7 @@ pub mod thread;
 pub mod virtual_memory;
 
 extern crate alloc;
-use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
+use crate::arch::{Arch, ArchTrait};
 use crate::cmdline::parse_kernel_cmdline;
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use crate::heap::init_malloc;
@@ -75,8 +75,10 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+#[cfg(test)]
 pub struct KernelWork;
 
+#[cfg(test)]
 impl KernelWorkTrait for KernelWork {
     fn work() {
         #[cfg(test)]
@@ -85,6 +87,7 @@ impl KernelWorkTrait for KernelWork {
     }
 }
 
+#[cfg(test)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {
     system_init::<KernelWork>()
