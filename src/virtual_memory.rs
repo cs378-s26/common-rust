@@ -467,8 +467,7 @@ mod test {
                 }
             }
         }
-        while !vmas.is_empty() {
-            let vma = vmas.pop().unwrap();
+        while let Some(vma) = vmas.pop() {
             for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
                 // check every page in the allocation
                 assert!(unsafe { *((vma.base + j) as *mut u8) } == j as u8 | 0x80);
@@ -513,9 +512,8 @@ mod test {
                     drop(lock);
                     (*thread_barrier).wait();
                     for t in 0..THREADS {
-                        let vma: usize;
                         let lock = thread_bases.lock();
-                        vma = lock[t].base;
+                        let vma = lock[t].base;
                         drop(lock);
                         for j in (0..size).step_by(Arch::PAGE_SIZE) {
                             // read from every page in every allocation
