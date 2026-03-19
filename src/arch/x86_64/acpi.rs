@@ -116,6 +116,15 @@ fn find_madt() -> Option<*const u8> {
     }
 }
 
+/// Validate an SDT checksum: sum of all bytes in the table must be 0 mod 256.
+fn sdt_checksum_valid(ptr: *const u8, len: usize) -> bool {
+    let mut sum: u8 = 0;
+    for i in 0..len {
+        sum = sum.wrapping_add(unsafe { *ptr.add(i) });
+    }
+    sum == 0
+}
+
 /// Search an SDT (XSDT or RSDT) for a table with the given signature.
 /// `ptr_size` is 8 for XSDT (64-bit pointers) or 4 for RSDT (32-bit pointers).
 fn find_table_in_sdt(sdt_phys: u64, sig: [u8; 4], ptr_size: usize) -> Option<*const u8> {
@@ -132,7 +141,12 @@ fn find_table_in_sdt(sdt_phys: u64, sig: [u8; 4], ptr_size: usize) -> Option<*co
             unsafe { (entry_ptr as *const u32).read_unaligned() as u64 }
         };
         let table = phys_to_virt(phys);
-        if unsafe { &*(table as *const SdtHeader) }.signature == sig {
+        let table_header = unsafe { &*(table as *const SdtHeader) };
+        if table_header.signature == sig {
+            if !sdt_checksum_valid(table, table_header.length as usize) {
+                crate::print::kprintln!("[ACPI] checksum failed for table {:?}", sig);
+                return None;
+            }
             return Some(table);
         }
     }
