@@ -28,84 +28,23 @@ pub mod virtual_memory;
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
 use crate::cmdline::parse_kernel_cmdline;
+use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use crate::heap::init_malloc;
-use crate::mp::init_cpu_local_table;
+use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
+use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
 use alloc::sync::Arc;
+use core::sync::atomic::Ordering;
 use limine::BaseRevision;
+use limine::mp::Cpu;
 use limine::firmware_type::FirmwareType;
 use limine::request::{
     BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use physical_memory::{THE_HEAP, init_physical_memory_allocator};
-use spin::Barrier;
+use spin::{Barrier, Once};
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
-
-#[cfg(test)]
-mod test {
-    use super::{Arch, ArchTrait, KernelEntryTrait, MP_REQUEST};
-    use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
-    use crate::mp::{MP_STAGE, MPStage};
-    use crate::print::kprintln;
-    use crate::test_utils;
-    use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
-    use core::sync::atomic::Ordering;
-    use spin::{Barrier, Once};
-
-    static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-    static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-    static MAKE_TEST_THREAD: Once<()> = Once::new();
-
-    pub struct TestKernelEntry;
-
-    impl KernelEntryTrait for TestKernelEntry {
-        fn kernel_main() -> ! {
-            let mp_res = MP_REQUEST
-                .get_response()
-                .expect("Expected to find MpResponse, found None.");
-            let core_count = mp_res.cpus().len();
-
-            INIT_THREADING_BARRIER
-                .call_once(|| {
-                    init_coroutine_queue();
-                    Barrier::new(core_count)
-                })
-                .wait();
-
-            set_up_idle();
-
-            init_coroutine_executor();
-            kprintln!("Coroutine executor initialized.");
-
-            MP_PREEMPT_ENTER_BARRIER
-                .call_once(|| Barrier::new(core_count))
-                .wait();
-
-            MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-            MAKE_TEST_THREAD.call_once(|| {
-                kprintln!("Starting Testing Code...");
-                spawn_thread(move || {
-                    crate::test_main();
-                })
-            });
-
-            Arch::set_irq_enabled(true);
-            poll_tasks()
-        }
-    }
-
-    #[unsafe(no_mangle)]
-    unsafe extern "C" fn system_main() -> ! {
-        crate::system_init::<Arch, TestKernelEntry>();
-    }
-
-    #[panic_handler]
-    fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-        test_utils::rust_panic_test_impl(info);
-    }
-}
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -132,7 +71,26 @@ pub static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[unsafe(link_section = ".limine_requests_end")]
 pub static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
-pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
+pub trait KernelWorkTrait {
+    fn work() -> ();
+}
+
+pub struct KernelWork;
+
+impl KernelWorkTrait for KernelWork {
+    fn work() {
+        #[cfg(test)]
+        test_main();
+        Arch::shutdown(0);
+    }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn system_main() -> ! {
+    system_init::<KernelWork>()
+}
+
+pub fn system_init<Work: KernelWorkTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
 
     parse_kernel_cmdline();
@@ -169,11 +127,69 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
     // or just spam OnceCell
 
     // handle SSE/FSGSBASE/etc in initialize_mp
+    let resp = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    init_cpu_local_table(resp.cpus().len());
+    let mut bsp = None;
+    let mut core_id: u64 = 1;
+    for cpu in resp.cpus() {
+        if Arch::is_bsp(&MP_REQUEST, cpu) {
+            bsp = Some(cpu);
+        } else {
+            cpu.extra.store(core_id, Ordering::SeqCst);
+            core_id += 1;
+            cpu.goto_address.write(start_core::<Work>);
+        }
+    }
+    unsafe { start_core::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
+}
+
+/// wrapper around initalize core that goes to kernel main
+/// # Safety
+/// Should only be called from bootstrap processor during kernel initialization
+unsafe extern "C" fn start_core<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
+    unsafe { Arch::initialize_core(cpu) };
+    core_init::<Work>()
+}
+
+static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
+static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
+static MAKE_TEST_THREAD: Once<()> = Once::new();
+
+pub fn core_init<Work: KernelWorkTrait>() -> ! {
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
-    init_cpu_local_table(mp_res.cpus().len());
-    A::initialize_mp::<K>(&MP_REQUEST)
+    let core_count = mp_res.cpus().len();
+
+    INIT_THREADING_BARRIER
+        .call_once(|| {
+            init_coroutine_queue();
+            Barrier::new(core_count)
+        })
+        .wait();
+
+    set_up_idle();
+
+    init_coroutine_executor();
+    kprintln!("Coroutine executor initialized.");
+
+    MP_PREEMPT_ENTER_BARRIER
+        .call_once(|| Barrier::new(core_count))
+        .wait();
+
+    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
+
+    MAKE_TEST_THREAD.call_once(|| {
+        spawn_thread(move || {
+            kprintln!("Starting Testing Code...");
+            Work::work();
+        })
+    });
+
+    Arch::set_irq_enabled(true);
+    poll_tasks()
 }
 
 // also copy-pasted from the tutorial
@@ -183,4 +199,36 @@ pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
         test();
     }
     Arch::shutdown(0);
+}
+
+// workaround for rust-analyzer being stupid
+#[inline(always)]
+#[allow(dead_code)]
+fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
+    use arch::halt;
+    use print::kprintln;
+
+    match info.location() {
+        Some(location) => kprintln!(
+            "panic: {}\nat {}:{}:{}\n{}",
+            info.message(),
+            location.file(),
+            location.line(),
+            location.column(),
+            StackTrace::current()
+        ),
+        None => kprintln!(
+            "panic: {}\nat unknown location\n{}",
+            info.message(),
+            StackTrace::current()
+        ),
+    };
+
+    halt()
+}
+
+#[cfg(test)]
+#[panic_handler]
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    rust_panic_impl(info);
 }
