@@ -139,9 +139,10 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
             .get()
             .expect("page fault occurred before virtual memory allocator was initialized")
             .lock();
-        if let Some(below) = vmes.active.upper_bound_mut(Bound::Included(&address)).get() // TODO drop VME lock here
+        if let Some(below) = vmes.active.upper_bound_mut(Bound::Included(&address)).get()
             && below.base + below.length > address
         {
+            drop(vmes);
             let frame = frame_alloc();
             Arch::virtual_map(
                 Arch::get_address_space(),

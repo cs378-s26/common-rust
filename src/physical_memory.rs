@@ -7,7 +7,7 @@ use crate::{
     kprintln,
 };
 use alloc::string::{String, ToString};
-use core::{mem::drop, panic};
+use core::mem::drop;
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{HhdmRequest, MemoryMapRequest};
 use spin::{Mutex, Once}; // operations are quite short
