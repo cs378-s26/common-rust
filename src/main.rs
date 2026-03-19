@@ -10,9 +10,9 @@
 #![feature(sync_unsafe_cell)]
 
 use kernel_common::KernelWork;
-use kernel_common::system_init;
 #[cfg(not(test))]
 use kernel_common::panic;
+use kernel_common::system_init;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn system_main() -> ! {

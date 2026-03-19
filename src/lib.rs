@@ -18,10 +18,10 @@ pub mod coroutine;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
+pub mod panic;
 pub mod physical_memory;
 pub mod print;
 pub mod sync;
-pub mod panic;
 pub mod thread;
 pub mod virtual_memory;
 
@@ -80,6 +80,8 @@ impl KernelWorkTrait for KernelWork {
     fn work() {
         #[cfg(test)]
         test_main();
+        #[cfg(not(test))]
+        kprintln!("entered kernel");
     }
 }
 
