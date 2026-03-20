@@ -140,21 +140,17 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
         } else {
             cpu.extra.store(core_id, Ordering::SeqCst);
             core_id += 1;
-            cpu.goto_address.write(start_core::<Work>);
+            cpu.goto_address.write(core_init::<Work>);
         }
     }
-    unsafe { start_core::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
+    unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
 }
 
 /// wrapper around initalize core that goes to kernel main
 /// # Safety
 /// Should only be called from bootstrap processor during kernel initialization
-unsafe extern "C" fn start_core<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
+unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     unsafe { Arch::initialize_core(cpu) };
-    core_init::<Work>()
-}
-
-pub fn core_init<Work: KernelWorkTrait>() -> ! {
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");

@@ -33,7 +33,7 @@ unsafe extern "C" fn system_main() -> ! {
 
 ## system_init()
 
-This runs on the bootstrap processor (BSP) and is responsible for initializing certain basic features, then starting the other processors.
+This runs on the bootstrap processor (BSP) and is responsible for initializing a certain minimal subset of OS features, then writing `core_init()` as the entry point for the other processors, starting the other processors, and itself running `core_init()`.
 
 ## core_init()
 
