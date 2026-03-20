@@ -5,9 +5,14 @@ use spin::Once;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
+use crate::devices::device_discovery::DeviceDiscovery;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 pub mod apic;
 mod asm;
 mod context;
+mod devices;
 mod interrupt;
 mod mp;
 
@@ -111,6 +116,27 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn configure_vm() {
+        vmm::configure_vm();
+    }
+        
+    fn create_arch_specific_drivers() {
+        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+        let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
+        drivers.push(Box::new(devices::uart_pl011::UartPl011Discovery));
+    }
+
+    fn parse_devices() {
+        devices::parse_devices();
+    }
+
+    fn create_arch_specific_drivers(
+        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    ) {
+        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+        devices::create_arch_specific_drivers(_system_drivers);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -142,20 +168,6 @@ impl UnwindContextTrait for UnwindContext {
     }
 }
 
-pub struct SerialCharSink;
-
-impl SerialCharSink {
-    pub fn open(_port: u16) -> SerialCharSink {
-        SerialCharSink
-    }
-}
-
-impl CharSink for SerialCharSink {
-    unsafe fn putc(&self, _ch: u8) {}
-
-    unsafe fn flush(&self) {}
-}
-
-pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0));
+pub fn init_tty(_cell: &Once<Box<dyn CharSink>>) {
+    // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
 }

@@ -27,6 +27,7 @@
               qemu
               wabt
               gdb
+              e2fsprogs
             ];
             LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
           };
