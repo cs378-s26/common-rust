@@ -39,6 +39,8 @@ This runs on the bootstrap processor (BSP) and is responsible for initializing c
 
 This runs on every core, including the BSP. It is responsible for initializing core-local data structures, initializing more kernel features (which could be done on a single core, but there's no compelling reason to), starting a thread that does the relevant work for the application, and then handing off to the scheduler.
 
+The `one!` and `all!` macros run a given initialization code on one (arbitrary) core and all cores, respectively, then ensure that all cores have reached the same point before proceeding.
+
 ## KernelEntryTrait
 
 This trait is used to define the entry point of the kernel's first thread. The `work()` function is called after the kernel has been fully initialized and is responsible for running the main logic of the kernel. This trait is used to allow for flexibility in defining the main thread's behavior, as different applications and test cases may have different requirements for what the main thread should do.

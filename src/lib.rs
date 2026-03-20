@@ -154,43 +154,47 @@ unsafe extern "C" fn start_core<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     core_init::<Work>()
 }
 
-static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-static MAKE_TEST_THREAD: Once<()> = Once::new();
-
 pub fn core_init<Work: KernelWorkTrait>() -> ! {
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
 
-    INIT_THREADING_BARRIER
-        .call_once(|| {
-            init_coroutine_queue();
-            Barrier::new(core_count)
-        })
-        .wait();
+    // runs an initialization routine once overall
+    // waits for this to complete before any core proceeds
+    macro one($code:block) {{
+        // needs to be in an extra block to avoid namespace collisions
+        static BARRIER: Once<Barrier> = Once::new();
+        BARRIER
+            .call_once(|| {
+                $code;
+                Barrier::new(core_count)
+            })
+            .wait();
+    }}
 
-    set_up_idle();
+    // runs an initialization routine on each core
+    // waits for this to complete before any core proceeds
+    macro all($code:block) {{
+        // needs to be in an extra block to avoid namespace collisions
+        static BARRIER: Once<Barrier> = Once::new();
+        $code;
+        BARRIER.call_once(|| Barrier::new(core_count)).wait();
+    }}
 
-    init_coroutine_executor();
-    kprintln!("Coroutine executor initialized.");
-
-    MP_PREEMPT_ENTER_BARRIER
-        .call_once(|| Barrier::new(core_count))
-        .wait();
-
-    MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-    MAKE_TEST_THREAD.call_once(|| {
+    // this is where the magic happens
+    one!({ init_coroutine_queue() });
+    all!({ set_up_idle() });
+    all!({ init_coroutine_executor() });
+    all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
+    one!({
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
             Work::work();
         })
     });
-
-    Arch::set_irq_enabled(true);
-    poll_tasks()
+    one!({ Arch::set_irq_enabled(true) });
+    poll_tasks() // runs on all cores, never to return
 }
 
 // also copy-pasted from the tutorial
