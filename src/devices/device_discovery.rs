@@ -1,9 +1,24 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
+use fdt::Fdt::FdtNode;
+use crate::sync::IntMutex;
+use core::marker::{Send, Sync};
 
-pub struct DeviceNode<'a> {
-    name: &'a str,
-    compatible: &'a str
-}
+// all matched drivers would get pushed to this, and any needed driver would simply have init called on it
+static MATCHED_DRIVERS: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> = IntMutex::new(Vec::new());
+
+
+/* ideally what we'd do is define a common DeviceNode struct or trait that gives all the information
+necessary for init, including compatibility, interrupts, memory location, etc, but this isn't that easy, for example
+compatibility is checked through a compatible string when parsing device tree, but a hardware ID on acpi, 
+which I don't think is very easily translatable. What you could do is have  
+maybe a struct that has enums for its fields, like an id enum that depends on where it came from, but
+it seems difficult to properly specify in a shared struct all information necessary in a clean way. 
+*/
+pub enum DeviceNode { // the idea with this would just be to find what type of node it is, and the driver has to be able to read the fields from the node that it needs
+    DTB(FdtNode),
+    // ACPI(AcpiNode) idk what struct would this be
+} // I didn't include pci here because I assumed since it's dynamic it could be done seperately, 
+// and probably doesn't need to be tied to a specific arch (I assume?) 
 
 pub enum DeviceType {
     BLOCK,
@@ -13,14 +28,21 @@ pub enum DeviceType {
 }
 
 // every driver should implement this trait to read device tree nodes and find a match
-pub trait DeviceDiscovery {
+pub trait DeviceDriver {
 
-    // when finding a matching node, each driver should either call init or return itself
-    fn am_i_this(&self, node: DeviceNode) -> Option<Box<dyn DeviceDiscovery>>;
+    // when finding a matching node, each driver should either call init or return itself. For example
+    // uart_pl011 will just initialize itself into the serial backend for kprintln, so no need to return it
+    // other drivers that are compatible but not immediately necessary will simply return themselves to be able to be initialized later if needed. 
+    // having this vec could also allow for dynamic use by the user, like sticking them in /dev/...
+    fn am_i_this(&mut self, node: DeviceNode) -> Option<Box<dyn DeviceDriver + Send + Sync>>;
 
+    // defined by the driver, like uart_pl011 or virtio_blk
     fn name(&self) -> &str;
 
-    fn init(&self);
+    // this takes no parameters to make it easy to call later, for example a file system can just find
+    // the first block device driver and call init without needing to know where the node is. am_i_this should
+    // store necessary information for init in the struct. Returns true if succeeded. 
+    fn init(&mut self) -> bool;
 
     fn device_type(&self) -> DeviceType;
     
