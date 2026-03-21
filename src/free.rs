@@ -122,9 +122,15 @@ impl FreeSet {
         }
         Ok(())
     }
-    pub fn remove_range_by_length(&mut self, length: usize) -> Result<(), &'static str> {
+    pub fn remove_range_by_length(&mut self, length: usize) -> Result<usize, &'static str> {
         if let Some(free) = self.length_set.lower_bound(Included(&length)).get() {
-            self.remove_range_by_base_unchecked(free.base, length, free.base, free.length)
+            let whole_base = free.base;
+            let whole_length = free.length;
+            match self.remove_range_by_base_unchecked(whole_base, length, whole_base, whole_length)
+            {
+                Ok(()) => Ok(whole_base),
+                Err(e) => Err(e),
+            }
         } else {
             Err("there is no free range big enough")
         }
@@ -137,23 +143,23 @@ mod test {
 
     #[test_case]
     fn test_coalesce() {
-        let mut g = FreeSet::new();
-        assert!(g.add_range(0, 5).is_ok());
-        assert!(g.add_range(10, 5).is_ok());
-        assert!(g.add_range(5, 5).is_ok());
-        assert!(g.remove_range_by_base(0, 15).is_ok());
+        let mut set = FreeSet::new();
+        assert!(set.add_range(0, 5).is_ok());
+        assert!(set.add_range(10, 5).is_ok());
+        assert!(set.add_range(5, 5).is_ok());
+        assert!(set.remove_range_by_base(0, 15).is_ok());
     }
 
     #[test_case]
     fn test_best_fit() {
-        let mut g = FreeSet::new();
-        assert!(g.add_range(0, 1).is_ok());
-        assert!(g.add_range(10, 2).is_ok());
-        assert!(g.add_range(20, 3).is_ok());
+        let mut set = FreeSet::new();
+        assert!(set.add_range(0, 1).is_ok());
+        assert!(set.add_range(10, 2).is_ok());
+        assert!(set.add_range(20, 3).is_ok());
 
-        assert!(g.remove_range_by_length(2).is_ok());
-        assert!(g.remove_range_by_length(2).is_ok());
-        assert!(g.remove_range_by_length(3).is_err());
-        assert!(g.remove_range_by_length(1).is_ok());
+        assert!(set.remove_range_by_length(2).is_ok());
+        assert!(set.remove_range_by_length(2).is_ok());
+        assert!(set.remove_range_by_length(3).is_err());
+        assert!(set.remove_range_by_length(1).is_ok());
     }
 }

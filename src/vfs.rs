@@ -1,13 +1,13 @@
+use crate::arch::Arch;
+use crate::arch::ArchTrait;
+use crate::physical_memory::HHDM_OFFSET;
 use alloc::sync::Arc;
 use alloc::sync::Weak;
 use alloc::vec;
 use alloc::vec::Vec;
+use spin::Mutex;
 
-use crate::arch::Arch;
-use crate::arch::ArchTrait;
-use crate::physical_memory::HHDM_OFFSET;
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
+// TODO: use a blocking lock instead of a spin lock
 
 pub struct VFS {
     filesystems: Vec<Arc<dyn Filesystem>>,
@@ -24,12 +24,12 @@ pub trait INode {
 }
 
 pub struct RAMFilesystem {
-    pub files: IntMutex<Vec<Arc<RAMINode>>>,
+    pub files: Mutex<Vec<Arc<RAMINode>>>,
 }
 
 enum RAMINodeContainer {
     Directory(Vec<(&'static str, usize)>),
-    File(IntMutex<Vec<u8>>),
+    File(Mutex<Vec<u8>>),
 }
 
 pub struct RAMINode {
@@ -40,7 +40,7 @@ pub struct RAMINode {
 impl RAMFilesystem {
     pub fn new() -> Arc<Self> {
         let fs: Arc<RAMFilesystem> = Arc::new(Self {
-            files: IntMutex::new(vec![]),
+            files: Mutex::new(vec![]),
         });
         let add = |file| {
             let strong = fs.clone();
@@ -51,7 +51,7 @@ impl RAMFilesystem {
             }))
         };
         add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
-        add(RAMINodeContainer::File(IntMutex::new(
+        add(RAMINodeContainer::File(Mutex::new(
             "cat".as_bytes().to_vec(),
         )));
         let mut big_content = vec![];
@@ -60,7 +60,7 @@ impl RAMFilesystem {
             big_content.push(b'o');
             big_content.push(b'g');
         }
-        add(RAMINodeContainer::File(IntMutex::new(big_content)));
+        add(RAMINodeContainer::File(Mutex::new(big_content)));
         fs
     }
 
