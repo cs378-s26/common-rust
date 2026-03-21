@@ -130,7 +130,6 @@ pub trait ArchTrait {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
     fn halt() -> !;
-    
 }
 
 #[repr(transparent)]
