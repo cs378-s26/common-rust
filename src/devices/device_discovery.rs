@@ -1,10 +1,13 @@
 use alloc::{boxed::Box, vec::Vec};
-use fdt::Fdt::FdtNode;
+use fdt::node::FdtNode;
 use crate::sync::IntMutex;
 use core::marker::{Send, Sync};
 
 // all matched drivers would get pushed to this, and any needed driver would simply have init called on it
-static MATCHED_DRIVERS: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> = IntMutex::new(Vec::new());
+pub static MATCHED_DEVICES: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> = IntMutex::new(Vec::new());
+
+// all implemented drivers in the system, this is what is iterated over to find matches
+pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> = IntMutex::new(Vec::new());
 
 
 /* ideally what we'd do is define a common DeviceNode struct or trait that gives all the information
@@ -14,8 +17,8 @@ which I don't think is very easily translatable. What you could do is have
 maybe a struct that has enums for its fields, like an id enum that depends on where it came from, but
 it seems difficult to properly specify in a shared struct all information necessary in a clean way. 
 */
-pub enum DeviceNode { // the idea with this would just be to find what type of node it is, and the driver has to be able to read the fields from the node that it needs
-    DTB(FdtNode),
+pub enum DeviceNode<'a, 'b> { // the idea with this would just be to find what type of node it is, and the driver has to be able to read the fields from the node that it needs
+    DTB(FdtNode<'a, 'b>),
     // ACPI(AcpiNode) idk what struct would this be
 } // I didn't include pci here because I assumed since it's dynamic it could be done seperately, 
 // and probably doesn't need to be tied to a specific arch (I assume?) 
@@ -27,14 +30,10 @@ pub enum DeviceType {
     OTHER
 }
 
-// every driver should implement this trait to read device tree nodes and find a match
+// every driver should implement the following two traits to read device tree nodes and return a match
+// the reason for seperating this into two traits is because a driver could match multiple devices, then
+// have a different impl based on different device nodes found
 pub trait DeviceDriver {
-
-    // when finding a matching node, each driver should either call init or return itself. For example
-    // uart_pl011 will just initialize itself into the serial backend for kprintln, so no need to return it
-    // other drivers that are compatible but not immediately necessary will simply return themselves to be able to be initialized later if needed. 
-    // having this vec could also allow for dynamic use by the user, like sticking them in /dev/...
-    fn am_i_this(&mut self, node: DeviceNode) -> Option<Box<dyn DeviceDriver + Send + Sync>>;
 
     // defined by the driver, like uart_pl011 or virtio_blk
     fn name(&self) -> &str;
@@ -46,6 +45,13 @@ pub trait DeviceDriver {
 
     fn device_type(&self) -> DeviceType;
     
+}
+
+pub trait DeviceDiscovery {
+
+    // when finding a matching node, return a corresponding device driver with its proper fields initialized.
+    fn am_i_this(&self, node: DeviceNode) -> Option<Box<dyn DeviceDriver + Send + Sync>>;
+
 }
 
 
