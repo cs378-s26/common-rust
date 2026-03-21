@@ -1,12 +1,14 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+    page_cache::VMM,
+    physical_memory::{HHDM_OFFSET, REGIONS},
     print::kprintln,
     state::{CorePin, StateGuard},
 };
 use alloc::boxed::Box;
 use bitflags::bitflags;
-use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
+use intrusive_collections::RBTreeLink;
+use intrusive_collections::{Bound, KeyAdapter, RBTree, intrusive_adapter};
 use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
 use spin::{Mutex, Once};
 
@@ -134,38 +136,7 @@ pub fn init_virtual_memory_allocator() {
 }
 
 pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
-    if !cause.contains(PageFaultConditions::PRESENT) {
-        let mut vmes = VMES
-            .get()
-            .expect("page fault occurred before virtual memory allocator was initialized")
-            .lock();
-        if let Some(below) = vmes.active.upper_bound_mut(Bound::Included(&address)).get()
-            && below.base + below.length > address
-        {
-            drop(vmes);
-            let frame = frame_alloc();
-            Arch::virtual_map(
-                Arch::get_address_space(),
-                address as u64 & !(Arch::PAGE_SIZE as u64 - 1),
-                frame as u64,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
-            );
-        } else {
-            for vme in vmes.active.iter() {
-                kprintln!(
-                    "mapping from {:x} to {:x}: {}",
-                    vme.base,
-                    vme.base + vme.length,
-                    if vme.options.contains(PagingOptions::SHADOW) {
-                        "shadow"
-                    } else {
-                        "real"
-                    }
-                ) // TODO expand dump
-            }
-            panic!("*** PAGE FAULT AT {:x} outside mapped region ***", address);
-        }
-    }
+    VMM.get().unwrap().lock().handle_page_fault(address);
 }
 
 pub struct VirtualMemoryAllocation {

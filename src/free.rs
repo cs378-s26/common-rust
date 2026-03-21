@@ -63,11 +63,11 @@ impl FreeSet {
         let mut coalesced_length = length;
         if let Some((free_base, free_length)) = coalesce_left {
             coalesced_base = free_base;
-            coalesced_length = coalesced_length + free_length;
+            coalesced_length += free_length;
             self.remove_from_sets(free_base);
         }
         if let Some((free_base, free_length)) = coalesce_right {
-            coalesced_length = coalesced_length + free_length;
+            coalesced_length += free_length;
             self.remove_from_sets(free_base);
         }
         self.add_to_sets(coalesced_base, coalesced_length);
@@ -163,3 +163,8 @@ mod test {
         assert!(set.remove_range_by_length(1).is_ok());
     }
 }
+
+// TODO: verify if i should actually do this
+
+unsafe impl Send for FreeSet {}
+unsafe impl Sync for FreeSet {}
