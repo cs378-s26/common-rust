@@ -136,7 +136,7 @@ pub fn init_virtual_memory_allocator() {
 }
 
 pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
-    VMM.get().unwrap().lock().handle_page_fault(address);
+    VMM.get().unwrap().lock().handle_page_fault(cause, address);
 }
 
 pub struct VirtualMemoryAllocation {

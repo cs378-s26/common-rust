@@ -119,12 +119,13 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         mapper.unmap(vpage)
     } {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI...
-        unsafe {
-            FrameDeallocatorWrapper {
-                inner: frame_dealloc,
-            }
-            .deallocate_frame(frame)
-        }; // no shared mappings for now
+        // Frame deallocation should be responsibility of page cache
+        // unsafe {
+        //     FrameDeallocatorWrapper {
+        //         inner: frame_dealloc,
+        //     }
+        //     .deallocate_frame(frame)
+        // }; // no shared mappings for now
         Some(frame.start_address().as_u64()) // returning this will be useful when we allow shared mappings
     } else {
         None
