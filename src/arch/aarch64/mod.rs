@@ -10,6 +10,7 @@ mod asm;
 mod context;
 mod interrupt;
 mod mp;
+mod devices;
 
 pub use apic::timer_ticks;
 pub use asm::*;
@@ -111,6 +112,10 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn create_arch_specific_drivers() {}
+
+    fn init_arch_specific_drivers() {}
 }
 
 #[derive(Clone, Copy)]
@@ -142,11 +147,13 @@ impl UnwindContextTrait for UnwindContext {
     }
 }
 
-pub struct SerialCharSink;
+pub struct SerialCharSink {
+    address: usize
+}
 
 impl SerialCharSink {
-    pub fn open(_port: u16) -> SerialCharSink {
-        SerialCharSink
+    pub fn open(port: usize) -> SerialCharSink {
+        SerialCharSink { address: port }
     }
 }
 
@@ -157,5 +164,5 @@ impl CharSink for SerialCharSink {
 }
 
 pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0));
+    // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
 }
