@@ -46,7 +46,6 @@ impl<T> Promise<T> {
             }),
         }
     }
-
 }
 
 impl<T> Default for Promise<T> {

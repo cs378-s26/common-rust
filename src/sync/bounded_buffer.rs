@@ -4,8 +4,8 @@ use crate::sync::{IntMutex, MutexLike, Semaphore};
 
 pub struct BoundedBuffer<T, const N: usize> {
     state: IntMutex<BufferState<T, N>>,
-    items: Semaphore,   // number of filled slots
-    spaces: Semaphore,  // number of free slots
+    items: Semaphore,  // number of filled slots
+    spaces: Semaphore, // number of free slots
 }
 
 struct BufferState<T, const N: usize> {
