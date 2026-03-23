@@ -23,6 +23,7 @@ pub mod mp;
 pub mod page_cache;
 pub mod physical_memory;
 pub mod print;
+pub mod process;
 pub mod ramfs;
 pub mod state;
 pub mod sync;
@@ -36,6 +37,7 @@ use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
 use crate::cmdline::parse_kernel_cmdline;
 use crate::heap::init_malloc;
 use crate::mp::init_cpu_local_table;
+use crate::page_cache::VirtualMemory;
 use crate::print::{StackTrace, init_tty, kprintln};
 use alloc::sync::Arc;
 use limine::BaseRevision;
@@ -46,7 +48,6 @@ use limine::request::{
 use physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use spin::Barrier;
 use talc::Span;
-use virtual_memory::init_virtual_memory_allocator;
 
 #[cfg(test)]
 mod test {
@@ -170,7 +171,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_physical_memory_allocator();
-    init_virtual_memory_allocator();
+    VirtualMemory::init();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

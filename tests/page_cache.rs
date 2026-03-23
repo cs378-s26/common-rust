@@ -14,17 +14,18 @@
 
 extern crate alloc;
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use kernel_common::MP_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use kernel_common::event::init_event_handler;
 use kernel_common::mp::{MP_STAGE, MPStage};
-use kernel_common::page_cache::{VMM, VirtualMemory};
+use kernel_common::page_cache::VirtualMemory;
 use kernel_common::print::kprintln;
+use kernel_common::process::Process;
 use kernel_common::ramfs::RAMFilesystem;
-use kernel_common::thread::{poll_tasks, set_up_idle, spawn_thread};
+use kernel_common::thread::{THIS_THREAD, poll_tasks, set_up_idle, spawn_thread};
 use kernel_common::vfs::{INodeKey, VFS};
 use spin::{Barrier, Mutex, Once};
 
@@ -85,80 +86,106 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     kernel_common::test_utils::rust_panic_test_impl(info);
 }
 
+static LATCH: AtomicUsize = AtomicUsize::new(1);
+
 fn init() {
     VFS.mount(RAMFilesystem::new());
-    VMM.call_once(|| Mutex::new(VirtualMemory::new()));
 }
 
 #[test_case]
 fn cow() {
     init();
-    let x;
-    let y;
-    {
-        let mut vmm = VMM.get().unwrap().lock();
-        x = vmm
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
-            .unwrap() as *mut u8;
-        y = vmm
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, false, None)
-            .unwrap() as *mut u8;
-    }
-    assert!(x != y);
-    unsafe {
-        assert!(*x == b'c');
-        assert!(*y == b'c');
-        *x = b'b';
-        assert!(*y == b'b');
-        *y = b'd';
-        assert!(*x == b'b');
-        *x = b'c'
-    }
-    kprintln!("Cow successful");
+    LATCH.fetch_sub(1, Ordering::SeqCst);
+    Process::spawn_thread(|| {
+        let x;
+        let y;
+        {
+            let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
+            let process = thread.process.get().unwrap();
+            x = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+                .unwrap() as *mut u8;
+            y = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, false, None)
+                .unwrap() as *mut u8;
+        }
+        assert!(x != y);
+        unsafe {
+            assert!(*x == b'c');
+            assert!(*y == b'c');
+            *x = b'b';
+            assert!(*y == b'b');
+            *y = b'd';
+            assert!(*x == b'b');
+            *x = b'c';
+        }
+        kprintln!("Cow successful");
+        LATCH.fetch_add(1, Ordering::SeqCst);
+    });
+    while LATCH.load(Ordering::SeqCst) != 1 {}
 }
 
 #[test_case]
 fn large_anon() {
     init();
-    let x;
-    {
-        let mut vmm = VMM.get().unwrap().lock();
-        x = vmm.mmap(None, 4096 * 100000, false, None).unwrap();
-    }
-    unsafe {
-        for i in 0..100 {
-            *((x + 4096 * i * 1000) as *mut u8) = 1;
+    LATCH.fetch_sub(1, Ordering::SeqCst);
+    Process::spawn_thread(|| {
+        let x;
+        {
+            let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
+            let process = thread.process.get().unwrap();
+            x = process
+                .virtual_memory
+                .mmap(None, 4096 * 100000, false, None)
+                .unwrap();
         }
-        for i in 0..100 {
-            assert!(*((x + 4096 * i * 1000) as *const u8) == 1);
+        unsafe {
+            for i in 0..100 {
+                *((x + 4096 * i * 1000) as *mut u8) = 1;
+            }
+            for i in 0..100 {
+                assert!(*((x + 4096 * i * 1000) as *const u8) == 1);
+            }
         }
-    }
-    kprintln!("Large anon successful");
+        kprintln!("Large anon successful");
+        LATCH.fetch_add(1, Ordering::SeqCst);
+    });
+    while LATCH.load(Ordering::SeqCst) != 1 {}
 }
 
 #[test_case]
 fn partial() {
     init();
-    let x;
-    let y;
-    {
-        let mut vmm = VMM.get().unwrap().lock();
-        x = vmm
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
-            .unwrap() as *mut u8;
-        y = vmm
-            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, false, None)
-            .unwrap() as *mut u8;
-    }
-    assert!(x != y);
-    unsafe {
-        assert!(*x == b'c');
-        assert!(*(x.add(1)) == b'a');
-        assert!(*(x.add(2)) == b't');
+    LATCH.fetch_sub(1, Ordering::SeqCst);
+    Process::spawn_thread(|| {
+        let x;
+        let y;
+        {
+            let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
+            let process = thread.process.get().unwrap();
+            x = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+                .unwrap() as *mut u8;
+            y = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, false, None)
+                .unwrap() as *mut u8;
+        }
+        assert!(x != y);
+        unsafe {
+            assert!(*x == b'c');
+            assert!(*(x.add(1)) == b'a');
+            assert!(*(x.add(2)) == b't');
 
-        assert!(*(y.add(2)) == 0);
-        assert!(*(y.add(1)) == b'a');
-        assert!(*y == b'c');
-    }
-    kprintln!("Partial successful");
+            assert!(*(y.add(2)) == 0);
+            assert!(*(y.add(1)) == b'a');
+            assert!(*y == b'c');
+        }
+        kprintln!("Partial successful");
+        LATCH.fetch_add(1, Ordering::SeqCst);
+    });
+    while LATCH.load(Ordering::SeqCst) != 1 {}
 }

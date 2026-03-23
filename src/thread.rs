@@ -24,6 +24,7 @@ use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, MP_STAGE, MPStage, core_local},
+    process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
@@ -35,6 +36,9 @@ pub struct Thread {
     // used for scheduling
     // some schedulers may opt to not use this (e.g. round robin)
     pub rb_link: RBTreeAtomicLink,
+
+    // identify the process
+    pub process: Once<Arc<Process>>,
 
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
@@ -49,6 +53,7 @@ impl Thread {
         let handle = Arc::new(Thread {
             link: LinkedListAtomicLink::new(),
             rb_link: RBTreeAtomicLink::new(),
+            process: Once::new(),
             tls: Pin::new(tls),
             tls_addr,
         });
@@ -177,6 +182,12 @@ fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
 
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+
+    // Someone plz tell me if this is OK
+    if let Some(process) = thread.process.get() {
+        Arch::set_address_space(process.virtual_memory.get_page_table() as u64);
+    }
+
     CURRENT_THREAD.set(Some(thread));
 }
 

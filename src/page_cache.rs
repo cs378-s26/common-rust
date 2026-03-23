@@ -17,7 +17,8 @@
 
 use crate::arch::{Arch, ArchTrait};
 use crate::free::FreeSet;
-use crate::physical_memory::{self, HHDM_OFFSET};
+use crate::physical_memory::{self, HHDM_OFFSET, frame_alloc};
+use crate::print::kprintln;
 use crate::vfs::INodeKey;
 use crate::virtual_memory::{PageFaultConditions, PagingOptions};
 use alloc::boxed::Box;
@@ -91,91 +92,41 @@ impl PageCache {
 }
 
 pub struct VirtualMemory {
-    free_set: FreeSet,
-    active_set: RBTree<MappingAdapter>,
+    free_set: Mutex<FreeSet>,
+    active_set: Mutex<RBTree<MappingAdapter>>,
+    page_table: usize,
 }
 
 static PAGE_CACHE: Mutex<PageCache> = Mutex::new(PageCache {
     map: BTreeMap::new(),
 });
 
+static KERNEL_PAGE_TABLE: Once<usize> = Once::new();
 impl VirtualMemory {
-    pub fn new() -> Self {
-        let mut set = FreeSet::new();
-        set.add_range(0x100000, 0x8000_0000_0000_0000 - 0x100000)
-            .unwrap();
-        Self {
-            free_set: set,
-            active_set: RBTree::new(MappingAdapter::new()),
-        }
+    pub fn init() {
+        let kernel_page_table = KERNEL_PAGE_TABLE.call_once(|| Arch::get_address_space() as usize);
+        kprintln!("Kernel page table: 0x{:x}", kernel_page_table);
+        assert!(kernel_page_table.is_multiple_of(Arch::PAGE_SIZE));
     }
 
-    fn handle_file_shared(
-        &self,
-        address: usize,
-        mapping: &Mapping,
-        inode_key: &INodeKey,
-        offset: &usize,
-    ) {
+    pub fn get_page_table(&self) -> usize {
+        self.page_table
+    }
+
+    // TODO: This needs to be changed when we have actual processes
+    fn handle_anonymous(&self, address: usize) {
         assert!(address.is_multiple_of(Arch::PAGE_SIZE));
-        let physical_address = PAGE_CACHE
-            .lock()
-            .get_page(PageKey::File {
-                inode_key: inode_key.clone(),
-                offset: address - mapping.base + offset,
-            })
-            .unwrap();
-        Arch::virtual_map(
-            Arch::get_address_space(),
-            address as u64,
-            physical_address as u64,
-            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
-        );
-    }
-
-    fn handle_partial_file_private(
-        &self,
-        address: usize,
-        mapping: &Mapping,
-        inode_key: &INodeKey,
-        offset: &usize,
-        file_length: &usize,
-        exception_pages: &mut BTreeMap<usize, PageKey>,
-    ) -> bool {
-        if address - mapping.base + Arch::PAGE_SIZE <= *file_length {
-            return false;
-        }
         let private_key = PageKey::Anonymous {
             process_id: Arch::get_address_space() as usize,
             virtual_address: address,
         };
         let private_address = PAGE_CACHE.lock().get_page(private_key.clone()).unwrap();
-        if address - mapping.base < *file_length {
-            let shared_address = PAGE_CACHE
-                .lock()
-                .get_page(PageKey::File {
-                    inode_key: inode_key.clone(),
-                    offset: address - mapping.base + offset,
-                })
-                .unwrap();
-            unsafe {
-                let hhdm = HHDM_OFFSET.get().unwrap();
-                let partial_file_length = file_length.rem_euclid(Arch::PAGE_SIZE);
-                ptr::copy_nonoverlapping(
-                    (shared_address + hhdm) as *const u8,
-                    (private_address + hhdm) as *mut u8,
-                    partial_file_length,
-                );
-            }
-        }
-        exception_pages.insert(address, private_key);
         Arch::virtual_map(
             Arch::get_address_space(),
             address as u64,
             private_address as u64,
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
         );
-        true
     }
 
     fn handle_file_private(
@@ -244,18 +195,25 @@ impl VirtualMemory {
         );
     }
 
-    // TODO: This needs to be changed when we have actual processes
-    fn handle_anonymous(&self, address: usize) {
+    fn handle_file_shared(
+        &self,
+        address: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+    ) {
         assert!(address.is_multiple_of(Arch::PAGE_SIZE));
-        let private_key = PageKey::Anonymous {
-            process_id: Arch::get_address_space() as usize,
-            virtual_address: address,
-        };
-        let private_address = PAGE_CACHE.lock().get_page(private_key.clone()).unwrap();
+        let physical_address = PAGE_CACHE
+            .lock()
+            .get_page(PageKey::File {
+                inode_key: inode_key.clone(),
+                offset: address - mapping.base + offset,
+            })
+            .unwrap();
         Arch::virtual_map(
             Arch::get_address_space(),
             address as u64,
-            private_address as u64,
+            physical_address as u64,
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
         );
     }
@@ -263,11 +221,8 @@ impl VirtualMemory {
     pub fn handle_page_fault(&self, cause: PageFaultConditions, address: usize) {
         // Align address
         let address = address & !(Arch::PAGE_SIZE - 1);
-        let mapping = self
-            .active_set
-            .upper_bound(Included(&address))
-            .get()
-            .unwrap();
+        let active_set = self.active_set.lock();
+        let mapping = active_set.upper_bound(Included(&address)).get().unwrap();
         if mapping.base + mapping.length <= address {
             todo!()
         }
@@ -282,8 +237,53 @@ impl VirtualMemory {
         }
     }
 
+    fn handle_partial_file_private(
+        &self,
+        address: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+        file_length: &usize,
+        exception_pages: &mut BTreeMap<usize, PageKey>,
+    ) -> bool {
+        if address - mapping.base + Arch::PAGE_SIZE <= *file_length {
+            return false;
+        }
+        let private_key = PageKey::Anonymous {
+            process_id: Arch::get_address_space() as usize,
+            virtual_address: address,
+        };
+        let private_address = PAGE_CACHE.lock().get_page(private_key.clone()).unwrap();
+        if address - mapping.base < *file_length {
+            let shared_address = PAGE_CACHE
+                .lock()
+                .get_page(PageKey::File {
+                    inode_key: inode_key.clone(),
+                    offset: address - mapping.base + offset,
+                })
+                .unwrap();
+            unsafe {
+                let hhdm = HHDM_OFFSET.get().unwrap();
+                let partial_file_length = file_length.rem_euclid(Arch::PAGE_SIZE);
+                ptr::copy_nonoverlapping(
+                    (shared_address + hhdm) as *const u8,
+                    (private_address + hhdm) as *mut u8,
+                    partial_file_length,
+                );
+            }
+        }
+        exception_pages.insert(address, private_key);
+        Arch::virtual_map(
+            Arch::get_address_space(),
+            address as u64,
+            private_address as u64,
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+        );
+        true
+    }
+
     pub fn mmap(
-        &mut self,
+        &self,
         file: Option<(INodeKey, usize, Option<usize>)>,
         length: usize,
         shared: bool,
@@ -308,18 +308,20 @@ impl VirtualMemory {
             }
         }
         let base: usize;
+        let mut free_set = self.free_set.lock();
         if let Some(preferred_base) = preferred_base {
-            match self.free_set.remove_range_by_base(preferred_base, length) {
+            match free_set.remove_range_by_base(preferred_base, length) {
                 Ok(_) => base = preferred_base,
                 Err(e) => return Err(e),
             }
         } else {
-            match self.free_set.remove_range_by_length(length) {
+            match free_set.remove_range_by_length(length) {
                 Ok(b) => base = b,
                 Err(e) => return Err(e),
             }
         }
-        self.active_set.insert(Box::new(Mapping {
+        let mut active_set = self.active_set.lock();
+        active_set.insert(Box::new(Mapping {
             file,
             length,
             shared,
@@ -329,7 +331,25 @@ impl VirtualMemory {
         }));
         Ok(base)
     }
+
+    pub fn new() -> Self {
+        let mut set = FreeSet::new();
+        set.add_range(0x10000, 0x8000_0000_0000_0000 - 0x10000)
+            .unwrap();
+        let page_table = frame_alloc();
+        unsafe {
+            let hhdm = HHDM_OFFSET.get().unwrap();
+            ptr::copy_nonoverlapping(
+                (*KERNEL_PAGE_TABLE.get().unwrap() + hhdm) as *const u8,
+                (page_table + hhdm) as *mut u8,
+                Arch::PAGE_SIZE,
+            );
+        }
+        Self {
+            free_set: Mutex::new(set),
+            active_set: Mutex::new(RBTree::new(MappingAdapter::new())),
+            page_table,
+        }
+    }
     // TODO: munmap
 }
-
-pub static VMM: Once<Mutex<VirtualMemory>> = Once::new();

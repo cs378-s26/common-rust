@@ -60,7 +60,7 @@ pub fn init_event_handler() {
                         address,
                         thread,
                     } => {
-                        handle_page_fault(cause, address);
+                        handle_page_fault(cause, address, &thread);
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }

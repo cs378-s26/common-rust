@@ -1,11 +1,11 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    page_cache::VMM,
     physical_memory::{HHDM_OFFSET, REGIONS},
     print::kprintln,
     state::{CorePin, StateGuard},
+    thread::{THIS_THREAD, Thread},
 };
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
 use bitflags::bitflags;
 use intrusive_collections::RBTreeLink;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, intrusive_adapter};
@@ -135,8 +135,11 @@ pub fn init_virtual_memory_allocator() {
     );
 }
 
-pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
-    VMM.get().unwrap().lock().handle_page_fault(cause, address);
+pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {
+    match thread.process.get() {
+        Some(process) => process.virtual_memory.handle_page_fault(cause, address),
+        None => todo!(),
+    }
 }
 
 pub struct VirtualMemoryAllocation {
