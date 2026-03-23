@@ -12,7 +12,6 @@ mod context;
 mod devices;
 mod interrupt;
 mod mp;
-use crate::sync::MutexLike;
 use alloc::boxed::Box;
 
 pub use apic::timer_ticks;
@@ -116,13 +115,18 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn create_arch_specific_drivers() {
-        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
-        drivers.push(Box::new(devices::uart_pl011::UartPl011Discovery));
+    fn parse_devices() {
+        devices::parse_devices();
     }
 
-    fn init_arch_specific_drivers() {}
+    fn create_arch_specific_drivers() {
+        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+        devices::create_arch_specific_drivers();
+    }
+
+    fn init_arch_specific_drivers() {
+        devices::init_arch_specific_drivers();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -154,22 +158,6 @@ impl UnwindContextTrait for UnwindContext {
     }
 }
 
-pub struct SerialCharSink {
-    address: usize,
-}
-
-impl SerialCharSink {
-    pub fn open(port: usize) -> SerialCharSink {
-        SerialCharSink { address: port }
-    }
-}
-
-impl CharSink for SerialCharSink {
-    unsafe fn putc(&self, _ch: u8) {}
-
-    unsafe fn flush(&self) {}
-}
-
-pub fn init_tty(cell: &Once<SerialCharSink>) {
+pub fn init_tty(_cell: &Once<&dyn CharSink>) {
     // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
 }
