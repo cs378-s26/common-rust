@@ -28,6 +28,7 @@ uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 zerocopy = { version = "0.8.40", features = ["derive"] }
+tinywasm = { version = "0.8.0", default-features = false, features = ["parser"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = "0.15.4"
