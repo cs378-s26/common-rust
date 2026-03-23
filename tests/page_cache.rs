@@ -118,6 +118,25 @@ fn cow() {
 }
 
 #[test_case]
+fn large_anon() {
+    init();
+    let x;
+    {
+        let mut vmm = VMM.get().unwrap().lock();
+        x = vmm.mmap(None, 4096 * 100000, false, None).unwrap();
+    }
+    unsafe {
+        for i in 0..100 {
+            *((x + 4096 * i * 1000) as *mut u8) = 1;
+        }
+        for i in 0..100 {
+            assert!(*((x + 4096 * i * 1000) as *const u8) == 1);
+        }
+    }
+    kprintln!("Large anon successful");
+}
+
+#[test_case]
 fn partial() {
     init();
     let x;
@@ -142,5 +161,4 @@ fn partial() {
         assert!(*y == b'c');
     }
     kprintln!("Partial successful");
-    Arch::shutdown(0);
 }

@@ -1,19 +1,19 @@
-// TODO: integrate this with MJ's VMM (especially the shadowing)
+// TODO: Integrate this with MJ's VMM (especially the shadowing)
 // Currently, very divergent.
 
-// TODO: use blocking locks
+// TODO: Use blocking locks
 
-// TODO: consider locking stuff more effeciently
+// TODO: Consider locking stuff more effeciently
 
-// TODO: minimize unwraps
+// TODO: Minimize unwraps
 
-// TODO: actual permissions for pages
+// TODO: Actual permissions for pages
 
-// TODO: proper error handling
+// TODO: Proper error handling
 
-// TODO: create the reverse mapping
+// TODO: Create the reverse mapping
 
-// TODO: mark pages dirty
+// TODO: Mark pages dirty
 
 use crate::arch::{Arch, ArchTrait};
 use crate::free::FreeSet;
@@ -33,7 +33,7 @@ struct Mapping {
     shared: bool,
     base: usize,
     link: RBTreeLink,
-    // pages that need to be keepen track of manually (instead of
+    // Pages that need to be keepen track of manually (instead of
     // through page cache)
     exception_pages: Mutex<BTreeMap<usize, PageKey>>,
 }
@@ -189,16 +189,6 @@ impl VirtualMemory {
     ) {
         assert!(address.is_multiple_of(Arch::PAGE_SIZE));
         let mut exception_pages = mapping.exception_pages.lock();
-        if let Some(key) = exception_pages.get(&address) {
-            let physical_address = PAGE_CACHE.lock().get_page(key.clone()).unwrap();
-            Arch::virtual_map(
-                Arch::get_address_space(),
-                address as u64,
-                physical_address as u64,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
-            );
-            return;
-        }
         if let Some(file_length) = file_length {
             if self.handle_partial_file_private(
                 address,
@@ -254,8 +244,24 @@ impl VirtualMemory {
         );
     }
 
+    // TODO: This needs to be changed when we have actual processes
+    fn handle_anonymous(&self, address: usize) {
+        assert!(address.is_multiple_of(Arch::PAGE_SIZE));
+        let private_key = PageKey::Anonymous {
+            process_id: Arch::get_address_space() as usize,
+            virtual_address: address,
+        };
+        let private_address = PAGE_CACHE.lock().get_page(private_key.clone()).unwrap();
+        Arch::virtual_map(
+            Arch::get_address_space(),
+            address as u64,
+            private_address as u64,
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+        );
+    }
+
     pub fn handle_page_fault(&self, cause: PageFaultConditions, address: usize) {
-        // align address
+        // Align address
         let address = address & !(Arch::PAGE_SIZE - 1);
         let mapping = self
             .active_set
@@ -272,7 +278,7 @@ impl VirtualMemory {
                 self.handle_file_private(cause, address, mapping, inode_key, offset, file_length);
             }
         } else {
-            todo!()
+            self.handle_anonymous(address);
         }
     }
 
