@@ -120,6 +120,7 @@ impl ArchTrait for Arch {
         halt()
     }
 
+    fn parse_devices();
     fn create_arch_specific_drivers() {}
     fn init_arch_specific_drivers() {}
 }

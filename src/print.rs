@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::fmt::{
     self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
     UpperHex, Write,
@@ -12,7 +13,7 @@ use limine::framebuffer::Framebuffer;
 use limine::request::FramebufferRequest;
 use spin::Once;
 
-use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
+use crate::arch::{self, UnwindContext, UnwindContextTrait};
 use crate::sync::{IntMutex, MutexLike};
 
 #[derive(Clone, Copy)]
@@ -228,7 +229,7 @@ unsafe impl Sync for FlanTermSink {}
 static LOCK_PW: IntMutex<()> = IntMutex::new(());
 pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
-static SERIAL_BACKEND: Once<SerialCharSink> = Once::new();
+static SERIAL_BACKEND: Once<&dyn CharSink> = Once::new();
 
 pub struct PrintWriter;
 
