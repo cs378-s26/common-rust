@@ -71,6 +71,12 @@ impl<T, const N: usize> BoundedBuffer<T, N> {
     }
 }
 
+impl<T, const N: usize> Default for BoundedBuffer<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, const N: usize> Drop for BoundedBuffer<T, N> {
     fn drop(&mut self) {
         let mut st = self.state.lock();
