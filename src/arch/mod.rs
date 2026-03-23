@@ -130,6 +130,7 @@ pub trait ArchTrait {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
     fn halt() -> !;
+    fn parse_devices(); // this must be called after all system drivers have been set up in SYSTEM_DRIVERS
     fn create_arch_specific_drivers();
     fn init_arch_specific_drivers();
 }
