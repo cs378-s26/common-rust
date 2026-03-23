@@ -263,7 +263,10 @@ fn test_bounded_buffer_basic() {
     }
 
     while latch.load(Ordering::SeqCst) != THREADS * 2 {}
-    assert!(sum.load(Ordering::SeqCst) == 1300, "bounded buffer lost items");
+    assert!(
+        sum.load(Ordering::SeqCst) == 1300,
+        "bounded buffer lost items"
+    );
     kprintln!("bounded buffer basic test passed");
 }
 
@@ -300,7 +303,10 @@ fn test_bounded_buffer_stress() {
     }
 
     while latch.load(Ordering::SeqCst) != THREADS * 2 {}
-    assert!(sum.load(Ordering::SeqCst) == 5100, "bounded buffer lost items");
+    assert!(
+        sum.load(Ordering::SeqCst) == 5100,
+        "bounded buffer lost items"
+    );
     kprintln!("bounded buffer stress test passed");
 }
 
@@ -337,7 +343,10 @@ fn test_bounded_buffer_single_slot() {
     }
 
     while latch.load(Ordering::SeqCst) != THREADS * 2 {}
-    assert!(sum.load(Ordering::SeqCst) == 220, "bounded buffer lost items");
+    assert!(
+        sum.load(Ordering::SeqCst) == 220,
+        "bounded buffer lost items"
+    );
     kprintln!("bounded buffer single slot test passed");
 }
 
@@ -374,7 +383,10 @@ fn test_rwlock_basic() {
     }
 
     while latch.load(Ordering::SeqCst) != THREADS * 2 {}
-    assert!(*lock.read_lock() == (THREADS * ITERS) as u64, "rwlock write count wrong");
+    assert!(
+        *lock.read_lock() == (THREADS * ITERS) as u64,
+        "rwlock write count wrong"
+    );
     kprintln!("rwlock basic test passed");
 }
 
@@ -413,7 +425,10 @@ fn test_rwlock_reader_heavy() {
     }
 
     while latch.load(Ordering::SeqCst) != READERS + WRITERS {}
-    assert!(*lock.read_lock() == (WRITERS * ITERS) as u64, "rwlock write count wrong");
+    assert!(
+        *lock.read_lock() == (WRITERS * ITERS) as u64,
+        "rwlock write count wrong"
+    );
     kprintln!("rwlock reader heavy test passed");
 }
 
@@ -440,7 +455,9 @@ fn test_rwlock_write_stress() {
     }
 
     while latch.load(Ordering::SeqCst) != WRITERS {}
-    assert!(*lock.read_lock() == (WRITERS * STRESS_ITERS) as u64, "rwlock write count wrong");
+    assert!(
+        *lock.read_lock() == (WRITERS * STRESS_ITERS) as u64,
+        "rwlock write count wrong"
+    );
     kprintln!("rwlock write stress test passed");
 }
-

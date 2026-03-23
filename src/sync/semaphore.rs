@@ -2,7 +2,10 @@ use core::ops::{Deref, DerefMut};
 
 use crate::{
     sync::{IntMutex, IntMutexGuard, MutexLike},
-    thread::{ThreadQueue, can_yield, is_on_thread, local_work_queue, new_thread_queue, suspend_to_locked_queue},
+    thread::{
+        ThreadQueue, can_yield, is_on_thread, local_work_queue, new_thread_queue,
+        suspend_to_locked_queue,
+    },
 };
 
 struct SemWaitGuard<'a>(IntMutexGuard<'a, SemState>);
