@@ -19,6 +19,7 @@ pub mod gic;
 mod interrupt;
 mod mp;
 pub use exceptions::{dump_core_state, init_exceptions};
+mod devices;
 
 pub use asm::*;
 pub use context::Context;
