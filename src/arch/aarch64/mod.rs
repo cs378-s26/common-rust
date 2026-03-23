@@ -1,5 +1,6 @@
 use core::arch::asm;
 
+use fdt;
 use spin::Once;
 
 use crate::print::CharSink;
@@ -8,9 +9,11 @@ use crate::virtual_memory::PagingOptions;
 pub mod apic;
 mod asm;
 mod context;
+mod devices;
 mod interrupt;
 mod mp;
-mod devices;
+use crate::sync::MutexLike;
+use alloc::boxed::Box;
 
 pub use apic::timer_ticks;
 pub use asm::*;
@@ -113,7 +116,11 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn create_arch_specific_drivers() {}
+    fn create_arch_specific_drivers() {
+        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+        let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
+        drivers.push(Box::new(devices::uart_pl011::UartPl011Discovery));
+    }
 
     fn init_arch_specific_drivers() {}
 }
@@ -148,7 +155,7 @@ impl UnwindContextTrait for UnwindContext {
 }
 
 pub struct SerialCharSink {
-    address: usize
+    address: usize,
 }
 
 impl SerialCharSink {
