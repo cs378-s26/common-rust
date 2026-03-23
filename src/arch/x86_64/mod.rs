@@ -119,6 +119,9 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn create_arch_specific_drivers() {}
+    fn init_arch_specific_drivers() {}
 }
 
 #[derive(Clone, Copy)]
