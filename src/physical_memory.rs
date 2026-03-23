@@ -79,6 +79,19 @@ pub fn init_physical_memory_allocator() {
     } else {
         panic!("No usable memory regions found");
     }
+
+    let mut end = END.lock(); // the first memory region served wasn't checked to be usable
+    let regions = unwrap(&REGIONS);
+    if let Some(first_usable) =
+        (0..regions.len()).find(|&r| regions[r].entry_type == EntryType::USABLE)
+    {
+        *end = FrameLocation {
+            region: first_usable,
+            offset: 0x0,
+        };
+    } else {
+        panic!("No usable memory regions found");
+    }
 }
 
 fn unwrap<T>(o: &Once<T>) -> &T {

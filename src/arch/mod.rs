@@ -123,7 +123,10 @@ pub trait ArchTrait {
     /// Internal, do not call outside of thread module.
     unsafe fn get_thread_local_pointer() -> u64;
 
+    fn vaddr_to_paddr(space: u64, vaddr: u64) -> Option<u64>;
+
     fn read_cycle_counter() -> u64;
+    fn timer_ticks() -> u64;
     const PAGE_SIZE: usize;
     fn get_address_space() -> u64;
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);

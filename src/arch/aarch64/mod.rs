@@ -3,9 +3,12 @@ use core::arch::asm;
 use fdt;
 use spin::Once;
 
+use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
+use crate::virtual_memory::PagingOptions;
 
+pub mod apic;
 pub mod apic;
 mod asm;
 mod context;
@@ -92,13 +95,19 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn timer_ticks() -> u64 {
+        gic::timer_ticks()
+    }
+
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
         vmm::get_address_space()
+        vmm::get_address_space()
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+        vmm::vmap(space, vaddr, paddr, options)
         vmm::vmap(space, vaddr, paddr, options)
     }
 

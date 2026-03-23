@@ -162,6 +162,9 @@ pub struct VirtualMemoryAllocation {
     pub space: u64,
     pub base: usize,
     pub length: usize,
+    pub space: u64,
+    pub base: usize,
+    pub length: usize,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -343,6 +346,7 @@ mod test {
             spawn_thread(move || {
                 let vaddr: u64 = 0x10000000 * tid; // unsafe!
                 let frame_1: usize = frame_alloc();
+                frame_dealloc(frame_1);
                 frame_dealloc(frame_1);
                 let frame_2: usize = frame_alloc();
 
