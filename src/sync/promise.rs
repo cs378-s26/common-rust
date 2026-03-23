@@ -47,6 +47,15 @@ impl<T> Promise<T> {
         }
     }
 
+}
+
+impl<T> Default for Promise<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Promise<T> {
     /// set the promise exactly once and wake all waiters
     pub fn set(&self, x: T) {
         let mut to_wake: ThreadQueue = new_thread_queue();
