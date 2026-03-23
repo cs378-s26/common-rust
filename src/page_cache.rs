@@ -9,6 +9,12 @@
 
 // TODO: actual permissions for pages
 
+// TODO: proper error handling
+
+// TODO: create the reverse mapping
+
+// TODO: mark pages dirty
+
 use crate::arch::{Arch, ArchTrait};
 use crate::free::FreeSet;
 use crate::physical_memory::{self, HHDM_OFFSET};
@@ -106,12 +112,10 @@ impl VirtualMemory {
 
     fn handle_file_shared(
         &self,
-        cause: PageFaultConditions,
         address: usize,
         mapping: &Mapping,
         inode_key: &INodeKey,
         offset: &usize,
-        file_length: &Option<usize>,
     ) {
         assert!(address.is_multiple_of(Arch::PAGE_SIZE));
         let physical_address = PAGE_CACHE
@@ -127,6 +131,51 @@ impl VirtualMemory {
             physical_address as u64,
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
         );
+    }
+
+    fn handle_partial_file_private(
+        &self,
+        address: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+        file_length: &usize,
+        exception_pages: &mut BTreeMap<usize, PageKey>,
+    ) -> bool {
+        if address - mapping.base + Arch::PAGE_SIZE <= *file_length {
+            return false;
+        }
+        let private_key = PageKey::Anonymous {
+            process_id: Arch::get_address_space() as usize,
+            virtual_address: address,
+        };
+        let private_address = PAGE_CACHE.lock().get_page(private_key.clone()).unwrap();
+        if address - mapping.base < *file_length {
+            let shared_address = PAGE_CACHE
+                .lock()
+                .get_page(PageKey::File {
+                    inode_key: inode_key.clone(),
+                    offset: address - mapping.base + offset,
+                })
+                .unwrap();
+            unsafe {
+                let hhdm = HHDM_OFFSET.get().unwrap();
+                let partial_file_length = file_length.rem_euclid(Arch::PAGE_SIZE);
+                ptr::copy_nonoverlapping(
+                    (shared_address + hhdm) as *const u8,
+                    (private_address + hhdm) as *mut u8,
+                    partial_file_length,
+                );
+            }
+        }
+        exception_pages.insert(address, private_key);
+        Arch::virtual_map(
+            Arch::get_address_space(),
+            address as u64,
+            private_address as u64,
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+        );
+        true
     }
 
     fn handle_file_private(
@@ -149,6 +198,18 @@ impl VirtualMemory {
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
             );
             return;
+        }
+        if let Some(file_length) = file_length {
+            if self.handle_partial_file_private(
+                address,
+                mapping,
+                inode_key,
+                offset,
+                file_length,
+                &mut exception_pages,
+            ) {
+                return;
+            }
         }
         let shared_address = PAGE_CACHE
             .lock()
@@ -194,6 +255,7 @@ impl VirtualMemory {
     }
 
     pub fn handle_page_fault(&self, cause: PageFaultConditions, address: usize) {
+        // align address
         let address = address & !(Arch::PAGE_SIZE - 1);
         let mapping = self
             .active_set
@@ -205,7 +267,7 @@ impl VirtualMemory {
         }
         if let Some((inode_key, offset, file_length)) = mapping.file.as_ref() {
             if mapping.shared {
-                self.handle_file_shared(cause, address, mapping, inode_key, offset, file_length);
+                self.handle_file_shared(address, mapping, inode_key, offset);
             } else {
                 self.handle_file_private(cause, address, mapping, inode_key, offset, file_length);
             }
@@ -224,11 +286,18 @@ impl VirtualMemory {
         if !length.is_multiple_of(Arch::PAGE_SIZE) {
             return Err("map length must be aligned to page boundary");
         }
-        if let Some((_, offset, Some(file_length))) = file {
+        if let Some((_, offset, file_length)) = file {
             if !offset.is_multiple_of(Arch::PAGE_SIZE) {
                 return Err("file offset must be aligned to page boundary");
             }
-            if file_length > length {
+            if file_length.is_some() && shared {
+                return Err(
+                    "we do not allow partial file maps if shared (this feature only affects the ELF loader)",
+                );
+            }
+            if let Some(file_length) = file_length
+                && file_length > length
+            {
                 return Err("file length is bigger than length of map");
             }
         }

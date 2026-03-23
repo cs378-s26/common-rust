@@ -85,10 +85,14 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     kernel_common::test_utils::rust_panic_test_impl(info);
 }
 
-#[test_case]
-fn cow() {
+fn init() {
     VFS.mount(RAMFilesystem::new());
     VMM.call_once(|| Mutex::new(VirtualMemory::new()));
+}
+
+#[test_case]
+fn cow() {
+    init();
     let x;
     let y;
     {
@@ -108,7 +112,35 @@ fn cow() {
         assert!(*y == b'b');
         *y = b'd';
         assert!(*x == b'b');
+        *x = b'c'
     }
     kprintln!("Cow successful");
+}
+
+#[test_case]
+fn partial() {
+    init();
+    let x;
+    let y;
+    {
+        let mut vmm = VMM.get().unwrap().lock();
+        x = vmm
+            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+            .unwrap() as *mut u8;
+        y = vmm
+            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, false, None)
+            .unwrap() as *mut u8;
+    }
+    assert!(x != y);
+    unsafe {
+        assert!(*x == b'c');
+        assert!(*(x.add(1)) == b'a');
+        assert!(*(x.add(2)) == b't');
+
+        assert!(*(y.add(2)) == 0);
+        assert!(*(y.add(1)) == b'a');
+        assert!(*y == b'c');
+    }
+    kprintln!("Partial successful");
     Arch::shutdown(0);
 }
