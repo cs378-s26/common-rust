@@ -162,9 +162,6 @@ pub struct VirtualMemoryAllocation {
     pub space: u64,
     pub base: usize,
     pub length: usize,
-    pub space: u64,
-    pub base: usize,
-    pub length: usize,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
