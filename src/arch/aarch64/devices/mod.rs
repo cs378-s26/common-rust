@@ -1,8 +1,9 @@
+use alloc::boxed::Box;
+
 pub mod uart_pl011;
 use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
-use crate::print::kprintln;
+use crate::print::{kprintln, set_serial_backend};
 use crate::sync::MutexLike;
-use alloc::boxed::Box;
 use fdt;
 use limine::request::DeviceTreeBlobRequest;
 
@@ -34,4 +35,16 @@ pub fn create_arch_specific_drivers() {
     drivers.push(Box::new(uart_pl011::UartPl011Discovery));
 }
 
-pub fn init_arch_specific_drivers() {}
+pub fn init_arch_specific_drivers() {
+    // initialize drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+    let mut matched_devices = MATCHED_DEVICES.lock();
+    for device in matched_devices.iter_mut() {
+        if device.name() == "uart_pl011" {
+            if device.init() {
+                kprintln!("Initialized uart_pl011 driver successfully.");
+            } else {
+                kprintln!("Failed to initialize uart_pl011 driver.");
+            }
+        }
+    }
+}

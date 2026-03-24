@@ -1,14 +1,26 @@
 use crate::arch::{Arch, ArchTrait};
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
-use crate::print::{CharSink, kprintln};
+use crate::print::{CharSink, set_serial_backend}; 
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
-use fdt::node::FdtNode;
+use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
 
 // TODO currently this driver literally just writes out a character at a time, this will need to be expanded to include buffering and interrupts
 pub struct UartPl011Driver {
     phys_address: usize,
     virt_mapping: Option<VirtualMemoryAllocation>,
+}
+
+impl CharSink for UartPl011Driver {
+    unsafe fn putc(&self, c: u8) {
+        if let Some(mapping) = &self.virt_mapping {
+            unsafe {
+                let base = mapping.base;
+                core::ptr::write_volatile(base as *mut u8, c);
+            }
+        }
+    }
+
+    unsafe fn flush(&self) {}
 }
 
 impl DeviceDriver for UartPl011Driver {
@@ -29,6 +41,7 @@ impl DeviceDriver for UartPl011Driver {
         );
         if let Some(mapping) = vm {
             self.virt_mapping = Some(mapping);
+            // set_serial_backend(Box::new(self));
         } else {
             return false;
         }
@@ -40,18 +53,6 @@ impl DeviceDriver for UartPl011Driver {
     }
 }
 
-impl CharSink for UartPl011Driver {
-    unsafe fn putc(&self, c: u8) {
-        if let Some(mapping) = &self.virt_mapping {
-            unsafe {
-                let base = mapping.base;
-                core::ptr::write_volatile(base as *mut u8, c);
-            }
-        }
-    }
-
-    unsafe fn flush(&self) {}
-}
 
 pub struct UartPl011Discovery;
 

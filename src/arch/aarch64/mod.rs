@@ -1,6 +1,5 @@
 use core::arch::asm;
 
-use fdt;
 use spin::Once;
 
 use crate::print::CharSink;
@@ -158,6 +157,6 @@ impl UnwindContextTrait for UnwindContext {
     }
 }
 
-pub fn init_tty(_cell: &Once<&dyn CharSink>) {
+pub fn init_tty(_cell: &Once<Box<dyn CharSink>>) {
     // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
 }

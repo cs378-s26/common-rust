@@ -1,4 +1,5 @@
 use core::cell::SyncUnsafeCell;
+use alloc::boxed::Box;
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
@@ -175,6 +176,6 @@ impl CharSink for SerialCharSink {
     }
 }
 
-pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0x3f8));
+pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }
