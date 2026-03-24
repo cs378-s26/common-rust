@@ -96,7 +96,6 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // }
 
     
-    gic::gicd_init();
     gic::gicc_init();
     unsafe {
         interrupt::enable();

@@ -163,8 +163,12 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
 
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_physical_memory_allocator();
+    kprintln!("here");
     init_virtual_memory_allocator();
+    kprintln!("vmem");
 
+    Arch::create_arch_specific_drivers();
+    Arch::parse_devices();
     Arch::init_arch_specific_drivers();
 
     // note we don't need to do anything special here because rust doesn't have init_array

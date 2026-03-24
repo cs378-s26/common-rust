@@ -59,13 +59,16 @@ impl DeviceDiscovery for UartPl011Discovery {
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
         if let DeviceNode::DTB(node) = node {
             if let Some(c) = node.compatible() {
-                if c.all().any(|s| s == "arm,pl011") {
-                    if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
-                        let phys_address = reg.starting_address as usize;
-                        return Some(Box::new(UartPl011Driver {
-                            phys_address,
-                            virt_mapping: None,
-                        }));
+                for s in c.all() {
+                    kprintln!("UartPl011Discovery: checking compatible string '{}'", s);
+                    if s == "arm,pl011" {
+                        if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
+                            let phys_address = reg.starting_address as usize;
+                            return Some(Box::new(UartPl011Driver {
+                                phys_address,
+                                virt_mapping: None,
+                            }));
+                        }
                     }
                 }
             }

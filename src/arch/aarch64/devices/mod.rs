@@ -13,15 +13,24 @@ pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 // parse the device tree and match devices to drivers. This should be called after all system drivers have been set up in SYSTEM_DRIVERS
 pub fn parse_devices() {
+    kprintln!("aarch64::devices::parse_devices: parsing device tree");
+    if DTB_REQUEST.get_response().is_none() {
+        kprintln!("aarch64::devices::parse_devices: no device tree blob found");
+        return;
+    }
     if let Some(resp) = DTB_REQUEST.get_response() {
         let dtb_addr = resp.dtb_ptr();
         let fdt = unsafe {
             fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
         };
+        kprintln!("fdt loaded at {:#x}, size: {}", dtb_addr as u64, fdt.total_size());
+
         for node in fdt.all_nodes() {
+            kprintln!("aarch64::devices::parse_devices: checking node {}", node.name);
             for driver in SYSTEM_DRIVERS.lock().iter() {
                 let matched_device = driver.am_i_this(DeviceNode::DTB(node));
                 if let Some(device) = matched_device {
+                    kprintln!("aarch64::devices::parse_devices: matched driver {}", device.name());
                     MATCHED_DEVICES.lock().push(device);
                 }
             }
@@ -30,9 +39,17 @@ pub fn parse_devices() {
 }
 
 pub fn create_arch_specific_drivers() {
+    kprintln!("aarch64::devices::create_arch_specific_drivers: creating drivers");
     // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
     let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
     drivers.push(Box::new(uart_pl011::UartPl011Discovery));
+    drivers.push(Box::new(a15_gic::GicA15Discovery));
 }
 
-pub fn init_arch_specific_drivers() {}
+pub fn init_arch_specific_drivers() {
+    kprintln!("aarch64::devices::init_arch_specific_drivers: initializing drivers");
+    for driver in MATCHED_DEVICES.lock().iter_mut() {
+        kprintln!("aarch64::devices::init_arch_specific_drivers: initializing driver {}", driver.name());
+        driver.init();
+    }
+}
