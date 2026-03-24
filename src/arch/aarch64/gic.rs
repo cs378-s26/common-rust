@@ -66,20 +66,22 @@ pub fn gicc_init() {
 
     unsafe {
         let gicc = gicc_virt as *mut u32;
-        gicc.add(GICC_PMR / 4).write_volatile(0xF0); // take interrupts with priority < 0xF0
+        // take interrupts with priority < 0xF0
+        // lower the number, higher the priority | ie priority #1 is the most important
+        gicc.add(GICC_PMR / 4).write_volatile(0xF0);
 
+
+        // preemption group selection by binary point register
+        // likely won't have to worry about this for a while
+        // https://developer.arm.com/documentation/ihi0048/a/BEIHEBAG 
         gicc.add(GICC_BPR / 4).write_volatile(0);
 
         // enable cpu interface
         gicc.add(GICC_CTLR / 4).write_volatile(1);
     }
 
-    // set ppi 30 for cores besides the bsp
+    // accept interrupt 30 (generic timer) on all cores
     let gicd_virt = GICD_BASE_VIRT.load(Ordering::Acquire);
-    assert!(
-        gicd_virt != 0,
-        "gicd_init must have been called to map GICD"
-    );
     unsafe {
         let isenabler0 = (gicd_virt + GICD_ISENABLER0) as *mut u32;
         isenabler0.write_volatile(1 << 30);
