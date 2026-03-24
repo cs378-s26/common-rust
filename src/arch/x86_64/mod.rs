@@ -17,7 +17,6 @@ mod tables;
 pub mod tsc;
 mod vmm;
 
-
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
@@ -113,7 +112,6 @@ impl ArchTrait for Arch {
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
         vunmap(space, vaddr)
     }
-
 
     fn shutdown(err_code: u16) {
         debug::shutdown(err_code);

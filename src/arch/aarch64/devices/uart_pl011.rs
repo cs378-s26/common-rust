@@ -55,9 +55,8 @@ impl DeviceDriver for UartPl011Driver {
 pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
-
     // TODO this gives full ownership of the driver to the serial backend
-    // instead of returning like normal. 
+    // instead of returning like normal.
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
         if let DeviceNode::DTB(node) = node {
             if let Some(c) = node.compatible() {

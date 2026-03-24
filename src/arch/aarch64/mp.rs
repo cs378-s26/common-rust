@@ -1,7 +1,7 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
     arch::aarch64::{exceptions, gic, interrupt},
-    mp::{core_local, get_cpu_local_pointer_for, CoreId, CORE_ID},
+    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::kprintln,
 };
 use core::arch::asm;
@@ -90,7 +90,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     );
 
     exceptions::init_exceptions();
-    
+
     gic::gicc_init();
     unsafe {
         interrupt::enable();

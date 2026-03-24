@@ -81,7 +81,6 @@ unsafe extern "C" fn system_main() -> ! {
 
 static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
 static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn kernel_main() -> ! {
     // assert!(!Arch::irq_is_enabled());
@@ -100,7 +99,7 @@ pub fn kernel_main() -> ! {
         })
         .wait();
 
-    let idle = set_up_idle();
+    let _idle = set_up_idle();
 
     // kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
