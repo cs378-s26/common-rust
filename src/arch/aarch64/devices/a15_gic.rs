@@ -72,17 +72,23 @@ impl DeviceDriver for GicA15Driver {
                 // disable gicd
                 gicd.add(GICD_CTLR / 4).write_volatile(0);
 
-                let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32; // offset 28 = intid 28..31
+                // we want intid 30 for the arm's generic timer
+                // we need to access the 4 byte register starting at 28 because register 28 includes [28, 29, 30, 31]
+                let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32;
+
+                // read existing config
                 let mut word = pri_reg.read_volatile();
-                word &= !(0xFF << 16); // clear byte lane 2 (intid 30)
-                word |= 0xA0 << 16; // set priority 0xA0
+                // clear intid 30 priority
+                word &= !(0xFF << 16);
+                // sets priority to 0xA0
+                word |= 0xA0 << 16;
                 pri_reg.write_volatile(word);
 
-                // enable ppi 30
+                // enable interrupt 30 in the Interrupt Set ENABLE Register isENABLEr
                 let isenabler0 = gicd.add(GICD_ISENABLER0 / 4);
                 isenabler0.write_volatile(1 << 30);
 
-                // enable gicd
+                // reenable gicd
                 gicd.add(GICD_CTLR / 4).write_volatile(1);
             }
             kprintln!("gicd_init done");
