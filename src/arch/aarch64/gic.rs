@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use spin::Once;
 
 use crate::{
-    arch::aarch64::vmm, device::device::FDT, physical_memory::HHDM_REQUEST, print::kprintln,
+    arch::aarch64::vmm, physical_memory::HHDM_REQUEST, print::kprintln,
     virtual_memory::PagingOptions,
 };
 

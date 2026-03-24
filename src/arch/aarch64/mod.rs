@@ -11,9 +11,12 @@ pub mod apic;
 mod asm;
 mod context;
 mod devices;
+pub mod gic;
 mod interrupt;
 mod mp;
 use alloc::boxed::Box;
+mod exceptions;
+pub use exceptions::{dump_core_state, init_exceptions};
 
 pub use apic::timer_ticks;
 pub use asm::*;
@@ -91,10 +94,6 @@ impl ArchTrait for Arch {
 
     fn read_cycle_counter() -> u64 {
         asm::read_cycle_counter()
-    }
-
-    fn timer_ticks() -> u64 {
-        gic::timer_ticks()
     }
 
     const PAGE_SIZE: usize = 4096;
