@@ -1,5 +1,5 @@
-use core::cell::SyncUnsafeCell;
 use alloc::boxed::Box;
+use core::cell::SyncUnsafeCell;
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
@@ -121,7 +121,7 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn parse_devices();
+    fn parse_devices() {}
     fn create_arch_specific_drivers() {}
     fn init_arch_specific_drivers() {}
 }
