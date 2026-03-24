@@ -229,7 +229,7 @@ unsafe impl Sync for FlanTermSink {}
 static LOCK_PW: IntMutex<()> = IntMutex::new(());
 pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
-static SERIAL_BACKEND: Once<&dyn CharSink> = Once::new();
+static SERIAL_BACKEND: Once<Box<dyn CharSink>> = Once::new();
 
 pub struct PrintWriter;
 
@@ -273,6 +273,10 @@ pub fn init_tty() {
     }
 
     arch::init_tty(&SERIAL_BACKEND);
+}
+
+pub fn set_serial_backend(backend: Box<dyn CharSink>) {
+    SERIAL_BACKEND.call_once(|| backend);
 }
 
 pub macro kprint {

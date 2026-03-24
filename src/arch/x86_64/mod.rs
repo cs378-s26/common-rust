@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::cell::SyncUnsafeCell;
 
 use limine::{mp::Cpu, request::MpRequest};
@@ -131,7 +132,7 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn parse_devices();
+    fn parse_devices() {}
     fn create_arch_specific_drivers() {}
     fn init_arch_specific_drivers() {}
 }
@@ -186,6 +187,6 @@ impl CharSink for SerialCharSink {
     }
 }
 
-pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0x3f8));
+pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }

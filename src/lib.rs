@@ -137,6 +137,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
 
     parse_kernel_cmdline();
+    init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_tty();
 
     // print some system info
@@ -161,7 +162,6 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
         )
     }
 
-    init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_physical_memory_allocator();
     kprintln!("here");
     init_virtual_memory_allocator();
@@ -169,7 +169,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
 
     Arch::create_arch_specific_drivers();
     Arch::parse_devices();
-    Arch::init_arch_specific_drivers();
+    Arch::parse_devices();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
