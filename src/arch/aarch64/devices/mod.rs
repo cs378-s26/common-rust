@@ -19,11 +19,6 @@ pub fn parse_devices() {
         let fdt = unsafe {
             fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
         };
-        kprintln!(
-            "fdt loaded at {:#x}, size: {}",
-            dtb_addr as u64,
-            fdt.total_size()
-        );
 
         for node in fdt.all_nodes() {
             for driver in SYSTEM_DRIVERS.lock().iter() {

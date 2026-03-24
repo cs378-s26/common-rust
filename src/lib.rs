@@ -163,9 +163,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
     }
 
     init_physical_memory_allocator();
-    kprintln!("here");
     init_virtual_memory_allocator();
-    kprintln!("vmem");
 
     Arch::create_arch_specific_drivers();
     Arch::parse_devices();
