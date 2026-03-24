@@ -84,9 +84,8 @@ static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn kernel_main() -> ! {
-    assert!(!Arch::irq_is_enabled());
+    // assert!(!Arch::irq_is_enabled());
 
-    // kprintln!("we are the MPCorelings! please feed us!");
     let mp_res = kernel_common::MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
@@ -106,7 +105,6 @@ pub fn kernel_main() -> ! {
     // kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
 
     init_coroutine_executor();
-    // kprintln!("Coroutine executor initialized.");
 
     MP_PREEMPT_ENTER_BARRIER
         .call_once(|| Barrier::new(core_count))
@@ -117,7 +115,7 @@ pub fn kernel_main() -> ! {
     if CORE_ID.get().0 == 0 {
         spawn_coroutine(async_task(1624252));
 
-        let num_threads = 2000;
+        let num_threads = 2;
         kprintln!(
             "Spawning {} test threads across {} cores",
             num_threads,

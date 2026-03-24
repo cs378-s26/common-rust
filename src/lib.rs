@@ -169,7 +169,7 @@ pub fn system_init<A: ArchTrait, K: KernelEntryTrait>() -> ! {
 
     Arch::create_arch_specific_drivers();
     Arch::parse_devices();
-    Arch::parse_devices();
+    Arch::init_arch_specific_drivers();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

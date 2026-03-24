@@ -60,7 +60,11 @@ impl DeviceDriver for GicA15Driver {
             GICD_BASE_VIRT.store(gicd_virt, Ordering::Release);
             GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
 
-            kprintln!("GicA15Driver::init: GICD_BASE_VIRT={:#x}, GICC_BASE_VIRT={:#x}", gicd_virt, gicc_virt);
+            kprintln!(
+                "GicA15Driver::init: GICD_BASE_VIRT={:#x}, GICC_BASE_VIRT={:#x}",
+                gicd_virt,
+                gicc_virt
+            );
 
             unsafe {
                 let gicd = gicd_virt as *mut u32;
@@ -97,19 +101,17 @@ impl DeviceDiscovery for GicA15Discovery {
     fn am_i_this(&self, node: DeviceNode) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
         if let DeviceNode::DTB(node) = node {
             if let Some(c) = node.compatible() {
-                for s in c.all() {
-                    kprintln!("GicA15Discovery: checking compatible string '{}'", s);
-                    if s == "arm,cortex-a15-gic" {
-                        if let Some(mut reg) = node.reg() {
-                            let gicd_phys_address = reg.next().unwrap().starting_address as usize;
-                            let gicc_phys_address = reg.next().unwrap().starting_address as usize;
-                            return Some(Box::new(GicA15Driver {
-                                gicd_phys_address,
-                                gicc_phys_address,
-                                gicd_virt_mapping: None,
-                                gicc_virt_mapping: None,
-                            }));
-                        }
+                if c.all().any(|s| s == "arm,cortex-a15-gic") {
+                    if let Some(mut reg) = node.reg() {
+                        let gicd_phys_address = reg.next().unwrap().starting_address as usize;
+                        let gicc_phys_address = reg.next().unwrap().starting_address as usize;
+                        kprintln!("GIC addrs: {:x} {:x}", gicc_phys_address, gicd_phys_address);
+                        return Some(Box::new(GicA15Driver {
+                            gicd_phys_address,
+                            gicc_phys_address,
+                            gicd_virt_mapping: None,
+                            gicc_virt_mapping: None,
+                        }));
                     }
                 }
             }

@@ -5,7 +5,7 @@ use spin::Once;
 use crate::arch::aarch64::devices::a15_gic::{GICC_BASE_VIRT, GICD_BASE_VIRT};
 use crate::print::kprintln;
 
-pub const TIMER_HZ: u64 = 100;
+pub const TIMER_HZ: u64 = 1;
 pub static TIMER_INTERVAL: Once<u64> = Once::new();
 pub static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -58,11 +58,11 @@ pub fn setup_timer() {
 pub fn gicc_init() {
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     kprintln!("gicc_init: GICC_BASE_VIRT={:#x}", gicc_virt);
-    loop {}
-    // assert!(
-    //     gicc_virt != 0,
-    //     "gicc_init called before gicd_init mapped GICC"
-    // );
+
+    assert!(
+        gicc_virt != 0,
+        "gicc_init called before gicd_init mapped GICC"
+    );
 
     unsafe {
         let gicc = gicc_virt as *mut u32;
