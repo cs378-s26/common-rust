@@ -70,10 +70,9 @@ pub fn gicc_init() {
         // lower the number, higher the priority | ie priority #1 is the most important
         gicc.add(GICC_PMR / 4).write_volatile(0xF0);
 
-
         // preemption group selection by binary point register
         // likely won't have to worry about this for a while
-        // https://developer.arm.com/documentation/ihi0048/a/BEIHEBAG 
+        // https://developer.arm.com/documentation/ihi0048/a/BEIHEBAG
         gicc.add(GICC_BPR / 4).write_volatile(0);
 
         // enable cpu interface
@@ -90,6 +89,7 @@ pub fn gicc_init() {
     kprintln!("gicc_init done on core {}", crate::mp::CORE_ID.get());
 }
 
+// function appears pure but the act of reading signals the GIC hardware that the interrupt is being handled
 pub fn ack_irq() -> u32 {
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     unsafe { (((gicc_virt + GICC_IAR) as *const u32).read_volatile()) & 0x3FF }
