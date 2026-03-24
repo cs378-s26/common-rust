@@ -229,7 +229,7 @@ unsafe impl Sync for FlanTermSink {}
 static LOCK_PW: IntMutex<()> = IntMutex::new(());
 pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
-static SERIAL_BACKEND: Once<Box<dyn CharSink>> = Once::new();
+pub static SERIAL_BACKEND: Once<Box<dyn CharSink>> = Once::new();
 
 pub struct PrintWriter;
 

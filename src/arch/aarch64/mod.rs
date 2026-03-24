@@ -1,6 +1,5 @@
 use core::arch::asm;
 
-use fdt;
 use spin::Once;
 
 // use crate::arch::IrqStateTrait;
@@ -20,9 +19,6 @@ pub mod gic;
 mod interrupt;
 mod mp;
 pub use exceptions::{dump_core_state, init_exceptions};
-mod devices;
-use crate::sync::MutexLike;
-use alloc::boxed::Box;
 
 pub use asm::*;
 pub use context::Context;
@@ -139,11 +135,6 @@ impl ArchTrait for Arch {
 
     fn configure_vm() {
         vmm::configure_vm();
-    }
-    fn create_arch_specific_drivers() {
-        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
-        drivers.push(Box::new(devices::uart_pl011::UartPl011Discovery));
     }
 
     fn parse_devices() {
