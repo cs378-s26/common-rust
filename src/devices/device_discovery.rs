@@ -45,14 +45,6 @@ pub trait DeviceDriver {
     fn init(&mut self) -> bool;
 
     fn device_type(&self) -> DeviceType;
-
-    
-    fn into_any(self: Box<Self>) -> Box<dyn core::any::Any + Send + Sync>
-    where
-        Self: Sized + 'static + Send + Sync,
-    {
-        self
-    }
 }
 
 pub trait DeviceDiscovery {
