@@ -18,11 +18,17 @@ impl Process {
         }
     }
 
-    pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
-        spawn_thread(|| {
+    pub fn clone(&self) -> Process {
+        Self {
+            virtual_memory: self.virtual_memory.clone(),
+        }
+    }
+
+    pub fn run_process<T: FnOnce() + Send + 'static>(process: Arc<Self>, task: T) {
+        spawn_thread(move || {
             {
                 let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
-                let process = thread.process.call_once(|| Arc::new(Process::new()));
+                let process = thread.process.call_once(|| Arc::clone(&process));
                 Arch::set_address_space(process.virtual_memory.get_page_table() as u64);
             }
             task()

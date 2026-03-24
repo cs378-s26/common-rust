@@ -16,6 +16,7 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use alloc::sync::Arc;
 use kernel_common::MP_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
@@ -86,7 +87,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     kernel_common::test_utils::rust_panic_test_impl(info);
 }
 
-static LATCH: AtomicUsize = AtomicUsize::new(1);
+static LATCH: AtomicUsize = AtomicUsize::new(0);
 
 fn init() {
     VFS.mount(RAMFilesystem::new());
@@ -95,8 +96,9 @@ fn init() {
 #[test_case]
 fn cow() {
     init();
-    LATCH.fetch_sub(1, Ordering::SeqCst);
-    Process::spawn_thread(|| {
+    LATCH.fetch_add(1, Ordering::SeqCst);
+    let process = Arc::new(Process::new());
+    Process::run_process(process, || {
         let x;
         let y;
         {
@@ -122,16 +124,17 @@ fn cow() {
             *x = b'c';
         }
         kprintln!("Cow successful");
-        LATCH.fetch_add(1, Ordering::SeqCst);
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
-    while LATCH.load(Ordering::SeqCst) != 1 {}
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }
 
 #[test_case]
 fn large_anon() {
     init();
-    LATCH.fetch_sub(1, Ordering::SeqCst);
-    Process::spawn_thread(|| {
+    LATCH.fetch_add(1, Ordering::SeqCst);
+    let process = Arc::new(Process::new());
+    Process::run_process(process, || {
         let x;
         {
             let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
@@ -150,16 +153,18 @@ fn large_anon() {
             }
         }
         kprintln!("Large anon successful");
-        LATCH.fetch_add(1, Ordering::SeqCst);
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
-    while LATCH.load(Ordering::SeqCst) != 1 {}
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }
 
+// TODO: write a better partial case using the dog file
 #[test_case]
 fn partial() {
     init();
-    LATCH.fetch_sub(1, Ordering::SeqCst);
-    Process::spawn_thread(|| {
+    LATCH.fetch_add(1, Ordering::SeqCst);
+    let process = Arc::new(Process::new());
+    Process::run_process(process, || {
         let x;
         let y;
         {
@@ -185,7 +190,73 @@ fn partial() {
             assert!(*y == b'c');
         }
         kprintln!("Partial successful");
-        LATCH.fetch_add(1, Ordering::SeqCst);
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
-    while LATCH.load(Ordering::SeqCst) != 1 {}
+    while LATCH.load(Ordering::SeqCst) > 0 {}
+}
+
+#[test_case]
+fn interprocess() {
+    init();
+    LATCH.fetch_add(3, Ordering::SeqCst);
+    let process = Arc::new(Process::new());
+    Process::run_process(process, || {
+        let file_shared;
+        let file_private;
+        let anon_shared;
+        let anon_private;
+        let new_process;
+        {
+            let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
+            let process = thread.process.get().unwrap();
+            file_shared = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 2), 0, None)), 4096, true, None)
+                .unwrap();
+            file_private = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 2), 0, None)), 4096, false, None)
+                .unwrap();
+            anon_shared = process.virtual_memory.mmap(None, 4096, true, None).unwrap();
+            anon_private = process
+                .virtual_memory
+                .mmap(None, 4096, false, None)
+                .unwrap();
+            new_process = Arc::new(Process::clone(process));
+        }
+
+        unsafe {
+            *(anon_shared as *mut u8) = b'x';
+            *(anon_private as *mut u8) = b'x';
+            *(file_shared as *mut u8) = b'x';
+            *(file_private as *mut u8) = b'x';
+        }
+        Process::run_process(new_process, move || {
+            unsafe {
+                *(anon_shared as *mut u8) = b'y';
+                *(anon_private as *mut u8) = b'y';
+                *(file_shared as *mut u8) = b'y';
+                *(file_private as *mut u8) = b'y';
+            }
+            LATCH.fetch_sub(1, Ordering::SeqCst);
+            unsafe {
+                assert!(*(anon_shared as *mut u8) == b'y');
+                assert!(*(anon_private as *mut u8) == b'y');
+                assert!(*(anon_shared as *mut u8) == b'y');
+                assert!(*(anon_private as *mut u8) == b'y');
+            }
+            LATCH.fetch_sub(1, Ordering::SeqCst);
+        });
+        while LATCH.load(Ordering::SeqCst) > 2 {}
+        unsafe {
+            assert!(*(anon_shared as *mut u8) == b'y');
+            assert!(*(anon_private as *mut u8) == b'x');
+            assert!(*(file_shared as *mut u8) == b'y');
+            assert!(*(file_private as *mut u8) == b'x');
+            *(file_shared as *mut u8) = b'c';
+        }
+        kprintln!("Interprocess successful");
+        LATCH.fetch_sub(1, Ordering::SeqCst);
+    });
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }

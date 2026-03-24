@@ -51,10 +51,10 @@ impl VFS {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 pub struct INodeKey {
-    filesystem_id: usize,
-    inumber: usize,
+    pub filesystem_id: usize,
+    pub inumber: usize,
 }
 
 impl INodeKey {

@@ -29,6 +29,8 @@ pub struct FreeSet {
     length_set: RBTree<FreeByLengthAdapter>,
 }
 
+impl FreeSet {}
+
 impl FreeSet {
     pub fn new() -> Self {
         Self {
@@ -137,6 +139,35 @@ impl FreeSet {
     }
 }
 
+impl Clone for FreeSet {
+    fn clone(&self) -> Self {
+        let mut new_base_set = RBTree::new(FreeByBaseAdapter::new());
+        let mut new_length_set = RBTree::new(FreeByLengthAdapter::new());
+        let mut cursor = self.base_set.cursor();
+        while cursor.get().is_some() {
+            let free = cursor.get().unwrap();
+            let free = Rc::new(Free {
+                base: free.base,
+                length: free.length,
+                base_link: RBTreeLink::new(),
+                length_link: RBTreeLink::new(),
+            });
+            new_base_set.insert(free.clone());
+            new_length_set.insert(free.clone());
+            cursor.move_next();
+        }
+        Self {
+            base_set: new_base_set,
+            length_set: new_length_set,
+        }
+    }
+}
+
+// TODO: verify if i should actually do this
+
+unsafe impl Send for FreeSet {}
+unsafe impl Sync for FreeSet {}
+
 #[cfg(test)]
 mod test {
     use crate::free::FreeSet;
@@ -163,8 +194,3 @@ mod test {
         assert!(set.remove_range_by_length(1).is_ok());
     }
 }
-
-// TODO: verify if i should actually do this
-
-unsafe impl Send for FreeSet {}
-unsafe impl Sync for FreeSet {}
