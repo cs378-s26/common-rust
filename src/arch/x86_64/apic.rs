@@ -135,7 +135,7 @@ pub fn calibrate_apic_timer_with_tsc(tsc_freq_hz: u64) -> Option<u64> {
             }
         }
 
-        let apic_end_count = x2apic_read(x2regs::TIMER_CURRENT_COUNT) as u64;
+        let apic_end_count = x2apic_read(x2regs::TIMER_CURRENT_COUNT);
         let apic_ticks_elapsed = 0xFFFFFFFF_u64 - apic_end_count;
         let apic_freq_hz = (apic_ticks_elapsed * 1000) / calibration_time_ms;
 

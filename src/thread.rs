@@ -254,7 +254,9 @@ pub fn can_yield() -> bool {
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
-// Handles preemption from an interrupt context.
+/// Handles preemption from an interrupt context.
+/// # Safety
+/// This is sketchy
 pub unsafe fn preempt_from_interrupt(ctx: &InterruptContext) {
     if !can_yield_for_preempt() {
         return;
@@ -287,11 +289,6 @@ unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
     apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
 
-    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
-}
-
-// Called on CTX_SWITCH_STACK when a thread exits normally (no re-queuing needed).
-extern "C" fn go_to_idle_direct() -> ! {
     unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
 }
 
@@ -352,13 +349,8 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
             task();
         }
 
-        CAN_YIELD.store(false, Ordering::Relaxed);
-        CTX_GUARD.take();
-        thread_exit();
-
-        let stack: &[u8] = &(*CTX_SWITCH_STACK).0;
-        let stack_top = stack.as_ptr_range().end as u64;
-        unsafe { switch_stack(stack_top, go_to_idle_direct) }
+        suspend_to_thread(IDLE.get().unwrap().clone());
+        unreachable!()
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -393,5 +385,5 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
     GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR as u8);
+    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
 }

@@ -13,4 +13,4 @@ qemu.log
 .vscode/
 .zed/settings.json
 
-*.img
+disk.img
