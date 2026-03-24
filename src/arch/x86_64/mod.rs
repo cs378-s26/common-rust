@@ -7,7 +7,6 @@ use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
 pub mod apic;
-pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
@@ -18,7 +17,6 @@ mod tables;
 pub mod tsc;
 mod vmm;
 
-use crate::arch::IrqStateTrait;
 
 pub use asm::*;
 pub use context::Context;
@@ -102,10 +100,6 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
-    fn timer_ticks() -> u64 {
-        interrupt::timer_ticks()
-    }
-
     const PAGE_SIZE: usize = 4096;
 
     fn get_address_space() -> u64 {
@@ -120,9 +114,6 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
-    fn vaddr_to_paddr(space: u64, vaddr: u64) -> Option<u64> {
-        panic!("vaddr_to_paddr not implemented for x86_64");
-    }
 
     fn shutdown(err_code: u16) {
         debug::shutdown(err_code);
