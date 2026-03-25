@@ -1,6 +1,6 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
-use crate::print::{CharSink, kprintln, set_serial_backend};
+use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 
@@ -25,7 +25,7 @@ impl CharSink for UartPl011Driver {
 
 impl DeviceDriver for UartPl011Driver {
     fn name(&self) -> &str {
-        return "uart_pl011";
+        "uart_pl011"
     }
 
     fn init(&mut self) -> bool {
@@ -44,11 +44,11 @@ impl DeviceDriver for UartPl011Driver {
         } else {
             return false;
         }
-        return true;
+        true
     }
 
     fn device_type(&self) -> DeviceType {
-        return DeviceType::CHAR;
+        DeviceType::CHAR
     }
 }
 
@@ -58,22 +58,22 @@ impl DeviceDiscovery for UartPl011Discovery {
     // TODO this gives full ownership of the driver to the serial backend
     // instead of returning like normal.
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
-        if let DeviceNode::DTB(node) = node {
-            if let Some(c) = node.compatible() {
-                if c.all().any(|s| s == "arm,pl011") {
-                    if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
-                        let phys_address = reg.starting_address as usize;
-                        let mut uart_driver = UartPl011Driver {
-                            phys_address,
-                            virt_mapping: None,
-                        };
-                        if uart_driver.init() {
-                            set_serial_backend(Box::new(uart_driver));
-                        }
+        let DeviceNode::DTB(node) = node;
+        if let Some(c) = node.compatible() {
+            if c.all().any(|s| s == "arm,pl011") {
+                if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
+                    let phys_address = reg.starting_address as usize;
+                    let mut uart_driver = UartPl011Driver {
+                        phys_address,
+                        virt_mapping: None,
+                    };
+                    if uart_driver.init() {
+                        set_serial_backend(Box::new(uart_driver));
                     }
                 }
             }
         }
+
         None
     }
 }

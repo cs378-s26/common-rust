@@ -102,6 +102,7 @@ extern "C" fn unimplemented(e: &mut ExceptionContext) {
 //--------------------------------------------------------------------------------------------------
 
 /// The processing element's current privilege level.
+#[allow(dead_code)]
 pub fn current_privilege_level() -> &'static str {
     let mut el: u64;
     unsafe {
@@ -134,7 +135,7 @@ pub fn init_exceptions() {
     let vector_base_addr = unsafe { &exception_vector_table as *const _ as u64 };
 
     unsafe {
-        asm!("msr VBAR_EL1, {}", in(reg) (vector_base_addr as u64));
+        asm!("msr VBAR_EL1, {}", in(reg) (vector_base_addr));
     }
     kprintln!("{} enabled exceptions", CORE_ID.get());
 }

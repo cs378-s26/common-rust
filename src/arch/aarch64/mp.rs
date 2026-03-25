@@ -92,8 +92,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     exceptions::init_exceptions();
 
     gic::gicc_init();
-    unsafe {
-        interrupt::enable();
-        gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
-    }
+
+    interrupt::enable();
+    gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
 }

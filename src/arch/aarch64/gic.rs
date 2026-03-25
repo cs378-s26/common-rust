@@ -98,6 +98,6 @@ pub fn ack_irq() -> u32 {
 pub fn eoi(intid: u32) {
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     unsafe {
-        ((gicc_virt + GICC_EOIR) as *mut u32).write_volatile(intid as u32);
+        ((gicc_virt + GICC_EOIR) as *mut u32).write_volatile(intid);
     }
 }
