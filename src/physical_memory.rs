@@ -7,7 +7,7 @@ use crate::{
     kprintln,
 };
 use alloc::string::{String, ToString};
-use core::mem::drop;
+use core::{mem::drop, ptr};
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{HhdmRequest, MemoryMapRequest};
 use spin::{Mutex, Once}; // operations are quite short
@@ -153,4 +153,14 @@ pub fn frame_dealloc(frame: usize) {
         *((unwrap(&HHDM_OFFSET) + frame) as *mut usize) = *head;
     }
     *head = frame;
+}
+
+/// # Safety
+///
+/// This function treats src and dst as raw pointers to physical (not
+/// virtual) memory. It is expected that src and dst are NOT already
+/// adjusted by the HHDM offset, as this function does that for you.
+pub unsafe fn copy(src: usize, dst: usize, length: usize) {
+    let hhdm = HHDM_OFFSET.get().unwrap();
+    unsafe { ptr::copy_nonoverlapping((src + hhdm) as *const u8, (dst + hhdm) as *mut u8, length) };
 }

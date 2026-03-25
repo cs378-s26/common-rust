@@ -1,5 +1,5 @@
 use crate::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+    physical_memory::{HHDM_REQUEST, frame_alloc},
     virtual_memory::PagingOptions,
 };
 use core::arch::asm;
@@ -43,6 +43,15 @@ pub fn get_address_space() -> u64 {
         );
     }
     cr3
+}
+
+pub fn set_address_space(cr3: u64) {
+    unsafe {
+        asm!(
+            "mov cr3, {0}",
+            in(reg) cr3,
+        );
+    }
 }
 
 // TODO allocator wrapper is kinda dumb
@@ -119,12 +128,6 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         mapper.unmap(vpage)
     } {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI...
-        unsafe {
-            FrameDeallocatorWrapper {
-                inner: frame_dealloc,
-            }
-            .deallocate_frame(frame)
-        }; // no shared mappings for now
         Some(frame.start_address().as_u64()) // returning this will be useful when we allow shared mappings
     } else {
         None
