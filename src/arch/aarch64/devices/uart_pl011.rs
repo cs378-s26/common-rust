@@ -10,7 +10,9 @@ pub struct UartPl011Driver {
     virt_mapping: Option<VirtualMemoryAllocation>,
 }
 
+// implement char sink for the uart driver so it can be used as the serial backend
 impl CharSink for UartPl011Driver {
+
     unsafe fn putc(&self, c: u8) {
         if let Some(mapping) = &self.virt_mapping {
             unsafe {
@@ -28,6 +30,7 @@ impl DeviceDriver for UartPl011Driver {
         return "uart_pl011";
     }
 
+    // allocate virtual memory for the UART MMIO region
     fn init(&mut self) -> bool {
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
         let backing = Some(self.phys_address);
@@ -40,7 +43,6 @@ impl DeviceDriver for UartPl011Driver {
         );
         if let Some(mapping) = vm {
             self.virt_mapping = Some(mapping);
-            // set_serial_backend(Box::new(self));
         } else {
             return false;
         }
@@ -56,19 +58,19 @@ pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
 
-    // TODO this gives full ownership of the driver to the serial backend
-    // instead of returning like normal. 
+    // this gives full ownership of the driver to the serial backend
+    // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
-        if let DeviceNode::DTB(node) = node {
+        if let DeviceNode::DTB(node) = node { 
             if let Some(c) = node.compatible() {
-                if c.all().any(|s| s == "arm,pl011") {
+                if c.all().any(|s| s == "arm,pl011") { // check compatibility string for node, if it matches set it as serial
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let phys_address = reg.starting_address as usize;
                         let mut uart_driver = UartPl011Driver {
                             phys_address,
                             virt_mapping: None,
                         };
-                        if uart_driver.init() {
+                        if uart_driver.init() { // initialize the driver, allocating it's virtual memory mapping
                             set_serial_backend(Box::new(uart_driver));
                         }
                     }
