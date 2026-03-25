@@ -33,6 +33,7 @@ pub mod syscall;
 pub mod thread;
 pub mod vfs;
 pub mod virtual_memory;
+pub mod virtual_memory_2;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
