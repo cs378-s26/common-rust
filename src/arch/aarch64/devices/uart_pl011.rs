@@ -12,7 +12,6 @@ pub struct UartPl011Driver {
 
 // implement char sink for the uart driver so it can be used as the serial backend
 impl CharSink for UartPl011Driver {
-
     unsafe fn putc(&self, c: u8) {
         if let Some(mapping) = &self.virt_mapping {
             unsafe {
@@ -57,20 +56,21 @@ impl DeviceDriver for UartPl011Driver {
 pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
-
     // this gives full ownership of the driver to the serial backend
     // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
-        if let DeviceNode::DTB(node) = node { 
+        if let DeviceNode::DTB(node) = node {
             if let Some(c) = node.compatible() {
-                if c.all().any(|s| s == "arm,pl011") { // check compatibility string for node, if it matches set it as serial
+                if c.all().any(|s| s == "arm,pl011") {
+                    // check compatibility string for node, if it matches set it as serial
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let phys_address = reg.starting_address as usize;
                         let mut uart_driver = UartPl011Driver {
                             phys_address,
                             virt_mapping: None,
                         };
-                        if uart_driver.init() { // initialize the driver, allocating it's virtual memory mapping
+                        if uart_driver.init() {
+                            // initialize the driver, allocating it's virtual memory mapping
                             set_serial_backend(Box::new(uart_driver));
                         }
                     }
