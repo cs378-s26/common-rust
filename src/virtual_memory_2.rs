@@ -159,16 +159,16 @@ impl VirtualMemory {
             .get()
             .ok_or("nothing is mapped")?;
         if mapping.base + mapping.length <= vaddr {
-            todo!()
+            return Err("out of mapped range");
         }
         if cause.contains(PageFaultConditions::PRESENT) {
             self.invlpg(vaddr);
         }
-        if let Some((inode_key, offset, _)) = mapping.file.as_ref() {
+        if let Some((inode_key, offset, file_length)) = mapping.file.as_ref() {
             if mapping.shared {
                 self.handle_file_shared(vaddr, mapping, inode_key, offset)
             } else {
-                todo!()
+                self.handle_file_private(cause, vaddr, mapping, inode_key, offset, file_length)
             }
         } else {
             assert!(!mapping.shared);
@@ -203,6 +203,70 @@ impl VirtualMemory {
         self.vmap_write(vaddr, paddr);
         Ok(())
     }
+
+    fn handle_file_private(
+        &self,
+        cause: PageFaultConditions,
+        vaddr: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+        file_length: &Option<usize>,
+    ) -> Result<(), &'static str> {
+        assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
+        if let Some(file_length) = file_length
+            && self.handle_file_private_partial(vaddr, mapping, inode_key, offset, file_length)?
+        {
+            return Ok(());
+        }
+        let shared_key = PageKey::File {
+            inode_key: inode_key.clone(),
+            offset: *offset,
+        };
+        let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
+        if !cause.contains(PageFaultConditions::WRITE) {
+            self.vmap_read(vaddr, shared_paddr);
+            return Ok(());
+        }
+        let private_key = PageKey::Anonymous {
+            process_id: self.page_table,
+            virtual_address: vaddr,
+        };
+        let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
+        self.vmap_write(vaddr, private_paddr);
+        Ok(())
+    }
+
+    fn handle_file_private_partial(
+        &self,
+        vaddr: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+        file_length: &usize,
+    ) -> Result<bool, &'static str> {
+        if vaddr - mapping.base + Arch::PAGE_SIZE <= *file_length {
+            return Ok(false);
+        }
+        let private_key = PageKey::Anonymous {
+            process_id: Arch::get_address_space() as usize,
+            virtual_address: vaddr,
+        };
+        let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
+        if vaddr - mapping.base < *file_length {
+            let shared_key = PageKey::File {
+                inode_key: inode_key.clone(),
+                offset: vaddr - mapping.base + offset,
+            };
+            let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
+            unsafe {
+                let partial_file_length = file_length.rem_euclid(Arch::PAGE_SIZE);
+                physical_memory::copy(shared_paddr, private_paddr, partial_file_length);
+            }
+        }
+        self.vmap_write(vaddr, private_paddr);
+        Ok(true)
+    }
 }
 
 impl VirtualMemory {
@@ -219,6 +283,15 @@ impl VirtualMemory {
             vaddr as u64,
             paddr as u64,
             PagingOptions::PRESENT | PagingOptions::CACHEABLE | PagingOptions::WRITABLE,
+        );
+    }
+
+    fn vmap_read(&self, vaddr: usize, paddr: usize) {
+        Arch::virtual_map(
+            self.page_table as u64,
+            vaddr as u64,
+            paddr as u64,
+            PagingOptions::PRESENT | PagingOptions::CACHEABLE,
         );
     }
 }
