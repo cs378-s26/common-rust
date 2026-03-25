@@ -1,3 +1,4 @@
+pub mod virtio_blk;
 
 pub enum BlockError {
     InvalidBlockIndex,

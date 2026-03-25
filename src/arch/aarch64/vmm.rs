@@ -1,10 +1,32 @@
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
+use crate::print::kprintln;
 use bitflags::bitflags;
 use core::arch::asm;
 use spin::Mutex;
 
 static VMM_PROTECTOR: Mutex<()> = Mutex::new(()); // TODO make this address space specific
+
+// useful docs for this: https://developer.arm.com/documentation/ddi0601/2025-12/AArch64-Registers/MAIR-EL1--Memory-Attribute-Indirection-Register--EL1-
+pub fn configure_vm() {
+
+    // MAIR_EL1 stands for memory attribute indirection register, for each PT entry you select an attribute from this
+    // register to determine caching and ordering, this is set up here 
+    let normal_memory_cacheable = 0xFF;
+    let normal_memory_non_cacheable = 0x44 << 8; // each index is 8 bites, so this sets it to index 1
+    let device_memory = 0x00 << 16; // nGnRnE, obviously this does nothing in the or below but included here for clarity
+    let mair_el1 = normal_memory_cacheable | normal_memory_non_cacheable | device_memory;
+    unsafe {
+        core::arch::asm!(
+            "msr MAIR_EL1, {}",
+            "isb",
+            in(reg) mair_el1,
+            options(nostack, preserves_flags)
+        );
+    }  
+    kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
+
+}
 
 // TODO allow for shared mappings and write-through caching
 bitflags! {
@@ -12,8 +34,9 @@ bitflags! {
         const VALID = 1 << 0;
         const TABLE = 1 << 1; // for levels 0-2 this means entry points to valid page table, for level 3 this means valid page mapping
 
-        const DEVICE_MEMORY = 0b11 << 2; // MAIR_EL1 attr index for device memory, specifically nGnRnE
-        const NORMAL_MEMORY = 0b00 << 2; // MAIR_EL1 attr index for normal memory
+        const NORMAL_MEMORY_CACHEABLE = 0b00 << 2; // MAIR_EL1 attr index for normal memory
+        const NORMAL_MEMORY_NON_CACHEABLE = 0b01 << 2; // MAIR_EL1 attr index for normal memory, but uncachable
+        const DEVICE_MEMORY = 0b10 << 2; // MAIR_EL1 attr index for device memory, specifically nGnRnE
 
         // access permission (AP) bits:
         const RW_EL1 = 0b00 << 6; // Read/Write at EL1, no access for EL0
@@ -97,10 +120,12 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     if !options.contains(PagingOptions::EXECUTABLE) {
         attr |= PageTableEntryFlags::UXN.bits() | PageTableEntryFlags::PXN.bits(); // Unprivileged and Privileged Execute Never
     }
-    if options.contains(PagingOptions::CACHEABLE) {
-        attr |= PageTableEntryFlags::NORMAL_MEMORY.bits();
-    } else {
+    if options.contains(PagingOptions::DEVICE_MEMORY) {
         attr |= PageTableEntryFlags::DEVICE_MEMORY.bits();
+    } else if options.contains(PagingOptions::CACHEABLE) {
+        attr |= PageTableEntryFlags::NORMAL_MEMORY_CACHEABLE.bits();
+    } else {
+        attr |= PageTableEntryFlags::NORMAL_MEMORY_NON_CACHEABLE.bits();
     }
 
     attr
