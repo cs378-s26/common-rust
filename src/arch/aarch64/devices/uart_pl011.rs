@@ -59,18 +59,17 @@ impl DeviceDiscovery for UartPl011Discovery {
     // instead of returning like normal.
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
         let DeviceNode::DTB(node) = node;
-        if let Some(c) = node.compatible() {
-            if c.all().any(|s| s == "arm,pl011") {
-                if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
-                    let phys_address = reg.starting_address as usize;
-                    let mut uart_driver = UartPl011Driver {
-                        phys_address,
-                        virt_mapping: None,
-                    };
-                    if uart_driver.init() {
-                        set_serial_backend(Box::new(uart_driver));
-                    }
-                }
+        if let Some(c) = node.compatible()
+            && c.all().any(|s| s == "arm,pl011")
+            && let Some(reg) = node.reg().and_then(|mut r| r.next())
+        {
+            let phys_address = reg.starting_address as usize;
+            let mut uart_driver = UartPl011Driver {
+                phys_address,
+                virt_mapping: None,
+            };
+            if uart_driver.init() {
+                set_serial_backend(Box::new(uart_driver));
             }
         }
 
