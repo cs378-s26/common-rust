@@ -10,6 +10,7 @@ pub enum BlockDeviceError {
     ReadError,
     WriteError,
     InvalidBlockIndex,
+    InvalidBufferSize,
     Other(String),
 }
 
@@ -24,7 +25,8 @@ pub trait BlockDevice: Device {
     fn block_size(&self) -> usize;
     fn block_count(&self) -> usize;
 
-    // this allows for possible efficient buffering of reads/writes by the disk driver
+    // This keeps the lower-level interface allocation-free for callers while
+    // still allowing drivers to batch whole-block transfers efficiently.
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],
@@ -40,7 +42,7 @@ pub trait BlockDevice: Device {
     fn flush(&mut self) -> Result<(), BlockDeviceError>;
     fn dma_physical_address_size(&self) -> PhysicalAddressSize;
 
-    // read starting from some byte offset until buffer is full
+    // Read starting from some byte offset until the buffer is full.
     fn read(&mut self, byte_offset: usize, buffer: &mut [u8]) -> Result<usize, BlockDeviceError> {
         let block_size = self.block_size();
         if block_size == 0 {
@@ -55,75 +57,7 @@ pub trait BlockDevice: Device {
         let start_idx = byte_offset / block_size;
         let end_idx = (byte_offset + buffer.len() - 1) / block_size;
 
-        // this is for handling partial block reads/writes
-        let start_offset = byte_offset % block_size;
-        let end_offset = (byte_offset + buffer.len()) % block_size;
-
-        let first_full_idx = if start_offset == 0 {
-            start_idx
-        } else {
-            start_idx + 1
-        };
-
-        let last_full_idx = if end_offset == 0 {
-            end_idx
-        } else {
-            end_idx.saturating_sub(1) // saturating sub to avoid underflow if end_idx is 0
-        };
-
-        // if there are middle blocks that can be read in full, read them batched for efficiency
-        if first_full_idx <= last_full_idx {
-            let mid_idxs: Vec<usize> = (first_full_idx..last_full_idx + 1).collect();
-            let mid_start = mid_idxs[0] * block_size;
-            let mid_end = (mid_idxs[mid_idxs.len() - 1] + 1) * block_size;
-            let mid_buffer = &mut buffer[mid_start - byte_offset..mid_end - byte_offset];
-            let mut mid_buffers: Vec<&mut [u8]> = mid_buffer.chunks_exact_mut(block_size).collect();
-
-            // vecs get changed to be slices to match function call
-            self.read_blocks(&mid_idxs, &mut mid_buffers)?;
-            total_read += mid_buffer.len();
-        }
-
-        // read in partial first block. If whole read is within one block, this is the code that should run
-        if first_full_idx > start_idx {
-            let mut temp = vec![0u8; block_size];
-            let mut temp_buf = [temp.as_mut_slice()];
-            self.read_blocks(&[start_idx], &mut temp_buf)?;
-            let copy_len = core::cmp::min(block_size - start_offset, buffer.len());
-            buffer[..copy_len].copy_from_slice(&temp[start_offset..start_offset + copy_len]);
-            total_read += copy_len;
-        }
-
-        // read in partial last block if it's different from the first block
-        if last_full_idx < end_idx && start_idx != end_idx {
-            let mut temp = vec![0u8; block_size];
-            let mut temp_buf = [temp.as_mut_slice()];
-            self.read_blocks(&[end_idx], &mut temp_buf)?;
-            let copy_len = end_offset;
-            let buffer_len = buffer.len();
-            buffer[buffer_len - copy_len..].copy_from_slice(&temp[..copy_len]);
-            total_read += copy_len;
-        }
-
-        Ok(total_read)
-    }
-
-    // write starting from some byte offset until buffer is fully written, similar logic to above read
-    fn write(&mut self, byte_offset: usize, buffer: &[u8]) -> Result<usize, BlockDeviceError> {
-        let block_size = self.block_size();
-        if block_size == 0 {
-            return Err(BlockDeviceError::Other("block size cannot be zero".into()));
-        }
-        if buffer.is_empty() {
-            return Ok(0);
-        }
-
-        let mut total_written = 0;
-
-        let start_idx = byte_offset / block_size;
-        let end_idx = (byte_offset + buffer.len() - 1) / block_size;
-
-        // Offsets within the first and last touched blocks.
+        // This is for handling partial block reads and writes.
         let start_offset = byte_offset % block_size;
         let end_offset = (byte_offset + buffer.len()) % block_size;
 
@@ -139,13 +73,80 @@ pub trait BlockDevice: Device {
             end_idx.saturating_sub(1)
         };
 
-        // Write any fully covered middle blocks directly from the caller's buffer.
+        // If there are middle blocks that can be read in full, read them
+        // batched for efficiency.
         if first_full_idx <= last_full_idx {
             let mid_idxs: Vec<usize> = (first_full_idx..=last_full_idx).collect();
+            let mid_start = mid_idxs[0] * block_size;
+            let mid_end = (mid_idxs[mid_idxs.len() - 1] + 1) * block_size;
+            let mid_buffer = &mut buffer[mid_start - byte_offset..mid_end - byte_offset];
+            let mut mid_buffers: Vec<&mut [u8]> = mid_buffer.chunks_exact_mut(block_size).collect();
 
+            self.read_blocks(&mid_idxs, &mut mid_buffers)?;
+            total_read += mid_buffer.len();
+        }
+
+        // Read in partial first block. If the whole read is within one block,
+        // this is the code path that should run.
+        if first_full_idx > start_idx {
+            let mut temp = vec![0u8; block_size];
+            let mut temp_buf = [temp.as_mut_slice()];
+            self.read_blocks(&[start_idx], &mut temp_buf)?;
+            let copy_len = core::cmp::min(block_size - start_offset, buffer.len());
+            buffer[..copy_len].copy_from_slice(&temp[start_offset..start_offset + copy_len]);
+            total_read += copy_len;
+        }
+
+        // Read in partial last block if it is different from the first block.
+        if last_full_idx < end_idx && start_idx != end_idx {
+            let mut temp = vec![0u8; block_size];
+            let mut temp_buf = [temp.as_mut_slice()];
+            self.read_blocks(&[end_idx], &mut temp_buf)?;
+            let copy_len = end_offset;
+            let buffer_len = buffer.len();
+            buffer[buffer_len - copy_len..].copy_from_slice(&temp[..copy_len]);
+            total_read += copy_len;
+        }
+
+        Ok(total_read)
+    }
+
+    // Write starting from some byte offset until the buffer is fully written.
+    fn write(&mut self, byte_offset: usize, buffer: &[u8]) -> Result<usize, BlockDeviceError> {
+        let block_size = self.block_size();
+        if block_size == 0 {
+            return Err(BlockDeviceError::Other("block size cannot be zero".into()));
+        }
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let mut total_written = 0;
+
+        let start_idx = byte_offset / block_size;
+        let end_idx = (byte_offset + buffer.len() - 1) / block_size;
+
+        let start_offset = byte_offset % block_size;
+        let end_offset = (byte_offset + buffer.len()) % block_size;
+
+        let first_full_idx = if start_offset == 0 {
+            start_idx
+        } else {
+            start_idx + 1
+        };
+
+        let last_full_idx = if end_offset == 0 {
+            end_idx
+        } else {
+            end_idx.saturating_sub(1)
+        };
+
+        // Write any fully covered middle blocks directly from the caller's
+        // buffer.
+        if first_full_idx <= last_full_idx {
+            let mid_idxs: Vec<usize> = (first_full_idx..=last_full_idx).collect();
             let mid_start = first_full_idx * block_size;
             let mid_end = (last_full_idx + 1) * block_size;
-
             let mid_buffer = &buffer[mid_start - byte_offset..mid_end - byte_offset];
             let mid_buffers: Vec<&[u8]> = mid_buffer.chunks_exact(block_size).collect();
 

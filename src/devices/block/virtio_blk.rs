@@ -118,9 +118,7 @@ impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 
 fn check_buffer_size(buffer: &[u8], block_size: usize) -> Result<(), BlockDeviceError> {
     if buffer.len() != block_size {
-        return Err(BlockDeviceError::Other(
-            "buffer size must be equal to block size".into(),
-        ));
+        return Err(BlockDeviceError::InvalidBufferSize);
     }
     Ok(())
 }
