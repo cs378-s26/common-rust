@@ -13,7 +13,6 @@ pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 // parse the device tree and match devices to drivers. This should be called after all system drivers have been set up in SYSTEM_DRIVERS
 pub fn parse_devices() {
-
     // get dtb pointer
     if let Some(resp) = DTB_REQUEST.get_response() {
         let dtb_addr = resp.dtb_ptr();
