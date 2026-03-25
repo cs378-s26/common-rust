@@ -14,7 +14,7 @@
 
 extern crate alloc;
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU64, Ordering};
 use kernel_common::MP_REQUEST;
 use kernel_common::arch::{Arch, ArchTrait, KernelEntryTrait};
 use kernel_common::coroutine::{init_coroutine_executor, init_coroutine_queue};
@@ -84,7 +84,10 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     kernel_common::test_utils::rust_panic_test_impl(info);
 }
 
+static LATCH: AtomicU64 = AtomicU64::new(0);
+
 fn test01() {
+    LATCH.fetch_add(1, Ordering::SeqCst);
     let process = Process::new();
     Process::run(process.clone(), move || {
         let x = process
@@ -104,10 +107,13 @@ fn test01() {
             assert!(*(x as *const u8) == b'a');
             *(x as *mut u8) = b'c';
         };
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }
 
 fn test02() {
+    LATCH.fetch_add(1, Ordering::SeqCst);
     let process = Process::new();
     Process::run(process.clone(), move || {
         let x = process
@@ -116,7 +122,7 @@ fn test02() {
             .unwrap();
         let y = process
             .virtual_memory
-            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, true, None)
+            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, false, None)
             .unwrap();
         assert!(x != y);
         unsafe {
@@ -129,10 +135,13 @@ fn test02() {
             assert!(*((x + 2) as *const u8) == b't');
             assert!(*((y + 2) as *const u8) == 0);
         };
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }
 
 fn test03() {
+    LATCH.fetch_add(1, Ordering::SeqCst);
     let process = Process::new();
     Process::run(process.clone(), move || {
         let x = process
@@ -148,7 +157,9 @@ fn test03() {
             assert!(*((x + 1) as *const u8) == b'o');
             assert!(*((x + 2) as *const u8) == b'g');
         };
+        LATCH.fetch_sub(1, Ordering::SeqCst);
     });
+    while LATCH.load(Ordering::SeqCst) > 0 {}
 }
 
 #[test_case]
