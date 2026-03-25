@@ -1,3 +1,6 @@
+// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
+// removing this warning for now
+#![allow(irrefutable_let_patterns)]
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
@@ -10,6 +13,7 @@ pub struct UartPl011Driver {
     virt_mapping: Option<VirtualMemoryAllocation>,
 }
 
+// implement char sink for the uart driver so it can be used as the serial backend
 impl CharSink for UartPl011Driver {
     unsafe fn putc(&self, c: u8) {
         if let Some(mapping) = &self.virt_mapping {
@@ -28,6 +32,7 @@ impl DeviceDriver for UartPl011Driver {
         "uart_pl011"
     }
 
+    // allocate virtual memory for the UART MMIO region
     fn init(&mut self) -> bool {
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
         let backing = Some(self.phys_address);
@@ -40,7 +45,6 @@ impl DeviceDriver for UartPl011Driver {
         );
         if let Some(mapping) = vm {
             self.virt_mapping = Some(mapping);
-            // set_serial_backend(Box::new(self));
         } else {
             return false;
         }
@@ -55,11 +59,11 @@ impl DeviceDriver for UartPl011Driver {
 pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
-    // TODO this gives full ownership of the driver to the serial backend
-    // instead of returning like normal.
+    // this gives full ownership of the driver to the serial backend
+    // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
-        let DeviceNode::DTB(node) = node;
-        if let Some(c) = node.compatible()
+        if let DeviceNode::DTB(node) = node
+            && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,pl011")
             && let Some(reg) = node.reg().and_then(|mut r| r.next())
         {
@@ -69,10 +73,10 @@ impl DeviceDiscovery for UartPl011Discovery {
                 virt_mapping: None,
             };
             if uart_driver.init() {
+                // initialize the driver, allocating it's virtual memory mapping
                 set_serial_backend(Box::new(uart_driver));
             }
         }
-
         None
     }
 }
