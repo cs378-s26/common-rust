@@ -1,7 +1,6 @@
-// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type, 
+// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
 // removing this warning for now
-#[allow(irrefutable_let_patterns)]
-
+#![allow(irrefutable_let_patterns)]
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
