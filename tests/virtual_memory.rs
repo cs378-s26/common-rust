@@ -84,9 +84,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     kernel_common::test_utils::rust_panic_test_impl(info);
 }
 
-#[test_case]
-fn basic() {
-    VFS.mount(RAMFilesystem::new());
+fn test01() {
     let process = Process::new();
     Process::run(process.clone(), move || {
         let x = process
@@ -99,6 +97,7 @@ fn basic() {
             .unwrap();
         assert!(x != y);
         unsafe {
+            assert!(*(y as *const u8) == b'c');
             *(x as *mut u8) = b'b';
             assert!(*(y as *const u8) == b'b');
             *(y as *mut u8) = b'a';
@@ -106,4 +105,36 @@ fn basic() {
             *(x as *mut u8) = b'c';
         };
     });
+}
+
+fn test02() {
+    let process = Process::new();
+    Process::run(process.clone(), move || {
+        let x = process
+            .virtual_memory
+            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+            .unwrap();
+        let y = process
+            .virtual_memory
+            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, true, None)
+            .unwrap();
+        assert!(x != y);
+        unsafe {
+            assert!(*(y as *const u8) == b'c');
+            *(x as *mut u8) = b'b';
+            assert!(*(y as *const u8) == b'c');
+            *(y as *mut u8) = b'a';
+            assert!(*(x as *const u8) == b'b');
+            *(x as *mut u8) = b'c';
+            assert!(*((x + 2) as *const u8) == b't');
+            assert!(*((y + 2) as *const u8) == 0);
+        };
+    });
+}
+
+#[test_case]
+fn run() {
+    VFS.mount(RAMFilesystem::new());
+    test01();
+    test02();
 }
