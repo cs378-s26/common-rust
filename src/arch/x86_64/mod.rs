@@ -119,6 +119,10 @@ impl ArchTrait for Arch {
         get_address_space()
     }
 
+    fn set_address_space(space: u64) {
+        set_address_space(space)
+    }
+
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
         vmap(space, vaddr, paddr, options);
     }
