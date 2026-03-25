@@ -25,8 +25,10 @@ use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
+    process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
+    virtual_memory_2::VirtualMemory,
 };
 
 pub struct Thread {
@@ -40,6 +42,7 @@ pub struct Thread {
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
+    pub process: Once<Arc<Process>>,
 }
 
 impl Thread {
@@ -52,6 +55,7 @@ impl Thread {
             rb_link: RBTreeAtomicLink::new(),
             tls: Pin::new(tls),
             tls_addr,
+            process: Once::new(),
         });
 
         THIS_THREAD
@@ -178,6 +182,11 @@ fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
 
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+    if let Some(process) = thread.process.get() {
+        Arch::set_address_space(process.virtual_memory.get_page_table() as u64);
+    } else {
+        Arch::set_address_space(VirtualMemory::get_kernel_page_table() as u64);
+    }
     CURRENT_THREAD.set(Some(thread));
 }
 

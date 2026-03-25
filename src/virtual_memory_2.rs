@@ -1,12 +1,20 @@
 use crate::{
     arch::{Arch, ArchTrait},
     freeset::FreeSet,
+    physical_memory,
     sync::{IntMutex, MutexLike},
     vfs::INodeKey,
 };
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use intrusive_collections::{KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
+use spin::Once;
+
+const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
+static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);
+const USERSPACE_START: usize = 0x10000;
+const USERSPACE_END: usize = 0x8000_0000_0000_0000;
+static KERNEL_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
     #[allow(unused)]
@@ -27,14 +35,18 @@ impl<'a> KeyAdapter<'a> for MappingAdapter {
     }
 }
 
-const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
-static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub struct VirtualMemory {
     free_set: IntMutex<FreeSet>,
     active_set: IntMutex<RBTree<MappingAdapter>>,
+    page_table: usize,
 }
 
 impl VirtualMemory {
+    pub fn init() {
+        let kernel_page_table = KERNEL_PAGE_TABLE.call_once(|| Arch::get_address_space() as usize);
+        assert!(kernel_page_table.is_multiple_of(Arch::PAGE_SIZE));
+    }
+
     pub fn mmap(
         &self,
         file: Option<(INodeKey, usize, Option<usize>)>,
@@ -85,5 +97,40 @@ impl VirtualMemory {
             link: RBTreeLink::new(),
         }));
         Ok(base)
+    }
+
+    pub fn new() -> Self {
+        let mut set = FreeSet::new();
+        set.add_range(USERSPACE_START, USERSPACE_END - USERSPACE_START)
+            .unwrap();
+        Self {
+            free_set: IntMutex::new(set),
+            active_set: IntMutex::new(RBTree::new(MappingAdapter::new())),
+            page_table: Self::new_page_table(),
+        }
+    }
+
+    pub fn get_page_table(&self) -> usize {
+        self.page_table
+    }
+
+    pub fn get_kernel_page_table() -> usize {
+        *KERNEL_PAGE_TABLE.get().unwrap()
+    }
+}
+
+impl VirtualMemory {
+    fn new_page_table() -> usize {
+        let page_table = physical_memory::frame_alloc();
+        unsafe {
+            physical_memory::copy(Self::get_kernel_page_table(), page_table, Arch::PAGE_SIZE)
+        };
+        page_table
+    }
+}
+
+impl Default for VirtualMemory {
+    fn default() -> Self {
+        Self::new()
     }
 }

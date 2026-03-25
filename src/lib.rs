@@ -25,8 +25,9 @@ pub mod mp;
 pub mod panic;
 pub mod physical_memory;
 pub mod print;
-pub mod ramfs;
+pub mod process;
 pub mod ramdisk;
+pub mod ramfs;
 pub mod state;
 pub mod sync;
 pub mod syscall;
@@ -44,6 +45,7 @@ use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
+use crate::virtual_memory_2::VirtualMemory;
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -135,6 +137,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+    VirtualMemory::init();
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();
