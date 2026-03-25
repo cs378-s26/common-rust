@@ -92,11 +92,21 @@ fn test01() {
     Process::run(process.clone(), move || {
         let x = process
             .virtual_memory
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+            .mmap(
+                Some((INodeKey::new(0, 1), 0, None)),
+                Arch::PAGE_SIZE,
+                true,
+                None,
+            )
             .unwrap();
         let y = process
             .virtual_memory
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+            .mmap(
+                Some((INodeKey::new(0, 1), 0, None)),
+                Arch::PAGE_SIZE,
+                true,
+                None,
+            )
             .unwrap();
         assert!(x != y);
         unsafe {
@@ -118,22 +128,47 @@ fn test02() {
     Process::run(process.clone(), move || {
         let x = process
             .virtual_memory
-            .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+            .mmap(
+                Some((INodeKey::new(0, 2), 0, None)),
+                Arch::PAGE_SIZE,
+                true,
+                None,
+            )
             .unwrap();
         let y = process
             .virtual_memory
-            .mmap(Some((INodeKey::new(0, 1), 0, Some(2))), 4096, false, None)
+            .mmap(
+                Some((INodeKey::new(0, 2), 0, Some(Arch::PAGE_SIZE + 2))),
+                Arch::PAGE_SIZE * 3,
+                false,
+                None,
+            )
             .unwrap();
         assert!(x != y);
         unsafe {
-            assert!(*(y as *const u8) == b'c');
+            // COW for first page
+            assert!(*(y as *const u8) == b'd');
             *(x as *mut u8) = b'b';
-            assert!(*(y as *const u8) == b'c');
-            *(y as *mut u8) = b'a';
+            assert!(*(y as *const u8) == b'b');
+            *(y as *mut u8) = b'l';
             assert!(*(x as *const u8) == b'b');
-            *(x as *mut u8) = b'c';
-            assert!(*((x + 2) as *const u8) == b't');
-            assert!(*((y + 2) as *const u8) == 0);
+            *(x as *mut u8) = b'd';
+
+            // COR for second page
+            assert!(*((y + Arch::PAGE_SIZE) as *const u8) == b'o');
+            *((x + Arch::PAGE_SIZE) as *mut u8) = b'l';
+            assert!(*((y + Arch::PAGE_SIZE) as *const u8) == b'o');
+            *((y + Arch::PAGE_SIZE) as *mut u8) = b'm';
+            assert!(*((x + Arch::PAGE_SIZE) as *const u8) == b'l');
+            *((x + Arch::PAGE_SIZE) as *mut u8) = b'o';
+            for i in 2..Arch::PAGE_SIZE {
+                assert!(*((y + Arch::PAGE_SIZE + i) as *const u8) == 0);
+            }
+
+            // Blank third page
+            for i in 0..Arch::PAGE_SIZE {
+                assert!(*((y + 2 * Arch::PAGE_SIZE + i) as *const u8) == 0);
+            }
         };
         LATCH.fetch_sub(1, Ordering::SeqCst);
     });
@@ -146,7 +181,7 @@ fn test03() {
     Process::run(process.clone(), move || {
         let x = process
             .virtual_memory
-            .mmap(None, 4096, false, None)
+            .mmap(None, Arch::PAGE_SIZE, false, None)
             .unwrap();
         unsafe {
             *(x as *mut u8) = b'd';
