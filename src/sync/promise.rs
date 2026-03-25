@@ -31,6 +31,9 @@ struct PromiseState<T> {
     waiters: ThreadQueue,
 }
 
+/// Write-once shared value. set() panics if called more than once.
+/// get() requires T: Clone and returns a clone of the value each time.
+/// If called from a context that cannot yield, get() spins until the value is set.
 pub struct Promise<T> {
     state: Lazy<IntMutex<PromiseState<T>>>,
 }

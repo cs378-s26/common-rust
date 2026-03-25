@@ -30,6 +30,10 @@ struct SemState {
     waiters: ThreadQueue,
 }
 
+/// Counting semaphore. down() blocks until a permit is available up() releases one.
+///
+/// If called from a context that cannot yield (like an interrupt handler), down() will
+/// spin instead of sleeping. Blocking behavior requires a thread context.
 pub struct Semaphore {
     state: IntMutex<SemState>,
 }

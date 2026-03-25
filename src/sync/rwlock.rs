@@ -53,6 +53,12 @@ impl<'a> DerefMut for WriteWaitGuard<'a> {
     }
 }
 
+/// Reader-writer lock. Multiple readers can hold the lock simultaneously writers get
+/// exclusive access.
+///
+/// This is writer-preferring: once a writer is waiting, new readers will block until
+/// the writer has gone through. This prevents writers from starving behind a steady
+/// stream of readers.
 pub struct RwLock<T> {
     data: UnsafeCell<T>,
     state: Lazy<IntMutex<RwState>>,
