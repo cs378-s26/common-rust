@@ -13,11 +13,15 @@ pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 // parse the device tree and match devices to drivers. This should be called after all system drivers have been set up in SYSTEM_DRIVERS
 pub fn parse_devices() {
+
+    // get dtb pointer
     if let Some(resp) = DTB_REQUEST.get_response() {
         let dtb_addr = resp.dtb_ptr();
         let fdt = unsafe {
             fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
         };
+
+        // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
         for node in fdt.all_nodes() {
             for driver in SYSTEM_DRIVERS.lock().iter() {
                 let matched_device = driver.am_i_this(DeviceNode::DTB(node));
