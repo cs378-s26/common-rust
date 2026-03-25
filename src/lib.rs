@@ -20,6 +20,7 @@ pub mod freeset;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
+pub mod page_cache;
 pub mod physical_memory;
 pub mod print;
 pub mod process;
