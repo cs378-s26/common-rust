@@ -4,7 +4,7 @@ use crate::*;
 
 #[inline(always)]
 #[allow(dead_code)]
-pub fn rust_panic_test_impl(info: &core::panic::PanicInfo) -> ! {
+pub fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
     match info.location() {
         Some(location) => kprintln!(
             "panic: {}\nat {}:{}:{}\n{}",
