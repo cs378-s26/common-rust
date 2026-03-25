@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 
 pub mod uart_pl011;
 use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
-use crate::print::{kprintln, set_serial_backend};
 use crate::sync::MutexLike;
 use fdt;
 use limine::request::DeviceTreeBlobRequest;
