@@ -137,18 +137,18 @@ mod test {
 
         small.read_page(paddr as *mut u8, 0).unwrap();
         unsafe {
-            assert!(*((paddr + hhdm + 0) as *const u8) == b'c');
+            assert!(*((paddr + hhdm) as *const u8) == b'c');
             assert!(*((paddr + hhdm + 1) as *const u8) == b'a');
             assert!(*((paddr + hhdm + 2) as *const u8) == b't');
-            *((paddr + hhdm + 0) as *mut u8) = b'b';
+            *((paddr + hhdm) as *mut u8) = b'b';
         }
 
         small.write_page(paddr as *const u8, 0).unwrap();
-        unsafe { *((paddr + hhdm + 0) as *mut u8) = b'c' };
+        unsafe { *((paddr + hhdm) as *mut u8) = b'c' };
 
         small.read_page(paddr as *mut u8, 0).unwrap();
         unsafe {
-            let b = *((paddr + hhdm + 0) as *const u8);
+            let b = *((paddr + hhdm) as *const u8);
             assert!(b == b'b');
         }
 
@@ -165,7 +165,7 @@ mod test {
 
         big.read_page(paddr as *mut u8, 0).unwrap();
         unsafe {
-            let d = *((paddr + hhdm + 0) as *const u8);
+            let d = *((paddr + hhdm) as *const u8);
             let o = *((paddr + hhdm + 1) as *const u8);
             let g = *((paddr + hhdm + 2) as *const u8);
             assert!(d == b'd');
@@ -175,7 +175,7 @@ mod test {
 
         big.read_page(paddr as *mut u8, 4096).unwrap();
         unsafe {
-            let o = *((paddr + hhdm + 0) as *const u8);
+            let o = *((paddr + hhdm) as *const u8);
             let g = *((paddr + hhdm + 1) as *const u8);
             let d = *((paddr + hhdm + 2) as *const u8);
             assert!(o == b'o');
