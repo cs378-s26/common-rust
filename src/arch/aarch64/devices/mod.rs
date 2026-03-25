@@ -28,19 +28,18 @@ pub fn parse_devices() {
         };
 
         // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
-        for driver in SYSTEM_DRIVERS.lock().iter() {
-            for node in fdt.all_nodes() {
-                let matched_device: Option<DeviceType> = driver.am_i_this(DeviceNode::DTB(node));
-                if matched_device.is_some() {
+        let drivers = SYSTEM_DRIVERS.lock();
+        for node in fdt.all_nodes() {
+            for driver in drivers.iter() {
+                if let Some(device) = driver.am_i_this(DeviceNode::DTB(node)) {
                     kprintln!("{} driver linked", driver.name());
-                }
-                if let Some(device) = matched_device {
                     match device {
                         DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
                         DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
                         DeviceType::Network(d) => NETWORK_DEVICES.lock().push(d),
                         DeviceType::Special => {} // they handle themselves.
                     }
+                    break;
                 }
             }
         }
