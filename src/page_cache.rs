@@ -38,12 +38,18 @@ impl PageCache {
         Ok(paddr)
     }
 
+    fn get_anon_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
+        let paddr = physical_memory::frame_alloc();
+        self.map.insert(key.clone(), Page { address: paddr });
+        Ok(paddr)
+    }
+
     pub fn get_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
         match self.map.get_mut(key) {
             Some(page) => Ok(page.address),
             None => match key {
                 PageKey::File { inode_key, offset } => self.get_file_page(key, inode_key, offset),
-                _ => todo!(),
+                key => self.get_anon_page(key),
             },
         }
     }

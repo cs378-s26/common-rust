@@ -132,9 +132,29 @@ fn test02() {
     });
 }
 
+fn test03() {
+    let process = Process::new();
+    Process::run(process.clone(), move || {
+        let x = process
+            .virtual_memory
+            .mmap(None, 4096, false, None)
+            .unwrap();
+        unsafe {
+            *(x as *mut u8) = b'd';
+            *((x + 1) as *mut u8) = b'o';
+            *((x + 2) as *mut u8) = b'g';
+
+            assert!(*(x as *const u8) == b'd');
+            assert!(*((x + 1) as *const u8) == b'o');
+            assert!(*((x + 2) as *const u8) == b'g');
+        };
+    });
+}
+
 #[test_case]
 fn run() {
     VFS.mount(RAMFilesystem::new());
     test01();
     test02();
+    test03();
 }
