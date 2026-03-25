@@ -1,17 +1,17 @@
 extern crate virtio_drivers;
-// use super::{BlockDevice, BlockError, PhysicalAddressSize};
+
 use super::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::dma::MmioRegion;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
+use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
-// wrapper around the virtio blk driver containing the necessary hal implementation for it to work
-// with our system + the system block device trait
-// view crate and specs here: https://docs.rs/virtio-drivers/latest/virtio_drivers/
+
+// Wrapper around the virtio blk driver containing the necessary HAL
+// implementation for it to work with our system block device trait.
 pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
     blk: VirtIOBlk<H, T>,
 }
@@ -29,7 +29,7 @@ impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
         let sectors_per_block = self.block_size() / SECTOR_SIZE;
         let sector_idx = block_idx * sectors_per_block;
         self.blk
-            .read_blocks(sector_idx, buffer) // this uses virtio driver's internal read_blocks, which is synchronous
+            .read_blocks(sector_idx, buffer)
             .map_err(|_| BlockDeviceError::ReadError)?;
         Ok(())
     }
@@ -50,7 +50,6 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
         "virtio_blk"
     }
 
-    // no real buffering here, just loop through and read all blocks individually, same logic for write
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],
@@ -88,6 +87,7 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 
         Ok(())
     }
+
     fn flush(&mut self) -> Result<(), BlockDeviceError> {
         self.blk
             .flush()
@@ -111,7 +111,6 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     #[allow(unused_variables)]
     fn ioctl(&self, request: u64, arg1: u64, arg2: u64) -> u64 {
-        // No special ioctls implemented for the virtio block device yet.
         0
     }
 }
@@ -125,43 +124,61 @@ fn check_buffer_size(buffer: &[u8], block_size: usize) -> Result<(), BlockDevice
 
 pub struct VirtioBlkHal;
 
-// necessary struct for virtio driver to communicate with hardware.
 unsafe impl Hal for VirtioBlkHal {
-    // buffer direction is used to determine writability and readability of the buffer between device and host, for now ignored
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-
         let paddr = alloc_frames(pages) as u64;
         let vaddr = paddr + hhdm as u64;
-        // zero the frames
-        // TODO: thankfully virtio-blk is dma-coherent (as seen by device tree property dma-coherent),
-        // so the hardware will handle cache coherency for us, but on aarch64 this is not always assumed,
-        // so we need to check if we have to map memory as non-cacheable. In order to do this safely,
-        // we first need TLB shootdowns
+
+        // Remap the HHDM alias uncached for DMA use.
+        // TODO: On aarch64 this needs TLB invalidation before an existing HHDM
+        // mapping is guaranteed to observe the new memory attributes.
+        for page in 0..pages {
+            Arch::virtual_map(
+                Arch::get_address_space(),
+                (vaddr as usize + page * Arch::PAGE_SIZE) as u64,
+                (paddr as usize + page * Arch::PAGE_SIZE) as u64,
+                PagingOptions::PRESENT | PagingOptions::WRITABLE,
+            );
+        }
+
         unsafe {
             core::ptr::write_bytes(vaddr as *mut u8, 0, pages * Arch::PAGE_SIZE);
         }
-        // return phys adddress and non null virtual maped address
+
         (paddr, NonNull::new(vaddr as *mut u8).unwrap())
     }
 
-    unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, pages: usize) -> i32 {
+    unsafe fn dma_dealloc(paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
         for page in 0..pages {
+            Arch::virtual_map(
+                Arch::get_address_space(),
+                (vaddr.as_ptr() as usize + page * Arch::PAGE_SIZE) as u64,
+                (paddr as usize + page * Arch::PAGE_SIZE) as u64,
+                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
+            );
             frame_dealloc(paddr as usize + page * Arch::PAGE_SIZE);
         }
         0
     }
 
-    // maps a physical mmio region to a virtual address, must be mapped
-    unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
+    unsafe fn mmio_phys_to_virt(paddr: PhysAddr, size: usize) -> NonNull<u8> {
         let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
 
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr();
+        let mapping = VirtualMemoryAllocation::new(
+            Arch::get_address_space(),
+            None,
+            pages_covered * Arch::PAGE_SIZE,
+            Some(phys_base),
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
+            false,
+        )
+        .expect("failed to allocate virtio MMIO mapping");
+        let virt_addr = mapping.base + page_offset;
 
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
+        core::mem::forget(mapping);
         NonNull::new(virt_addr as *mut u8).unwrap()
     }
 
@@ -170,9 +187,6 @@ unsafe impl Hal for VirtioBlkHal {
         let (paddr, _) = Self::dma_alloc(pages, direction);
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
 
-        // For DriverToDevice and Both directions, both meaning the driver and device can access the buffer,
-        // we need to copy the data into the dma region so the device can see the data. For
-        // DeviceToDriver, only the device accesses the DMA region, and we copy that data out in unshare
         if matches!(
             direction,
             BufferDirection::DriverToDevice | BufferDirection::Both
@@ -185,24 +199,19 @@ unsafe impl Hal for VirtioBlkHal {
                 );
             }
         }
+
         paddr
     }
 
-    unsafe fn unshare(
-        paddr: virtio_drivers::PhysAddr,
-        buffer: NonNull<[u8]>,
-        direction: virtio_drivers::BufferDirection,
-    ) {
+    unsafe fn unshare(paddr: PhysAddr, buffer: NonNull<[u8]>, direction: BufferDirection) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
         let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
         let vaddr = NonNull::new((paddr + hhdm) as *mut u8).unwrap();
 
-        // copy data out of dma region into buffer
         unsafe {
             if matches!(
                 direction,
-                virtio_drivers::BufferDirection::DeviceToDriver
-                    | virtio_drivers::BufferDirection::Both
+                BufferDirection::DeviceToDriver | BufferDirection::Both
             ) {
                 core::ptr::copy_nonoverlapping(
                     vaddr.as_ptr() as *const u8,
