@@ -3,8 +3,9 @@ use crate::{
     physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
     print::kprintln,
     state::{CorePin, StateGuard},
+    thread::Thread,
 };
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
@@ -139,7 +140,14 @@ pub fn init_virtual_memory_allocator() {
     );
 }
 
-pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
+pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {
+    if let Some(process) = thread.process.get() {
+        process
+            .virtual_memory
+            .handle_page_fault(cause, address)
+            .unwrap();
+        return;
+    }
     if !cause.contains(PageFaultConditions::PRESENT) {
         let mut vmes = VMES
             .get()

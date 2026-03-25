@@ -1,16 +1,18 @@
 use crate::{
     arch::{Arch, ArchTrait},
     freeset::FreeSet,
+    page_cache::{PAGE_CACHE, PageKey},
     physical_memory,
     sync::{IntMutex, MutexLike},
     vfs::INodeKey,
+    virtual_memory::{PageFaultConditions, PagingOptions},
 };
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use intrusive_collections::{KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
+use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::Once;
 
-const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
+pub const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
 static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 const USERSPACE_START: usize = 0x10000;
 const USERSPACE_END: usize = 0x8000_0000_0000_0000;
@@ -133,5 +135,78 @@ impl VirtualMemory {
 impl Default for VirtualMemory {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl VirtualMemory {
+    // TODO: Implement per mapping locking (needed for multithreaded
+    // processes).
+
+    // TODO: Let's say we have two threads (X, Y) in a process. X
+    // faults, and soon Y faults on the same address. X acquires the
+    // mapping lock, and Y waits for X. X correctly vmaps such that X
+    // and Y are satisfied. X releases lock. Y should now know that it
+    // doesn't need to map anything. This hasn't been implemented.
+    pub fn handle_page_fault(
+        &self,
+        cause: PageFaultConditions,
+        address: usize,
+    ) -> Result<(), &'static str> {
+        let vaddr = address & !(Arch::PAGE_SIZE - 1);
+        let active_set = self.active_set.lock();
+        let mapping = active_set
+            .upper_bound(Bound::Included(&vaddr))
+            .get()
+            .ok_or("nothing is mapped")?;
+        if mapping.base + mapping.length <= vaddr {
+            todo!()
+        }
+        if cause.contains(PageFaultConditions::PRESENT) {
+            self.invlpg(vaddr);
+        }
+        if let Some((inode_key, offset, _)) = mapping.file.as_ref() {
+            if mapping.shared {
+                self.handle_file_shared(vaddr, mapping, inode_key, offset)
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+    }
+
+    fn handle_file_shared(
+        &self,
+        vaddr: usize,
+        mapping: &Mapping,
+        inode_key: &INodeKey,
+        offset: &usize,
+    ) -> Result<(), &'static str> {
+        assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
+        let key = PageKey::File {
+            inode_key: inode_key.clone(),
+            offset: vaddr - mapping.base + offset,
+        };
+        let paddr = PAGE_CACHE.lock().get_page(&key)?;
+        self.vmap_write(vaddr, paddr);
+        Ok(())
+    }
+}
+
+impl VirtualMemory {
+    // TODO: MJ said there might be a better way to changing mappings
+    // in the future.
+    fn invlpg(&self, vaddr: usize) {
+        Arch::virtual_unmap(self.page_table as u64, vaddr as u64);
+        Arch::shootdown_tlbs(self.page_table as u64, vaddr, Arch::PAGE_SIZE);
+    }
+
+    fn vmap_write(&self, vaddr: usize, paddr: usize) {
+        Arch::virtual_map(
+            self.page_table as u64,
+            vaddr as u64,
+            paddr as u64,
+            PagingOptions::PRESENT | PagingOptions::CACHEABLE | PagingOptions::WRITABLE,
+        );
     }
 }
