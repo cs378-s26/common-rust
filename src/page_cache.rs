@@ -1,7 +1,12 @@
 use crate::{
-    physical_memory, sync::IntMutex, vfs::INodeKey, virtual_memory_2::SHARED_ANONYMOUS_FILESYSTEM,
+    arch::{Arch, ArchTrait},
+    physical_memory::{self, HHDM_OFFSET},
+    sync::IntMutex,
+    vfs::INodeKey,
+    virtual_memory_2::SHARED_ANONYMOUS_FILESYSTEM,
 };
 use alloc::collections::btree_map::BTreeMap;
+use core::ptr;
 pub struct PageCache {
     map: BTreeMap<PageKey, Page>,
 }
@@ -41,6 +46,10 @@ impl PageCache {
     fn get_anon_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
         let paddr = physical_memory::frame_alloc();
         self.map.insert(key.clone(), Page { address: paddr });
+        unsafe {
+            let hhdm = HHDM_OFFSET.get().unwrap();
+            ptr::write_bytes((paddr + hhdm) as *mut u8, 0, Arch::PAGE_SIZE);
+        }
         Ok(paddr)
     }
 

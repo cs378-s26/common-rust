@@ -156,6 +156,9 @@ fn test03() {
             assert!(*(x as *const u8) == b'd');
             assert!(*((x + 1) as *const u8) == b'o');
             assert!(*((x + 2) as *const u8) == b'g');
+            for i in 3..Arch::PAGE_SIZE {
+                assert!(*((x + i) as *const u8) == 0);
+            }
         };
         LATCH.fetch_sub(1, Ordering::SeqCst);
     });
