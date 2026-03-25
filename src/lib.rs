@@ -21,12 +21,13 @@ pub mod local_storage;
 pub mod mp;
 pub mod physical_memory;
 pub mod print;
+pub mod ramfs;
 pub mod state;
 pub mod sync;
 pub mod test_utils;
 pub mod thread;
-pub mod virtual_memory;
 pub mod vfs;
+pub mod virtual_memory;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait, KernelEntryTrait};

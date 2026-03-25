@@ -5,9 +5,11 @@ use alloc::sync::Arc;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
+type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>;
+
 pub struct VFS {
     filesystems: IntMutex<BTreeMap<usize, Arc<dyn Filesystem>>>,
-    inode_cache: IntMutex<BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>>,
+    inode_cache: IntMutex<INodeCache>,
     filesystem_id_counter: AtomicUsize,
 }
 
