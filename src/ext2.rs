@@ -83,9 +83,10 @@ struct BlockGroupDescriptor {
     used_dirs_count: u16,
 }
 
-struct INode {
+pub struct INode {
     number: usize,
     data: INodeData,
+    #[allow(unused)]
     dirty: bool,
 }
 
@@ -178,7 +179,7 @@ impl<D: Disk> Ext2<D> {
         panic!("this should never happen");
     }
 
-    fn alloc_inode(
+    pub fn alloc_inode(
         self: &Arc<Self>,
         preferred_group: usize,
         scratch_buffer: Option<&mut [u8]>,
@@ -239,7 +240,7 @@ impl<D: Disk> Ext2<D> {
         panic!("this should never happen");
     }
 
-    fn dealloc_block(self: &Arc<Self>, block_number: usize, scratch_buffer: Option<&mut [u8]>) {
+    pub fn dealloc_block(self: &Arc<Self>, block_number: usize, scratch_buffer: Option<&mut [u8]>) {
         let _guard = self.block_map_lock.lock();
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
@@ -267,7 +268,7 @@ impl<D: Disk> Ext2<D> {
         self.write_block(bitmap, scratch_buffer);
     }
 
-    fn dealloc_inode(self: &Arc<Self>, inumber: usize, scratch_buffer: Option<&mut [u8]>) {
+    pub fn dealloc_inode(self: &Arc<Self>, inumber: usize, scratch_buffer: Option<&mut [u8]>) {
         let _guard = self.inode_map_lock.lock();
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
@@ -323,8 +324,7 @@ impl<D: Disk> Ext2<D> {
         block_group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> (BlockGroupDescriptor, (usize, usize)) {
-        let block_group = block_group as usize;
-        const BGD_SIZE: usize = 4;
+        const BGD_SIZE: usize = 32;
         let descriptors_per_block = self.block_size / BGD_SIZE;
         let bgd_block =
             (self.superblock.first_data_block as usize) + 1 + block_group / descriptors_per_block;
@@ -373,7 +373,7 @@ impl<D: Disk> Ext2<D> {
         )
     }
 
-    fn get_root(self: &Arc<Self>) -> Weak<FNode<D>>
+    pub fn get_root(self: &Arc<Self>) -> Weak<FNode<D>>
     where
         Self: Sized,
     {
@@ -431,7 +431,7 @@ impl<D: Disk> Ext2<D> {
         Ok(Self {
             block_size: 1024 << superblock.log_block_size,
             disk: IntMutex::new(disk),
-            superblock: superblock,
+            superblock,
             fnode_cache: IntMutex::new(BTreeMap::new()),
             block_map_lock: IntMutex::new(()),
             inode_map_lock: IntMutex::new(()),
@@ -512,7 +512,7 @@ impl<D: Disk> FNode<D> {
 
         // three level indirection
         let block_number = block_number - bpb * bpb;
-        return (
+        (
             [
                 14,
                 block_number / (bpb * bpb),
@@ -520,18 +520,18 @@ impl<D: Disk> FNode<D> {
                 block_number % (bpb * bpb),
             ],
             4,
-        );
+        )
     }
 
-    fn read_block(self: &Arc<Self>, block_number: usize, buffer: &mut [u8], inode: &INode) {
-        let (tree, _, size) = self.block_tree(block_number, Some(buffer), &inode);
+    pub fn read_block(self: &Arc<Self>, block_number: usize, buffer: &mut [u8], inode: &INode) {
+        let (tree, _, size) = self.block_tree(block_number, Some(buffer), inode);
         match tree[size - 1] {
-            0 => (&mut buffer[0..self.fs.block_size]).fill(0),
+            0 => buffer[0..self.fs.block_size].fill(0),
             b => self.fs.read_block(b, buffer),
         }
     }
 
-    fn write_block(
+    pub fn write_block(
         self: &Arc<Self>,
         block_number: usize,
         buffer: &[u8],
@@ -544,9 +544,9 @@ impl<D: Disk> FNode<D> {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
         };
-        let (mut tree, indices, size) = self.block_tree(block_number, Some(scratch_buffer), &inode);
+        let (mut tree, indices, size) = self.block_tree(block_number, Some(scratch_buffer), inode);
         for i in 0..size {
-            if !(tree[i] == 0 || (i == 0 && new_size != None)) {
+            if !(tree[i] == 0 || (i == 0 && new_size.is_some())) {
                 continue;
             }
 
@@ -592,10 +592,9 @@ impl<D: Disk> FNode<D> {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
         };
-        let (inode, (inode_block, inode_offset)) =
+        let (_, (inode_block, inode_offset)) =
             self.fs.get_inode(old.number as u32, Some(scratch_buffer));
-        inode
-            .data
+        new.data
             .write_to_prefix(&mut scratch_buffer[inode_offset..])
             .unwrap();
         self.fs.write_block(inode_block, scratch_buffer);
@@ -603,7 +602,7 @@ impl<D: Disk> FNode<D> {
     }
 
     // use indexing
-    fn create_entry(
+    pub fn create_entry(
         self: &Arc<Self>,
         entry_name: &str,
         inumber: u32,
@@ -617,13 +616,10 @@ impl<D: Disk> FNode<D> {
         let mut last_fetched_block: usize = 1;
         let mut buffer = alloc::vec![0u8; self.fs.block_size];
         let mut placement = None;
-        let entry_space = |name: &str| {
-            return (8 + name.len()).next_multiple_of(4);
-        };
+        let entry_space = |name: &str| (8 + name.len()).next_multiple_of(4);
         let needed = entry_space(entry_name);
-        let sz = inode.data.size;
         while pointer < (inode.data.size as usize) {
-            assert!(pointer % 4 == 0);
+            assert!(pointer.is_multiple_of(4));
             let needed_block = pointer / self.fs.block_size;
             if needed_block != last_fetched_block {
                 self.read_block(needed_block, &mut buffer, &inode);
@@ -641,7 +637,7 @@ impl<D: Disk> FNode<D> {
                     return Err("already exists");
                 }
                 let actually_needed = entry_space(name);
-                if placement == None && (rec_len as usize) >= needed + actually_needed {
+                if placement.is_none() && (rec_len as usize) >= needed + actually_needed {
                     placement = Some((pointer, actually_needed, rec_len));
                 }
             }
@@ -693,7 +689,7 @@ impl<D: Disk> FNode<D> {
     }
 
     // TODO: use indexing instead of linsearch
-    fn search(self: &Arc<Self>, next: &str) -> Option<Weak<FNode<D>>> {
+    pub fn search(self: &Arc<Self>, next: &str) -> Option<Weak<FNode<D>>> {
         let inode = self.inode.lock();
         // TODO proper types
         assert!(inode.data.mode & 0xF000 == 0x4000);
@@ -701,7 +697,7 @@ impl<D: Disk> FNode<D> {
         let mut last_fetched_block: usize = 1;
         let mut buffer = alloc::vec![0u8; self.fs.block_size];
         while pointer < (inode.data.size as usize) {
-            assert!(pointer % 4 == 0);
+            assert!(pointer.is_multiple_of(4));
             let needed_block = pointer / self.fs.block_size;
             if needed_block != last_fetched_block {
                 self.read_block(needed_block, &mut buffer, &inode);

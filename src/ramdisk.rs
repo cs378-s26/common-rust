@@ -9,9 +9,9 @@ const PAGE_SIZE: usize = 4096;
 static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 
 pub trait Disk {
-    fn read_sector(self: &Self, sector: usize, buffer: &mut [u8]);
-    fn write_sector(self: &mut Self, sector: usize, buffer: &[u8]);
-    fn sector_size(self: &Self) -> usize;
+    fn read_sector(&self, sector: usize, buffer: &mut [u8]);
+    fn write_sector(&mut self, sector: usize, buffer: &[u8]);
+    fn sector_size(&self) -> usize;
 }
 
 pub struct Ramdisk<'a> {
@@ -28,30 +28,30 @@ impl<'a> Ramdisk<'a> {
         let addr = module.addr();
         let size = module.size() as usize;
         assert!(addr.align_offset(sector_size) == 0);
-        assert!(size % sector_size == 0);
-        assert!(PAGE_SIZE % sector_size == 0);
+        assert!(size.is_multiple_of(sector_size));
+        assert!(PAGE_SIZE.is_multiple_of(sector_size));
         unsafe {
-            return Self {
+            Self {
                 base_address: core::slice::from_raw_parts_mut(addr, size),
-                sector_size: sector_size,
-            };
+                sector_size,
+            }
         }
     }
 }
 
 impl<'a> Disk for Ramdisk<'a> {
-    fn read_sector(self: &Self, sector: usize, buffer: &mut [u8]) {
+    fn read_sector(&self, sector: usize, buffer: &mut [u8]) {
         assert!(sector < self.base_address.len() / self.sector_size);
         let start = sector * self.sector_size;
         let end = start + self.sector_size;
         buffer[..self.sector_size].copy_from_slice(&self.base_address[start..end]);
     }
 
-    fn sector_size(self: &Self) -> usize {
+    fn sector_size(&self) -> usize {
         self.sector_size
     }
 
-    fn write_sector(self: &mut Self, sector: usize, buffer: &[u8]) {
+    fn write_sector(&mut self, sector: usize, buffer: &[u8]) {
         assert!(sector < self.base_address.len() / self.sector_size);
         let start = sector * self.sector_size;
         let end = start + self.sector_size;
