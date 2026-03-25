@@ -2,6 +2,12 @@ use core::mem::MaybeUninit;
 
 use crate::sync::{IntMutex, MutexLike, Semaphore};
 
+/// Multiple Producer, Multiple Consumer bounded queue. 
+/// push() blocks if full and pop() blocks if empty.
+///
+/// The buffer uses uninitialized memory internally. Only items that are currently
+/// sitting in the buffer at drop time are dropped slots that were never written
+/// are left untouched.
 pub struct BoundedBuffer<T, const N: usize> {
     state: IntMutex<BufferState<T, N>>,
     items: Semaphore,  // number of filled slots
