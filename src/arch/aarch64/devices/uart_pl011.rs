@@ -1,6 +1,10 @@
+// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type, 
+// removing this warning for now
+#[allow(irrefutable_let_patterns)]
+
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
-use crate::print::{CharSink, kprintln, set_serial_backend};
+use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 
@@ -26,7 +30,7 @@ impl CharSink for UartPl011Driver {
 
 impl DeviceDriver for UartPl011Driver {
     fn name(&self) -> &str {
-        return "uart_pl011";
+        "uart_pl011"
     }
 
     // allocate virtual memory for the UART MMIO region
@@ -45,11 +49,11 @@ impl DeviceDriver for UartPl011Driver {
         } else {
             return false;
         }
-        return true;
+        true
     }
 
     fn device_type(&self) -> DeviceType {
-        return DeviceType::CHAR;
+        DeviceType::CHAR
     }
 }
 
@@ -59,22 +63,19 @@ impl DeviceDiscovery for UartPl011Discovery {
     // this gives full ownership of the driver to the serial backend
     // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Box<dyn DeviceDriver + Send + Sync>> {
-        if let DeviceNode::DTB(node) = node {
-            if let Some(c) = node.compatible() {
-                if c.all().any(|s| s == "arm,pl011") {
-                    // check compatibility string for node, if it matches set it as serial
-                    if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
-                        let phys_address = reg.starting_address as usize;
-                        let mut uart_driver = UartPl011Driver {
-                            phys_address,
-                            virt_mapping: None,
-                        };
-                        if uart_driver.init() {
-                            // initialize the driver, allocating it's virtual memory mapping
-                            set_serial_backend(Box::new(uart_driver));
-                        }
-                    }
-                }
+        if let DeviceNode::DTB(node) = node
+            && let Some(c) = node.compatible()
+            && c.all().any(|s| s == "arm,pl011")
+            && let Some(reg) = node.reg().and_then(|mut r| r.next())
+        {
+            let phys_address = reg.starting_address as usize;
+            let mut uart_driver = UartPl011Driver {
+                phys_address,
+                virt_mapping: None,
+            };
+            if uart_driver.init() {
+                // initialize the driver, allocating it's virtual memory mapping
+                set_serial_backend(Box::new(uart_driver));
             }
         }
         None

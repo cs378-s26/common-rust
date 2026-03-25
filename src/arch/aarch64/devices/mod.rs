@@ -1,13 +1,13 @@
 use alloc::boxed::Box;
 
 pub mod a15_gic;
-use crate::devices::device_discovery::DeviceDiscovery;
 use crate::sync::MutexLike;
 use alloc::vec::Vec;
 use fdt;
 
 use crate::devices::device_discovery::{
-    BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, NETWORK_DEVICES, SYSTEM_DRIVERS,
+    BLOCK_DEVICES, CHAR_DEVICES, DeviceDiscovery, DeviceNode, DeviceType, NETWORK_DEVICES,
+    SYSTEM_DRIVERS,
 };
 use crate::print::kprintln;
 
