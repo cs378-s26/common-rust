@@ -171,7 +171,8 @@ impl VirtualMemory {
                 todo!()
             }
         } else {
-            todo!()
+            assert!(!mapping.shared);
+            self.handle_anon_private(vaddr)
         }
     }
 
@@ -186,6 +187,17 @@ impl VirtualMemory {
         let key = PageKey::File {
             inode_key: inode_key.clone(),
             offset: vaddr - mapping.base + offset,
+        };
+        let paddr = PAGE_CACHE.lock().get_page(&key)?;
+        self.vmap_write(vaddr, paddr);
+        Ok(())
+    }
+
+    fn handle_anon_private(&self, vaddr: usize) -> Result<(), &'static str> {
+        assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
+        let key = PageKey::Anonymous {
+            process_id: self.page_table,
+            virtual_address: vaddr,
         };
         let paddr = PAGE_CACHE.lock().get_page(&key)?;
         self.vmap_write(vaddr, paddr);
