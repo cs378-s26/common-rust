@@ -233,6 +233,7 @@ impl VirtualMemory {
             virtual_address: vaddr,
         };
         let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
+        unsafe { physical_memory::copy(shared_paddr, private_paddr, Arch::PAGE_SIZE) };
         self.vmap_write(vaddr, private_paddr);
         Ok(())
     }
