@@ -22,6 +22,7 @@ pub mod mp;
 pub mod physical_memory;
 pub mod print;
 pub mod sync;
+pub mod syscall;
 pub mod test_utils;
 pub mod thread;
 pub mod virtual_memory;
