@@ -98,6 +98,27 @@ static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
 
 #[test_case]
 fn hello_world() {
+#![feature(custom_test_frameworks)]
+#![test_runner(kernel_common::test_runner)]
+
+kernel_common::integration_test!({
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use kernel_common::print::kprintln;
+    use kernel_common::sync::{IntMutex, MutexLike};
+    use kernel_common::thread::{spawn_thread, yield_thread};
+
+    fn work(i: u64) -> u64 {
+        let mut sum = 0;
+        for j in 1..(1 << i) {
+            sum += j;
+        }
+        sum
+    }
+
+    const THREADS: usize = 16;
+    static LATCH: AtomicUsize = AtomicUsize::new(0);
+    const UPPER: usize = 23; // precisely tuned value for runtime
+    static VALUES: IntMutex<[u64; UPPER]> = IntMutex::new([0; UPPER]);
     // stress preemption, yielding, and blocking interactions
     kprintln!("spawning busyworking threads");
     for _ in 0..THREADS {
@@ -120,6 +141,7 @@ fn hello_world() {
                 if i.is_multiple_of(2) {
                     assert!(core == CORE_ID.get());
                 }
+                let value = work(i as u64);
                 let mut lock = VALUES.lock();
                 if lock[i] == 0 {
                     lock[i] = value;
