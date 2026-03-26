@@ -30,18 +30,18 @@ pub trait SyscallContext {
         }
     }
 
-    fn set_return_value(&self, ret: usize);
+    fn set_return_value(&mut self, ret: usize);
 
-    fn is_user_address(&self, ptr: usize) -> bool;
+    // fn is_user_address(&self, ptr: usize) -> bool;
 
-    fn get_arg_ptr_safe(&self, n: usize) -> Option<usize> {
-        let potential_pointer = self.get_arg(n)?;
-        if self.is_user_address(potential_pointer) {
-            Some(potential_pointer)
-        } else {
-            None
-        }
-    }
+    // fn get_arg_ptr_safe(&self, n: usize) -> Option<usize> {
+    //     let potential_pointer = self.get_arg(n)?;
+    //     if self.is_user_address(potential_pointer) {
+    //         Some(potential_pointer)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 pub fn syscall_handler(syscall_context: &mut impl SyscallContext) {

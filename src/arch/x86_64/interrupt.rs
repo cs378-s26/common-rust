@@ -1,7 +1,9 @@
+use crate::syscall::{syscall_handler, SyscallContext};
 use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use x86::bits64::syscall;
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
@@ -15,7 +17,9 @@ pub fn timer_ticks() -> u64 {
 
 #[repr(C)]
 pub struct InterruptContext {
-    pub regs: [u64; 14],
+    pub regs: [u64; 14], // TODO just make explicit
+    // general-purpose registers
+    pub r15: u64,
     pub rbp: u64, // For preemptive context restore.
     pub id: u64,
     pub err: u64,
@@ -128,8 +132,38 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
     apic::eoi();
 }
 
+// this is all entirely by convention, but it's nice to follow the C ABI
+impl SyscallContext for InterruptContext {
+    fn syscall_number(&self) -> usize {
+        self.regs[13] as usize // rax
+    }
+    fn arg0(&self) -> usize {
+        self.regs[8] as usize // rdi
+    }
+    fn arg1(&self) -> usize {
+        self.regs[9] as usize // rsi
+    }
+    fn arg2(&self) -> usize {
+        self.regs[11] as usize // rdx
+    }
+    fn arg3(&self) -> usize {
+        self.regs[12] as usize // rcx
+    }
+    fn arg4(&self) -> usize {
+        self.regs[7] as usize // r8
+    }
+    fn arg5(&self) -> usize {
+        self.regs[6] as usize // r9
+    }
+    /// # Safety
+    /// Can only be called after all calls to syscall_number
+    fn set_return_value(&mut self, ret: usize) {
+        self.regs[13] = ret as u64;
+    }
+}
+
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
-    let context = unsafe { &*addr };
+    let context = unsafe { &mut *addr };
     match context.id as u8 {
         14 => {
             if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
@@ -159,6 +193,9 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         }
         TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
         IPI_WAKE_VECTOR => ipi_wake_handler(context),
+        0x42 => {
+            syscall_handler(&mut *context);
+        }
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
             context.id,
