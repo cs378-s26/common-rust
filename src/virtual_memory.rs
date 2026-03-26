@@ -97,6 +97,9 @@ pub fn init_virtual_memory_allocator() {
         ))
     });
     let mut executable_length = 0;
+    let executable_start = EXECUTABLE_ADDRESS_REQUEST
+        .get_response()
+        .unwrap();
     for region in *REGIONS.get().unwrap() {
         // if you need to map over one of these, just change backing and options accordingly
         VirtualMemoryAllocation::new(
@@ -107,25 +110,22 @@ pub fn init_virtual_memory_allocator() {
             PagingOptions::SHADOW,
         );
         if region.entry_type == EntryType::EXECUTABLE_AND_MODULES {
-            assert!(
-                executable_length == 0,
-                "multiple executable sections, kernel mapping unknown"
-            );
-            executable_length = region.length;
+            if(region.base) <= executable_start.physical_base() && 
+                executable_start.physical_base() < (region.base + region.length) {
+                assert!(executable_length == 0, "multiple executable sections, kernel mapping unknown");
+                executable_length = region.length;
+            }
         }
     }
-    let executable_start = EXECUTABLE_ADDRESS_REQUEST
-        .get_response()
-        .unwrap()
-        .virtual_base() as usize;
+    assert!(executable_length > 0, "kernel executable section not found, kernel mapping unknown");
     kprintln!(
         "kernel virtually mapped from {:x} to {:x}",
-        executable_start,
-        executable_start + executable_length as usize
+        executable_start.virtual_base(),
+        executable_start.virtual_base() + executable_length 
     );
     VirtualMemoryAllocation::new(
         Arch::get_address_space(),
-        Some(executable_start),
+        Some(executable_start.virtual_base() as usize),
         executable_length as usize,
         None,
         PagingOptions::SHADOW,

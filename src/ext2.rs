@@ -727,6 +727,7 @@ mod test {
     use crate::ext2::Ext2;
     use crate::print::kprintln;
     use crate::ramdisk::Ramdisk;
+    use crate::sync::MutexLike;
     use alloc::sync::Arc;
 
     #[test_case]
