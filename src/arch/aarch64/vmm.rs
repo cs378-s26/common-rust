@@ -1,6 +1,6 @@
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
-use crate::virtual_memory::PagingOptions;
 use crate::print::kprintln;
+use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
 use core::arch::asm;
 use spin::Mutex;
