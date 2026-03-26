@@ -126,25 +126,6 @@ pub fn init_virtual_memory_allocator() {
     VirtualMemoryAllocation::new(
         Arch::get_address_space(),
         Some(executable_start.virtual_base() as usize),
-            assert!(
-                executable_length == 0,
-                "multiple executable sections, kernel mapping unknown"
-            );
-            executable_length = region.length;
-        }
-    }
-    let executable_start = EXECUTABLE_ADDRESS_REQUEST
-        .get_response()
-        .unwrap()
-        .virtual_base() as usize;
-    kprintln!(
-        "kernel virtually mapped from {:x} to {:x}",
-        executable_start,
-        executable_start + executable_length as usize
-    );
-    VirtualMemoryAllocation::new(
-        Arch::get_address_space(),
-        Some(executable_start),
         executable_length as usize,
         None,
         PagingOptions::SHADOW,
