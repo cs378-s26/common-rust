@@ -113,6 +113,16 @@ Async task 109 complete.
 Async task 110 complete.
 Async task 111 complete.
 Coroutine future polling test passed.
+=== DMA region tests ===
+allocating 1-frame DMA region
+verifying DMA region is zeroed
+testing DMA region read/write
+testing DMA region zero
+testing DMA region drop
+allocating 4-frame DMA region
+verifying multi-frame DMA region
+testing DMA new_bytes rounding
+=== DMA region tests passed ===
 manually mapping vmem
 writing to manually mapped vmem
 reading from manually mapped vmem

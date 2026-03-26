@@ -103,6 +103,10 @@ impl ArchTrait for Arch {
         vmm::vunmap(_space, _vaddr)
     }
 
+    fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
+        vmm::vunmap_no_dealloc(_space, _vaddr)
+    }
+
     fn shutdown(_err_code: u16) {
         // TODO implement this
         halt();

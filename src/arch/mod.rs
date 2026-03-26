@@ -98,6 +98,8 @@ pub trait ArchTrait {
     fn get_address_space() -> u64;
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
+    /// Unmaps a page without freeing the physical frame (for MMIO / externally-owned backing).
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64>;
     fn shutdown(err_code: u16);
     fn halt() -> !;
 }

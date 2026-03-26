@@ -105,6 +105,7 @@ pub fn init_virtual_memory_allocator() {
             region.length as usize,
             None,
             PagingOptions::SHADOW,
+            true,
         );
         if region.entry_type == EntryType::EXECUTABLE_AND_MODULES {
             assert!(
@@ -129,6 +130,7 @@ pub fn init_virtual_memory_allocator() {
         executable_length as usize,
         None,
         PagingOptions::SHADOW,
+        true,
     );
 }
 
@@ -162,6 +164,9 @@ pub struct VirtualMemoryAllocation {
     pub space: u64,
     pub base: usize,
     pub length: usize,
+    /// When false, Drop unmaps pages but does not free the physical frames.
+    /// Used for MMIO where physical addresses belong to hardware, not RAM.
+    pub owns_backing: bool,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -172,6 +177,7 @@ impl VirtualMemoryAllocation {
         length: usize,          // requested size in bytes
         backing: Option<usize>, // physical frames used
         options: PagingOptions, // similar to mmap flags
+        owns_backing: bool,     // if false, Drop won't free physical frames
     ) -> Option<VirtualMemoryAllocation> {
         assert!(length.is_multiple_of(Arch::PAGE_SIZE));
         let mut vmes = VMES
@@ -255,6 +261,7 @@ impl VirtualMemoryAllocation {
                 } else {
                     length
                 }, // TODO Option type
+                owns_backing,
             })
         }
     }
@@ -264,9 +271,12 @@ impl Drop for VirtualMemoryAllocation {
     fn drop(&mut self) {
         // remove any mapped pages from the page table
         while self.length > 0 {
-            // remove pages within range from page table
             self.length -= Arch::PAGE_SIZE;
-            Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
+            if self.owns_backing {
+                Arch::virtual_unmap(self.space, (self.base + self.length) as u64);
+            } else {
+                Arch::virtual_unmap_no_dealloc(self.space, (self.base + self.length) as u64);
+            }
         }
         let mut vmes = VMES
             .get()
@@ -377,6 +387,7 @@ mod test {
                         | PagingOptions::WRITABLE
                         | PagingOptions::CACHEABLE
                         | PagingOptions::GLOBAL,
+                    true,
                 )
                 .unwrap();
                 kprintln!("writing to properly mapped vmem");

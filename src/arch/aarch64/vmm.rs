@@ -172,6 +172,52 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
     }
 }
 
+/// Unmaps a page without freeing the underlying physical frame.
+/// Used for MMIO mappings where physical addresses belong to hardware, not RAM.
+/// same as above just doesn't call frame_dealloc.
+pub fn vunmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
+
+    let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
+    let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
+    let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
+    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
+
+    let pt_base = (space & !0xFFF) + hhdm_offset as u64;
+    unsafe {
+        let _ = VMM_PROTECTOR.lock();
+        let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, 512);
+        if (l0[index_0] & 0b11) != 0b11 {
+            return None;
+        }
+        let l1_phys = (l0[index_0] & !0xFFF) as usize;
+        let l1: &mut [u64] =
+            core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, 512);
+
+        if (l1[index_1] & 0b11) != 0b11 {
+            return None;
+        }
+        let l2_phys = (l1[index_1] & !0xFFF) as usize;
+        let l2: &mut [u64] =
+            core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, 512);
+
+        if (l2[index_2] & 0b11) != 0b11 {
+            return None;
+        }
+        let l3_phys = (l2[index_2] & !0xFFF) as usize;
+        let l3: &mut [u64] =
+            core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
+        if (l3[index_3] & 0b11) == 0 {
+            return None;
+        }
+
+        let paddr = l3[index_3] & !0xFFF;
+        l3[index_3] = 0;
+        free_unused_tables(vaddr, l0, l1, l2, l3);
+        Some(paddr)
+    }
+}
+
 fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64], l3: &mut [u64]) {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 

@@ -112,6 +112,10 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap_no_dealloc(space, vaddr)
+    }
+
     fn shutdown(err_code: u16) {
         debug::shutdown(err_code);
     }
