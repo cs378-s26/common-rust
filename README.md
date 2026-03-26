@@ -1,10 +1,4 @@
-# Rust Kernel Template
-
-## Extensions
-
-This builds on the common template with some extra features 
-- interrupts/preemption
-- blocking locks
+# CS 378 - Multicore Operating Systems - Rust Kernel
 
 ## Running
 
@@ -16,7 +10,8 @@ cargo buildtool qemu # runs qemu
 cargo buildtool gdb # runs gdb, and attaches to qemu
 cargo buildtool clean # cleans the buildtool cache
 cargo buildtool help # help message
-cargo buildtool test # runs unit tests. QEMU flags specified in run_qemu_{arch_string}.sh
+cargo buildtool test # runs all tests. QEMU flags specified in run_qemu_{arch_string}.sh
+cargo buildtool qemu-test {path to .json} # runs the test specified by the .json file.
 ```
 
 The current buildtool supports both aarch64 & x86-64, though some qemu args may be funky depending on your system.
@@ -36,3 +31,7 @@ QEMU command is specified in `run_qemu_{arch_string}.sh`.
 - [ ] Support integration tests. Each test should define a qemu run script for each arch & expected serial output files.
 ### Misc
 - [ ] fix kernel symbol module generation
+
+## Further documentation
+
+For more information on the inner working of kernel subcomponents, see the `docs/` directory, which contains markdown files on various topics. The docs are not comprehensive, but they should give you a good starting point for understanding the kernel's design and implementation.

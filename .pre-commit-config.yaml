@@ -1,0 +1,15 @@
+repos:
+    - repo: local
+      hooks:
+          - id: clippy
+            name: Clippy
+            entry: >-
+                bash -euo pipefail -c '
+                cargo clippy --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings &&
+                cargo clippy --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings &&
+                cargo clippy --tests --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings &&
+                cargo clippy --tests --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings
+                '
+            language: system
+            pass_filenames: false
+            types: [rust]
