@@ -24,7 +24,7 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
+    mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
@@ -398,10 +398,20 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 
 #[inline(always)]
 pub fn yield_thread() {
+    // TODO use the below
     if PINNED_TO_CORE.load(Ordering::Relaxed) {
         suspend_to_queue(&*LOCAL_WORK_QUEUE);
     } else {
         suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    }
+}
+
+pub fn schedule_thread(task: Arc<Thread>) {
+    if PINNED_TO_CORE.read_for(&task).load(Ordering::Relaxed) {
+        let core = CoreId(CORE_PINNED_TO.read_for(&task).load(Ordering::Relaxed));
+        LOCAL_WORK_QUEUE.read_for(core).lock().push_back(task);
+    } else {
+        LOCAL_WORK_QUEUE.lock().push_back(task);
     }
 }
 

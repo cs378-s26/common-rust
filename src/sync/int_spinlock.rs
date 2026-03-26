@@ -5,8 +5,11 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::{arch::{Arch, ArchTrait}, state::State};
 use crate::state::Irq;
+use crate::{
+    arch::{Arch, ArchTrait},
+    state::State,
+};
 
 use super::MutexLike;
 

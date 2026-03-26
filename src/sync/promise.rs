@@ -5,7 +5,7 @@ use spin::lazy::Lazy;
 use crate::{
     sync::{IntMutex, IntMutexGuard, MutexLike},
     thread::{
-        ThreadQueue, can_yield, is_on_thread, LOCAL_WORK_QUEUE, new_thread_queue,
+        ThreadQueue, can_yield, is_on_thread, new_thread_queue, schedule_thread,
         suspend_to_locked_queue,
     },
 };
@@ -76,7 +76,7 @@ impl<T> Promise<T> {
 
         // woken threads back to the local work queue.
         while let Some(t) = to_wake.pop_front() {
-            LOCAL_WORK_QUEUE.lock().push_back(t);
+            schedule_thread(t);
         }
     }
 }

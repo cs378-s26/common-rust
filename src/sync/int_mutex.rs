@@ -7,12 +7,8 @@ use core::{
 
 use crate::{
     arch::{Arch, ArchTrait},
-    mp::CoreId,
     state::{Irq, State},
-    thread::{
-        CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, ThreadQueue, can_yield, new_thread_queue,
-        suspend_to_queue,
-    },
+    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
 };
 
 use super::{MutexLike, int_spinlock::IntSpinLock};
@@ -27,12 +23,7 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
         self.mutex.lock.store(false, Ordering::Release);
 
         if let Some(task) = self.mutex.blocked.lock().pop_front() {
-            if PINNED_TO_CORE.read_for(&task).load(Ordering::Relaxed) {
-                let core = CoreId(CORE_PINNED_TO.read_for(&task).load(Ordering::Relaxed));
-                LOCAL_WORK_QUEUE.read_for(core).lock().push_back(task);
-            } else {
-                LOCAL_WORK_QUEUE.lock().push_back(task);
-            }
+            schedule_thread(task);
         }
 
         self.irq_state.restore();
