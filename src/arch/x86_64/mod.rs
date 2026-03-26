@@ -7,7 +7,6 @@ use core::{
     hint,
     sync::atomic::{AtomicUsize, Ordering},
 };
-
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;

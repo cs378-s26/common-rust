@@ -1,8 +1,9 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
+use crate::devices::device_discovery::DeviceDiscovery;
 
 pub mod a15_gic;
 use crate::sync::MutexLike;
-use alloc::vec::Vec;
 use fdt;
 
 use crate::devices::device_discovery::{

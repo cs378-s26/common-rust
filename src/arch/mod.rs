@@ -113,7 +113,6 @@ pub trait ArchTrait {
     fn create_arch_specific_drivers(
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );
-    
 }
 
 #[repr(transparent)]
