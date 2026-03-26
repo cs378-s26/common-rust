@@ -1,6 +1,6 @@
+use crate::devices::device_discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::devices::device_discovery::DeviceDiscovery;
 
 use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
 use crate::sync::MutexLike;
@@ -32,6 +32,8 @@ pub fn parse_devices() {
     }
 }
 
-pub fn create_arch_specific_drivers(_system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>) {
+pub fn create_arch_specific_drivers(
+    _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+) {
     // create architecture specific drivers, for example the timer
 }

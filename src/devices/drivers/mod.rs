@@ -1,6 +1,6 @@
-use alloc::boxed::Box;
-use crate::sync::MutexLike;
 use crate::arch::{Arch, ArchTrait};
+use crate::sync::MutexLike;
+use alloc::boxed::Box;
 pub mod uart_pl011;
 
 pub fn create_drivers() {
