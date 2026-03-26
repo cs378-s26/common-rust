@@ -147,8 +147,12 @@ pub fn vunmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
         )
     };
 
-    let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr))
-        .unwrap_or_else(|_| panic!("misaligned virtual address {:x} to vunmap_no_dealloc", vaddr));
+    let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr)).unwrap_or_else(|_| {
+        panic!(
+            "misaligned virtual address {:x} to vunmap_no_dealloc",
+            vaddr
+        )
+    });
     if let Ok((frame, toilet)) = {
         let _ = VMM_PROTECTOR.lock();
         mapper.unmap(vpage)
