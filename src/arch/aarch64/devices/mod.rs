@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
+use crate::devices::device_discovery::DeviceDiscovery;
 
-pub mod uart_pl011;
 use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
 use crate::sync::MutexLike;
 use fdt;
@@ -31,13 +32,6 @@ pub fn parse_devices() {
     }
 }
 
-pub fn create_arch_specific_drivers() {
-    // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-    let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
-    drivers.push(Box::new(uart_pl011::UartPl011Discovery));
-}
-
-pub fn init_arch_specific_drivers() {
-    // initialize drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-    // for device in matched_devices.iter_mut() {} still unused
+pub fn create_arch_specific_drivers(_system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>) {
+    // create architecture specific drivers, for example the timer
 }
