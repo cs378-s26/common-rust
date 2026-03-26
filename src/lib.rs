@@ -49,6 +49,8 @@ use spin::{Barrier, Once};
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
 
+use crate::devices::drivers::create_drivers;
+
 // some sample limine requests, for no particular reason
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -127,8 +129,10 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
 
-    Arch::create_arch_specific_drivers();
+    // initialize all system drivers, then parse devices to initialize them
+    create_drivers();
     Arch::parse_devices();
+
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
