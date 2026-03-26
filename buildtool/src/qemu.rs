@@ -1,13 +1,14 @@
-use anyhow::Result;
-
 use crate::util::{
     Target, build_image, build_kernel, download_ovmf, exec, path_to_string, run_dir,
 };
+use anyhow::Result;
+use std::env::current_dir;
 
 pub fn run(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
     let machine = target.qemu_machine();
+    let disk_path = current_dir()?.join("disk.img");
 
     let mut args = vec![
         "-machine".into(),
@@ -16,6 +17,13 @@ pub fn run(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Re
         path_to_string(&download_ovmf(target)?)?,
         "-drive".into(),
         format!("file={},format=raw", path_to_string(&path)?),
+        "-drive".into(),
+        format!(
+            "if=none,file={},format=raw,id=disk0", //if=none means don't automatically attach the drive to a bus, this is done by virtio-blk
+            path_to_string(&disk_path)?
+        ),
+        "-device".into(),
+        "virtio-blk-device,drive=disk0".into(),
         "-no-reboot".into(),
         "-monitor".into(),
         "stdio".into(),

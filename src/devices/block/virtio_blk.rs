@@ -4,36 +4,31 @@ use crate::arch::{Arch, ArchTrait};
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use core::ptr::NonNull;
-use virtio_drivers::device::blk::{VirtIOBlk, SECTOR_SIZE};
-use virtio_drivers::transport::{Transport};
+use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
+use virtio_drivers::transport::Transport;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
 
 // wrapper around the virtio blk driver containing the necessary hal implementation for it to work
 // with our system + the system block device trait
-struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
+pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
     blk: VirtIOBlk<H, T>,
 }
-
 
 impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     pub fn new(transport: T) -> Self {
         Self {
-            blk: VirtIOBlk::<VirtioBlkHal, T>::new(transport).expect("failed to initialize virtio blk device"),
+            blk: VirtIOBlk::<VirtioBlkHal, T>::new(transport)
+                .expect("failed to initialize virtio blk device"),
         }
     }
 }
 
 impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
-    fn init(&mut self) -> Result<(), BlockError> {
-        Ok(())
-    }
-
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],
         buffers: &mut [&mut [u8]], // the outer reference has to be mutable to allow for borrowing the inner buffers
     ) -> Result<(), BlockError> {
-
         for buf in buffers.iter_mut() {
             check_buffer_size(buf, self.block_size())?;
         }
@@ -92,7 +87,7 @@ fn check_buffer_size(buffer: &[u8], block_size: usize) -> Result<(), BlockError>
     Ok(())
 }
 
-struct VirtioBlkHal;
+pub struct VirtioBlkHal;
 
 // necessary struct for virtio driver to communicate with hardware.
 unsafe impl Hal for VirtioBlkHal {
