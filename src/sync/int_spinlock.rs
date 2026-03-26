@@ -5,13 +5,17 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::arch::{Arch, ArchTrait, IrqState};
+use crate::state::Irq;
+use crate::{
+    arch::{Arch, ArchTrait},
+    state::State,
+};
 
 use super::MutexLike;
 
 pub struct IntSpinLockGuard<'a, T> {
     mutex: &'a IntSpinLock<T>,
-    irq_state: IrqState,
+    irq_state: State<Irq>,
 }
 
 impl<'a, T> Drop for IntSpinLockGuard<'a, T> {
@@ -49,7 +53,7 @@ impl<T> IntSpinLock<T> {
     }
 
     #[inline(always)]
-    fn attempt_acquire_lock(&self, state: IrqState) -> bool {
+    fn attempt_acquire_lock(&self, state: State<Irq>) -> bool {
         Arch::set_irq_enabled(false);
 
         if !self.lock.swap(true, Ordering::Acquire) {
@@ -62,7 +66,7 @@ impl<T> IntSpinLock<T> {
     }
 
     #[inline(always)]
-    fn lock_block(&self, state: IrqState) {
+    fn lock_block(&self, state: State<Irq>) {
         while !self.attempt_acquire_lock(state) {
             while self.lock.load(Ordering::Relaxed) {
                 hint::spin_loop();
@@ -70,8 +74,8 @@ impl<T> IntSpinLock<T> {
         }
     }
 
-    fn lock_impl(&self, guard_state: IrqState) -> IntSpinLockGuard<'_, T> {
-        let state = IrqState::save();
+    fn lock_impl(&self, guard_state: State<Irq>) -> IntSpinLockGuard<'_, T> {
+        let state = State::<Irq>::save();
 
         if !self.attempt_acquire_lock(state) {
             self.lock_block(state);
@@ -94,10 +98,10 @@ impl<T> MutexLike<T> for IntSpinLock<T> {
         Self: 'a;
 
     fn lock(&self) -> Self::Guard<'_> {
-        self.lock_impl(IrqState::save())
+        self.lock_impl(State::<Irq>::save())
     }
 
     fn lock_no_restore_irq(&self) -> Self::Guard<'_> {
-        self.lock_impl(IrqState::new(false))
+        self.lock_impl(State::<Irq>::new(false))
     }
 }

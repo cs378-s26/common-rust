@@ -6,15 +6,16 @@ use core::{
 };
 
 use crate::{
-    arch::{Arch, ArchTrait, IrqState},
-    thread::{ThreadQueue, can_yield, local_work_queue, new_thread_queue, suspend_to_queue},
+    arch::{Arch, ArchTrait},
+    state::{Irq, State},
+    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
 };
 
 use super::{MutexLike, int_spinlock::IntSpinLock};
 
 pub struct IntMutexGuard<'a, T> {
     mutex: &'a IntMutex<T>,
-    irq_state: IrqState,
+    irq_state: State<Irq>,
 }
 
 impl<'a, T> Drop for IntMutexGuard<'a, T> {
@@ -22,7 +23,7 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
         self.mutex.lock.store(false, Ordering::Release);
 
         if let Some(task) = self.mutex.blocked.lock().pop_front() {
-            local_work_queue().push_back(task);
+            schedule_thread(task);
         }
 
         self.irq_state.restore();
@@ -63,7 +64,7 @@ impl<T> IntMutex<T> {
     }
 
     #[inline(always)]
-    fn attempt_acquire_lock(&self, state: IrqState) -> bool {
+    fn attempt_acquire_lock(&self, state: State<Irq>) -> bool {
         Arch::set_irq_enabled(false);
 
         if !self.lock.swap(true, Ordering::Acquire) {
@@ -76,7 +77,7 @@ impl<T> IntMutex<T> {
     }
 
     #[inline(always)]
-    fn lock_block_yield(&self, state: IrqState) {
+    fn lock_block_yield(&self, state: State<Irq>) {
         while !self.attempt_acquire_lock(state) {
             // TODO: don't hardcode this constant
             for _ in 0..500 {
@@ -96,7 +97,7 @@ impl<T> IntMutex<T> {
     }
 
     #[inline(always)]
-    fn lock_block_spin(&self, state: IrqState) {
+    fn lock_block_spin(&self, state: State<Irq>) {
         while !self.attempt_acquire_lock(state) {
             while self.lock.load(Ordering::Relaxed) {
                 hint::spin_loop();
@@ -105,7 +106,7 @@ impl<T> IntMutex<T> {
     }
 
     #[inline(always)]
-    fn lock_block(&self, state: IrqState) {
+    fn lock_block(&self, state: State<Irq>) {
         if can_yield() {
             self.lock_block_yield(state);
         } else {
@@ -113,8 +114,8 @@ impl<T> IntMutex<T> {
         }
     }
 
-    fn lock_impl(&self, guard_state: IrqState) -> IntMutexGuard<'_, T> {
-        let state = IrqState::save();
+    fn lock_impl(&self, guard_state: State<Irq>) -> IntMutexGuard<'_, T> {
+        let state = State::<Irq>::save();
 
         if !self.attempt_acquire_lock(state) {
             self.lock_block(state);
@@ -134,11 +135,11 @@ impl<T> MutexLike<T> for IntMutex<T> {
         Self: 'a;
 
     fn lock(&self) -> Self::Guard<'_> {
-        self.lock_impl(IrqState::save())
+        self.lock_impl(State::<Irq>::save())
     }
 
     fn lock_no_restore_irq(&self) -> Self::Guard<'_> {
-        self.lock_impl(IrqState::new(false))
+        self.lock_impl(State::<Irq>::new(false))
     }
 }
 

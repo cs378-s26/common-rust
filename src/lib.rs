@@ -24,6 +24,7 @@ pub mod panic;
 pub mod physical_memory;
 pub mod print;
 pub mod ramdisk;
+pub mod state;
 pub mod sync;
 pub mod syscall;
 pub mod thread;

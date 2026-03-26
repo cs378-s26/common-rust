@@ -9,7 +9,7 @@ use spin::lazy::Lazy;
 use crate::{
     sync::{IntMutex, IntMutexGuard, MutexLike},
     thread::{
-        ThreadQueue, can_yield, is_on_thread, local_work_queue, new_thread_queue,
+        ThreadQueue, can_yield, is_on_thread, new_thread_queue, schedule_thread,
         suspend_to_locked_queue,
     },
 };
@@ -167,7 +167,7 @@ impl<T> RwLock<T> {
         }
 
         if let Some(t) = to_wake {
-            local_work_queue().push_back(t);
+            schedule_thread(t);
         }
     }
 
@@ -184,17 +184,17 @@ impl<T> RwLock<T> {
                 wake_one_writer = st.write_wait.pop_front();
             } else {
                 while let Some(t) = st.read_wait.pop_front() {
-                    wake_readers.push_back(t);
+                    schedule_thread(t);
                 }
             }
         }
 
         if let Some(t) = wake_one_writer {
-            local_work_queue().push_back(t);
+            schedule_thread(t);
         }
 
         while let Some(t) = wake_readers.pop_front() {
-            local_work_queue().push_back(t);
+            schedule_thread(t);
         }
     }
 }

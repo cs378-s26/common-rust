@@ -3,7 +3,7 @@ use core::ops::{Deref, DerefMut};
 use crate::{
     sync::{IntMutex, IntMutexGuard, MutexLike},
     thread::{
-        ThreadQueue, can_yield, is_on_thread, local_work_queue, new_thread_queue,
+        ThreadQueue, can_yield, is_on_thread, new_thread_queue, schedule_thread,
         suspend_to_locked_queue,
     },
 };
@@ -94,7 +94,7 @@ impl Semaphore {
         }
 
         if let Some(t) = to_wake {
-            local_work_queue().push_back(t);
+            schedule_thread(t);
         }
     }
 }

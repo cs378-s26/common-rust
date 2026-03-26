@@ -1,28 +1,31 @@
 extern crate alloc;
 
 use core::{
-    cell::{Cell, OnceCell, RefCell, RefMut},
+    cell::{Cell, OnceCell},
     ffi::c_void,
     ops::DerefMut,
     pin::Pin,
     ptr,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::naked_asm;
 
-use alloc::boxed::Box;
-use alloc::sync::{Arc, Weak};
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
 use intrusive_collections::{
     LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
 };
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqGuard},
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{MP_STAGE, MPStage, core_local},
+    mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
+    state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
 
@@ -152,7 +155,7 @@ core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
     CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
-    LOCAL_WORK_QUEUE: RefCell<ThreadQueue> = RefCell::new(new_thread_queue());
+    pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
 
 thread_local! {
@@ -160,6 +163,8 @@ thread_local! {
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
+    pub PINNED_TO_CORE: AtomicBool = AtomicBool::new(false);
+    pub CORE_PINNED_TO: AtomicUsize = AtomicUsize::new(usize::MAX);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -168,10 +173,6 @@ thread_local! {
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
 static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
-
-pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
-    LOCAL_WORK_QUEUE.borrow_mut()
-}
 
 fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
@@ -188,7 +189,7 @@ fn thread_exit() {
 }
 
 pub fn is_on_thread() -> bool {
-    let _guard = IrqGuard::disabled_guard();
+    let _guard = StateGuard::<Irq>::guard();
 
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
@@ -235,34 +236,27 @@ pub fn poll_tasks() -> ! {
         "poll_tasks may only be called from idle"
     );
 
-    // assert!(!Arch::irq_is_enabled());
-
+    let mut counter = false;
     loop {
-        loop {
-            // TEMP: need to replace with IntRefCell
-            let Some(thread) = local_work_queue().pop_front() else {
-                break;
-            };
-
-            // assert!(!Arch::irq_is_enabled());
-            GLOBAL_WORK_QUEUE.lock().push_back(thread);
-            Arch::wake_other_cores();
+        while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
+            if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
+                if counter {
+                    counter = false;
+                    suspend_to_thread(thread); // TODO scheduled unfairly often
+                    continue;
+                } else {
+                    LOCAL_WORK_QUEUE.lock().push_back(thread);
+                    counter = true;
+                    break;
+                }
+            } else {
+                GLOBAL_WORK_QUEUE.lock().push_back(thread);
+                Arch::wake_other_cores();
+            }
         }
-
-        let thread = {
-            // assert!(!Arch::irq_is_enabled());
-            let mut lock = GLOBAL_WORK_QUEUE.lock();
-            let task = lock.pop_front();
-            drop(lock);
-            task
-        };
-
-        let Some(thread) = thread else {
-            // Arch::sleep_core();
-            continue;
-        };
-
-        suspend_to_thread(thread);
+        if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
+            suspend_to_thread(thread);
+        }
     }
 }
 
@@ -308,7 +302,7 @@ pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
 
     // can't queue idle
     if !is_idle {
-        local_work_queue().push_back(thread);
+        LOCAL_WORK_QUEUE.lock().push_back(thread);
     }
 
     unsafe { go_to_thread(target) }
@@ -351,7 +345,13 @@ pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    let _guard = IrqGuard::guard();
+    let guard = StateGuard::<Irq>::guard();
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
+    }
+    drop(guard);
+
+    let _guard = StateGuard::<Irq>::preserve();
 
     let mut queue = queue.lock_no_restore_irq();
 
@@ -392,13 +392,27 @@ where
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
-    let _guard = IrqGuard::disabled_guard();
+    let _guard = StateGuard::<Irq>::guard();
     suspend_impl(drop, thread);
 }
 
 #[inline(always)]
 pub fn yield_thread() {
-    suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    // TODO use the below
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        suspend_to_queue(&*LOCAL_WORK_QUEUE);
+    } else {
+        suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    }
+}
+
+pub fn schedule_thread(task: Arc<Thread>) {
+    if PINNED_TO_CORE.read_for(&task).load(Ordering::Relaxed) {
+        let core = CoreId(CORE_PINNED_TO.read_for(&task).load(Ordering::Relaxed));
+        LOCAL_WORK_QUEUE.read_for(core).lock().push_back(task);
+    } else {
+        LOCAL_WORK_QUEUE.lock().push_back(task);
+    }
 }
 
 pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
@@ -443,8 +457,6 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
-    let mut lock = GLOBAL_WORK_QUEUE.lock();
-    lock.push_back(thread);
-    drop(lock);
+    GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }
