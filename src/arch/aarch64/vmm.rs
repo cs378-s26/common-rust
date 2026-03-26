@@ -1,6 +1,6 @@
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
-use crate::virtual_memory::PagingOptions;
 use crate::print::kprintln;
+use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
 use core::arch::asm;
 use spin::Mutex;
@@ -9,9 +9,8 @@ static VMM_PROTECTOR: Mutex<()> = Mutex::new(()); // TODO make this address spac
 
 // useful docs for this: https://developer.arm.com/documentation/ddi0601/2025-12/AArch64-Registers/MAIR-EL1--Memory-Attribute-Indirection-Register--EL1-
 pub fn configure_vm() {
-
     // MAIR_EL1 stands for memory attribute indirection register, for each PT entry you select an attribute from this
-    // register to determine caching and ordering, this is set up here 
+    // register to determine caching and ordering, this is set up here
     let normal_memory_cacheable = 0xFF;
     let normal_memory_non_cacheable = 0x44 << 8; // each index is 8 bites, so this sets it to index 1
     let device_memory = 0x00 << 16; // nGnRnE, obviously this does nothing in the or below but included here for clarity
@@ -23,9 +22,8 @@ pub fn configure_vm() {
             in(reg) mair_el1,
             options(nostack, preserves_flags)
         );
-    }  
+    }
     kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
-
 }
 
 // TODO allow for shared mappings and write-through caching

@@ -34,7 +34,8 @@ impl DeviceDriver for UartPl011Driver {
 
     // allocate virtual memory for the UART MMIO region
     fn init(&mut self) -> bool {
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let options =
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
         let backing = Some(self.phys_address);
         let vm = VirtualMemoryAllocation::new(
             Arch::get_address_space(),
