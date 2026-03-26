@@ -2,7 +2,7 @@ use core::mem::MaybeUninit;
 
 use crate::sync::{IntMutex, MutexLike, Semaphore};
 
-/// Multiple Producer, Multiple Consumer bounded queue. 
+/// Multiple Producer, Multiple Consumer bounded queue.
 /// push() blocks if full and pop() blocks if empty.
 ///
 /// The buffer uses uninitialized memory internally. Only items that are currently
