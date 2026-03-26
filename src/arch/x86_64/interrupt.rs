@@ -3,7 +3,6 @@ use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use x86::bits64::syscall;
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
@@ -17,8 +16,8 @@ pub fn timer_ticks() -> u64 {
 
 #[repr(C)]
 pub struct InterruptContext {
-    pub regs: [u64; 14], // TODO just make explicit
-    // general-purpose registers
+    // TODO just make the below explicit
+    pub regs: [u64; 14],     // general-purpose registers
     pub r15: u64,
     pub rbp: u64, // For preemptive context restore.
     pub id: u64,

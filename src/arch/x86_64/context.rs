@@ -7,9 +7,9 @@ use core::{
 use super::interrupt::InterruptContext;
 
 use spin::MutexGuard;
-use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
+use x86::{Ring, bits64::{rflags::RFlags, segmentation::swapgs}, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
+use crate::arch::x86_64::{mp::set_thread_local_pointer, slice_stack_pointer, tables::GlobalDescriptorTable};
 use crate::arch::{Arch, ContextTrait};
 
 /// Represents the general-purpose registers of an x86 CPU.
@@ -41,6 +41,7 @@ pub struct Context {
     pub rflags: RFlags,
     pub cs: u64,
     pub ss: u64,
+    pub fs: u64,
 }
 
 impl const Default for Context {
@@ -68,6 +69,7 @@ impl const Default for Context {
             rflags: RFlags::empty(),
             cs: Default::default(),
             ss: Default::default(),
+            fs: Default::default(),
         }
     }
 }
@@ -141,6 +143,11 @@ impl ContextTrait for Context {
 
     fn jump_to(&self) -> ! {
         unsafe {
+            set_thread_local_pointer(self.fs as *const u64);
+            // nonzero CPL: we're going (back) to user mode!
+            if self.cs & 0b11 != 0b00 { 
+                swapgs();
+            }
             jump_to_context(
                 &raw const self.gp,
                 self.ss,
