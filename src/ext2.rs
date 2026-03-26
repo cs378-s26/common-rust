@@ -725,7 +725,7 @@ impl<D: Disk> FNode<D> {
 mod test {
     use crate::alloc::string::ToString;
     use crate::ext2::Ext2;
-    use crate::print::kprintln;
+    use crate::print::{kprint, kprintln};
     use crate::ramdisk::Ramdisk;
     use crate::sync::MutexLike;
     use alloc::sync::Arc;
@@ -741,10 +741,18 @@ mod test {
             let mut inode = hello.inode.lock();
             hello.read_block(0, &mut buffer, &inode);
             match core::str::from_utf8(&buffer[..]) {
-                Ok(s) => kprintln!("{}", s),
+                Ok(s) => {
+                    let mut iter = s.chars();
+                    while let Some(c) = iter.next()
+                        && c != '\0'
+                    {
+                        kprint!("{}", c)
+                    }
+                    kprintln!("");
+                }
                 Err(g) => kprintln!("dead {}", g),
             };
-            buffer[0] = 'b' as u8;
+            buffer[0] = b'b';
             hello.write_block(
                 999,
                 &buffer,
@@ -756,11 +764,19 @@ mod test {
             kprintln!("trying to read now");
             hello.read_block(999, &mut buffer, &inode);
             match core::str::from_utf8(&buffer[..]) {
-                Ok(s) => kprintln!("{}", s),
+                Ok(s) => {
+                    let mut iter = s.chars();
+                    while let Some(c) = iter.next()
+                        && c != '\0'
+                    {
+                        kprint!("{}", c)
+                    }
+                    kprintln!("");
+                }
                 Err(g) => kprintln!("dead {}", g),
             };
         }
-        kprintln!("{}", fs.alloc_block(0, None).unwrap());
+        // kprintln!("{}", fs.alloc_block(0, None).unwrap());
     }
 
     #[test_case]
@@ -768,10 +784,9 @@ mod test {
         let disk = Ramdisk::new(512);
         let fs = Arc::new(Ext2::new(disk).unwrap());
         let root = fs.get_root().upgrade().unwrap();
-        let mut buffer = alloc::vec![0u8; fs.block_size];
         for i in 0i32..100 {
             kprintln!("WRITING: {}", i);
-            root.create_entry(&i.to_string(), 1, 0);
+            let _ = root.create_entry(&i.to_string(), 1, 0);
         }
 
         for i in 0i32..100 {
