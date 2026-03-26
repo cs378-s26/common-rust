@@ -121,7 +121,7 @@ pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
-    unsafe { crate::thread::preempt_from_interrupt(ctx) };
+    unsafe { crate::thread::preempt_to_idle(ctx) };
 }
 
 pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {

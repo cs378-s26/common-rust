@@ -2,6 +2,7 @@ extern crate alloc;
 
 use crate::ramdisk::Disk;
 use crate::sync::IntMutex;
+use crate::sync::MutexLike;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use core::{
-    cell::{Cell, LazyCell, OnceCell, RefCell, RefMut},
+    cell::{Cell, OnceCell, RefCell, RefMut},
     ffi::c_void,
     pin::Pin,
     ptr,
@@ -12,22 +12,27 @@ use core::{
 use core::arch::naked_asm;
 
 use alloc::boxed::Box;
-use alloc::sync::Arc;
-use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
+use alloc::sync::{Arc, Weak};
+use intrusive_collections::{
+    LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
+};
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{
-        Arch, ArchTrait, Context, ContextTrait, IPI_WAKE_VECTOR, InterruptContext, IrqState, apic,
-        sleep_core,
-    },
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, IrqGuard},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     mp::{MP_STAGE, MPStage, core_local},
-    sync::MutexLike,
+    sync::{IntSpinLock, MutexLike},
 };
 
 pub struct Thread {
+    // used for generally queuing threads somewhere
     pub link: LinkedListAtomicLink,
+
+    // used for scheduling
+    // some schedulers may opt to not use this (e.g. round robin)
+    pub rb_link: RBTreeAtomicLink,
+
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
@@ -40,11 +45,14 @@ impl Thread {
 
         let handle = Arc::new(Thread {
             link: LinkedListAtomicLink::new(),
+            rb_link: RBTreeAtomicLink::new(),
             tls: Pin::new(tls),
             tls_addr,
         });
 
-        THIS_THREAD.read_for(&handle).call_once(|| handle.clone());
+        THIS_THREAD
+            .read_for(&handle)
+            .call_once(|| Arc::downgrade(&handle));
 
         // TODO: relax memory ordering here
         TID.read_for(&handle)
@@ -129,8 +137,8 @@ intrusive_adapter!(pub ThreadQueueAdapter = Arc<Thread>: Thread { link => Linked
 
 pub type ThreadQueue = LinkedList<ThreadQueueAdapter>;
 
-pub fn new_thread_queue() -> ThreadQueue {
-    ThreadQueue::new(ThreadQueueAdapter::new())
+pub const fn new_thread_queue() -> ThreadQueue {
+    ThreadQueue::new(ThreadQueueAdapter::NEW)
 }
 
 // thread scheduling and management
@@ -143,13 +151,14 @@ core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
     CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
-    LOCAL_WORK_QUEUE: LazyCell<RefCell<ThreadQueue>> = LazyCell::new(|| RefCell::new(new_thread_queue()));
+    LOCAL_WORK_QUEUE: RefCell<ThreadQueue> = RefCell::new(new_thread_queue());
 }
 
 thread_local! {
-    pub THIS_THREAD: Once<Arc<Thread>> = Once::new();
+    pub THIS_THREAD: Once<Weak<Thread>> = Once::new();
     pub CONTEXT: Mutex<Context> = Mutex::new(Default::default());
     pub CAN_YIELD: AtomicBool = AtomicBool::new(false);
+    pub IS_IDLE: AtomicBool = AtomicBool::new(false);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -157,27 +166,29 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-static GLOBAL_WORK_QUEUE: Once<Mutex<ThreadQueue>> = Once::new();
-
-pub fn init_threading() {
-    GLOBAL_WORK_QUEUE.call_once(|| Mutex::new(new_thread_queue()));
-}
+static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 
 pub fn local_work_queue() -> RefMut<'static, ThreadQueue> {
     LOCAL_WORK_QUEUE.borrow_mut()
 }
 
 fn thread_enter(thread: Arc<Thread>) {
+    // assert!(!Arch::irq_is_enabled());
+
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
     CURRENT_THREAD.set(Some(thread));
 }
 
 fn thread_exit() {
+    // assert!(!Arch::irq_is_enabled());
+
     CURRENT_THREAD.set(None);
     unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
+    let _guard = IrqGuard::disabled_guard();
+
     let thread = CURRENT_THREAD.take();
     let res = thread.is_some();
     CURRENT_THREAD.set(thread);
@@ -196,6 +207,12 @@ unsafe fn go_to_thread(thread: Arc<Thread>) -> ! {
     state.jump_to();
 }
 
+pub fn this_thread() -> Arc<Thread> {
+    THIS_THREAD.get()
+        .unwrap()
+        .upgrade().expect("this_thread, although weak, should never return None when upgrading and the current thread is running")
+}
+
 pub fn set_up_idle() -> Arc<Thread> {
     let Ok(_) = IDLE.set(Thread::new()) else {
         panic!("expected core-local idle to be not init");
@@ -206,36 +223,41 @@ pub fn set_up_idle() -> Arc<Thread> {
     ctx.setup_kthread_context();
     CTX_GUARD.set(Some(ctx));
 
+    IS_IDLE.store(true, Ordering::Relaxed);
+
     IDLE.get().unwrap().clone()
 }
 
 pub fn poll_tasks() -> ! {
     assert!(
-        Thread::is_same_thread(THIS_THREAD.get().unwrap(), IDLE.get().unwrap()),
+        Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
 
-    // Ensure IRQs are enabled so sleep_core (hlt) can be woken by IPIs/timer.
-    Arch::set_irq_enabled(true);
+    // assert!(!Arch::irq_is_enabled());
 
     loop {
         loop {
+            // TEMP: need to replace with IntRefCell
             let Some(thread) = local_work_queue().pop_front() else {
                 break;
             };
 
-            GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
+            // assert!(!Arch::irq_is_enabled());
+            GLOBAL_WORK_QUEUE.lock().push_back(thread);
+            Arch::wake_other_cores();
         }
 
         let thread = {
-            let mut lock = GLOBAL_WORK_QUEUE.get().unwrap().lock();
+            // assert!(!Arch::irq_is_enabled());
+            let mut lock = GLOBAL_WORK_QUEUE.lock();
             let task = lock.pop_front();
             drop(lock);
             task
         };
 
         let Some(thread) = thread else {
-            sleep_core();
+            // Arch::sleep_core();
             continue;
         };
 
@@ -248,33 +270,29 @@ pub fn can_yield() -> bool {
     // the current thread can yield (for instance, idle cannot yield),
     // and interrupts are enabled (if IRQs are disabled we're likely in an
     // interrupt handler or critical section).
-    Arch::irq_is_enabled()
-        && MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
-        && is_on_thread()
-        && CAN_YIELD.load(Ordering::Relaxed)
-}
-
-/// Handles preemption from an interrupt context.
-/// # Safety
-/// This is sketchy
-pub unsafe fn preempt_from_interrupt(ctx: &InterruptContext) {
-    if !can_yield_for_preempt() {
-        return;
-    }
-    unsafe { do_preempt(ctx) }
+    Arch::irq_is_enabled() && can_yield_for_preempt()
 }
 
 // Like `can_yield` but skips the IRQ-enabled check.
 // we call this from the timer ISR where IRQs are already disabled by the CPU,
 // but we still want to preempt.
-fn can_yield_for_preempt() -> bool {
+pub fn can_yield_for_preempt() -> bool {
     MP_STAGE.load(Ordering::Relaxed) == MPStage::MPPreempt
         && is_on_thread()
         && CAN_YIELD.load(Ordering::Relaxed)
 }
 
-// Handles preemption.
-unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
+/// Handles preemption. Resumes execution on the target thread.
+/// # Safety
+/// Can only be called from IRQ
+pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
+    // idle thread is allowed to call preempt_to
+    assert!(can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed));
+    assert!(
+        !Arch::irq_is_enabled(),
+        "IRQ cannot be enabled on preempt_to"
+    );
+
     // Save the interrupted context and release the CONTEXT lock.
     let mut guard = CTX_GUARD
         .take()
@@ -282,50 +300,73 @@ unsafe fn do_preempt(ctx: &InterruptContext) -> ! {
     guard.save_from_interrupt(ctx);
     drop(guard);
 
-    let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
+    let thread = this_thread();
+    let is_idle = IS_IDLE.load(Ordering::Relaxed);
 
     thread_exit();
 
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    // can't queue idle
+    if !is_idle {
+        local_work_queue().push_back(thread);
+    }
 
-    unsafe { go_to_thread(IDLE.get().unwrap().clone()) }
+    unsafe { go_to_thread(target) }
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
 fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
-    let irq_state = IrqState::save();
-    Arch::set_irq_enabled(false);
+    assert!(
+        !Arch::irq_is_enabled(),
+        "suspend_impl requires irq to be disabled on entry"
+    );
 
     assert!(
         is_on_thread(),
-        "yield_thread_with_action_to() called when the current core is not in a thread context"
+        "suspend_impl() called when the current core is not in a thread context"
     );
 
-    let thread = THIS_THREAD.get().expect("THIS_THREAD not set").clone();
+    let thread = this_thread();
     let context = CTX_GUARD.take().expect("CTX_GUARD not set");
 
     unsafe {
         Arch::save_context(&(*CTX_SWITCH_STACK).0, context, move || {
             thread_exit();
             action(thread);
+            debug_assert!(
+                !Arch::irq_is_enabled(),
+                "action() re-enabled IRQ - this should never happen"
+            );
             go_to_thread(target);
         })
-    };
+    }
+}
 
-    irq_state.restore();
+/// Preempt to the idle thread, for general purpose rescheduling.
+/// # Safety
+/// Can only be called from IRQ
+pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
 }
 
 #[inline(always)]
 pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
-    // We need to lock *before* suspend_impl, because interrupts are blocked there, and we shouldn't deal with
-    // that when in the limbo state.
-    let mut queue = queue.lock();
+    let _guard = IrqGuard::guard();
+
+    let mut queue = queue.lock_no_restore_irq();
+
+    assert!(
+        !Arch::irq_is_enabled(),
+        "interrupts must either be disabled by the lock, or be disabled on entry"
+    );
 
     suspend_impl(
         move |t| {
             queue.push_back(t);
-            drop(queue);
+            drop(queue); // okay to just drop the queue here, because we locked it with
+            // lock_no_restore_irq, so there's no chance of irqs randomly being
+            // restored here
+            //
+            // the _guard is used to actually restore irq state when needed
         },
         IDLE.get().unwrap().clone(),
     );
@@ -333,13 +374,13 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 
 #[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
+    let _guard = IrqGuard::disabled_guard();
     suspend_impl(drop, thread);
 }
 
 #[inline(always)]
 pub fn yield_thread() {
-    let queue = GLOBAL_WORK_QUEUE.get().unwrap();
-    suspend_to_queue(queue);
+    suspend_to_queue(&GLOBAL_WORK_QUEUE);
 }
 
 pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
@@ -350,7 +391,7 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
         }
 
         suspend_to_thread(IDLE.get().unwrap().clone());
-        unreachable!()
+        panic!("unreachable")
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -384,6 +425,8 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
-    GLOBAL_WORK_QUEUE.get().unwrap().lock().push_back(thread);
-    apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    let mut lock = GLOBAL_WORK_QUEUE.lock();
+    lock.push_back(thread);
+    drop(lock);
+    Arch::wake_other_cores();
 }

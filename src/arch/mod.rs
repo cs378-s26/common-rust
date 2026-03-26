@@ -12,7 +12,6 @@ pub use self::aarch64::*;
 
 use crate::mp::CoreId;
 use crate::virtual_memory::PagingOptions;
-use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 
@@ -56,32 +55,11 @@ pub trait ContextTrait {
     ) -> Self;
 }
 
-pub trait KernelEntryTrait {
-    fn kernel_main() -> !;
-}
-
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
-    /// calls initalize core
-    fn initialize_mp<E: KernelEntryTrait>(req: &MpRequest) -> ! {
-        let resp = req
-            .get_response()
-            .expect("Expected to find MpResponse, got None");
-        let mut bsp = None;
-        let mut core_id: u64 = 1;
-        for cpu in resp.cpus() {
-            if Self::is_bsp(req, cpu) {
-                bsp = Some(cpu);
-            } else {
-                cpu.extra.store(core_id, Ordering::SeqCst);
-                core_id += 1;
-                cpu.goto_address.write(Self::start_core::<E>);
-            }
-        }
-        unsafe { Self::start_core::<E>(bsp.expect("Couldn't find the bootstrap processor")) }
-    }
+
     /// does per core init
     /// this looks like:
     /// 1. setting up the cpu local ptr
@@ -91,16 +69,10 @@ pub trait ArchTrait {
     /// Should only be called from bootstrap processor during kernel initialization
     unsafe fn initialize_core(cpu: &Cpu) -> ();
 
-    /// wrapper around initalize core that goes to kernel main
-    /// # Safety
-    /// Should only be called from bootstrap processor during kernel initialization
-    unsafe extern "C" fn start_core<E: KernelEntryTrait>(cpu: &Cpu) -> ! {
-        unsafe { Self::initialize_core(cpu) };
-        E::kernel_main()
-    }
-
     fn set_irq_enabled(enabled: bool);
     fn irq_is_enabled() -> bool;
+    fn sleep_core();
+    fn wake_other_cores();
 
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety
@@ -147,5 +119,37 @@ impl IrqState {
 
     pub fn is_masked(&self) -> bool {
         !self.0
+    }
+
+    pub const fn new(value: bool) -> IrqState {
+        IrqState(value)
+    }
+}
+
+#[repr(transparent)]
+pub struct IrqGuard(IrqState);
+
+impl IrqGuard {
+    pub fn disabled_guard() -> IrqGuard {
+        let state = IrqState::save();
+        Arch::set_irq_enabled(false);
+        IrqGuard(state)
+    }
+
+    pub fn enable_guard() -> IrqGuard {
+        let state = IrqState::save();
+        Arch::set_irq_enabled(true);
+        IrqGuard(state)
+    }
+
+    pub fn guard() -> IrqGuard {
+        let state = IrqState::save();
+        IrqGuard(state)
+    }
+}
+
+impl Drop for IrqGuard {
+    fn drop(&mut self) {
+        self.0.restore();
     }
 }

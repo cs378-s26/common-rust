@@ -65,7 +65,7 @@ impl const Default for Context {
                 r15: 0,
             },
             rip: Default::default(),
-            rflags: RFlags::from_bits_truncate(0x202), // bit 1 (reserved, must be set) + IF flag
+            rflags: RFlags::empty(),
             cs: Default::default(),
             ss: Default::default(),
         }
@@ -160,6 +160,9 @@ impl ContextTrait for Context {
         self.ss = SegmentSelector::new(GlobalDescriptorTable::DS, Ring::Ring0)
             .bits()
             .into();
+
+        // make sure IF is set
+        self.rflags.insert(RFlags::FLAGS_IF);
     }
 
     fn new_kthread<T>(

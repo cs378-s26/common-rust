@@ -62,6 +62,14 @@ impl ArchTrait for Arch {
         rflags::read().contains(RFlags::FLAGS_IF)
     }
 
+    fn sleep_core() {
+        asm::sleep_core();
+    }
+
+    fn wake_other_cores() {
+        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
+    }
+
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: spin::MutexGuard<'static, Self::Context>,
@@ -122,9 +130,11 @@ impl UnwindContextTrait for UnwindContext {
     fn from_ptr(ptr: *const u64) -> UnwindContext {
         UnwindContext { ptr }
     }
+
     fn get_ptr(&self) -> *const u64 {
         self.ptr
     }
+
     #[inline(always)]
     unsafe fn get() -> UnwindContext {
         UnwindContext {

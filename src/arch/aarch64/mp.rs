@@ -74,13 +74,13 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
     unsafe { *(slot as *const u64) }
 }
 
-pub unsafe fn initialize_core(cpu: &Cpu) -> () {
+pub unsafe fn initialize_core(cpu: &Cpu) {
     enable_advsimd();
 
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
-    MPDIR_ID.store(cpu.mpidr as u64, Ordering::Relaxed);
+    MPDIR_ID.store(cpu.mpidr, Ordering::Relaxed);
     kprintln!(
         "done init core {}, CLS base={:x}, TPIDR_EL1={:x}",
         id,

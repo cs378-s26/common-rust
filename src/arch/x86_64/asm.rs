@@ -1,6 +1,8 @@
 use core::arch::asm;
 use core::arch::naked_asm;
 
+use x86::irq;
+
 use crate::arch::{Arch, ArchTrait};
 pub fn read_cycle_counter() -> u64 {
     let lo: u32;
@@ -19,11 +21,10 @@ pub fn read_cycle_counter() -> u64 {
 }
 
 pub fn halt() -> ! {
-    #[cfg(target_arch = "x86_64")]
     unsafe {
-        asm!("cli");
+        irq::disable();
         loop {
-            asm!("hlt");
+            x86::halt();
         }
     }
 }
@@ -33,9 +34,8 @@ pub fn sleep_core() {
         Arch::irq_is_enabled(),
         "sleep_core: Interrupts not enabled! Core will not wake."
     );
-    unsafe {
-        asm!("hlt", options(nomem, nostack));
-    }
+
+    unsafe { x86::halt() };
 }
 
 #[unsafe(naked)]
