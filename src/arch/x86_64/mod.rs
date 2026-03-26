@@ -1,5 +1,10 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
+use crate::devices::device_discovery::DeviceDiscovery;
+
 use core::cell::SyncUnsafeCell;
+
+
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
@@ -122,8 +127,7 @@ impl ArchTrait for Arch {
     }
 
     fn parse_devices() {}
-    fn create_arch_specific_drivers() {}
-    fn init_arch_specific_drivers() {}
+    fn create_arch_specific_drivers(_system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>) {}
 }
 
 #[derive(Clone, Copy)]
