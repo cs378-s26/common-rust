@@ -4,7 +4,6 @@ use limine::request::ModuleRequest;
 
 const PAGE_SIZE: usize = 4096;
 
-#[used]
 #[unsafe(link_section = ".limine_requests")]
 static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 
