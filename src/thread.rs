@@ -3,6 +3,7 @@ extern crate alloc;
 use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
+    ops::DerefMut,
     pin::Pin,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -367,6 +368,23 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
             // restored here
             //
             // the _guard is used to actually restore irq state when needed
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
+
+#[inline(always)]
+// Queue must already be locked.
+// adds the current thread to the queue, unlocks it, then switches to idle
+// may combine with suspend_to_queue later
+pub fn suspend_to_locked_queue<G>(mut guard: G)
+where
+    G: DerefMut<Target = ThreadQueue>,
+{
+    suspend_impl(
+        move |t| {
+            guard.push_back(t);
+            drop(guard);
         },
         IDLE.get().unwrap().clone(),
     );
