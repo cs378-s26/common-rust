@@ -22,48 +22,50 @@ impl DeviceDiscovery for VirtioDiscovery {
     ) -> Option<alloc::boxed::Box<dyn crate::devices::device_discovery::DeviceDriver + Send + Sync>>
     {
         if let DeviceNode::DTB(fdt_node) = node
-            && fdt_node.name.contains("virtio")
-            // && let Some(c) = fdt_node.compatible()
-            // && c.all().any(|s| s.contains("virtio"))
+            && let Some(c) = fdt_node.compatible()
+            && c.all().any(|s| s.contains("virtio,mmio"))
             && let Some(reg) = fdt_node.reg().and_then(|mut r| r.next())
         {
-
             let base_addr = reg.starting_address; // physical address of the MMIO region
-            let size = reg.size.unwrap(); // virtio mmio device tree node should always give size of mmio region
+            let size = reg.size.unwrap(); // virtio mmio device tree node should always give size of mmio header region, 512 bytes
 
-            // if let Some(vm) = VirtualMemoryAllocation::new(
-            //     Arch::get_address_space(),
-            //     None,
-            //     size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
-            //     Some(base_addr as usize),
-            //     PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
-            // ) {
-            //     let virt_addr = vm.base;
             let hhdm_offset = crate::physical_memory::HHDM_OFFSET.get().unwrap();
             let virt_addr = base_addr as u64 + *hhdm_offset as u64;
-            crate::arch::Arch::virtual_map(
+            let virt_base = virt_addr & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
+            let phys_base = base_addr as u64 & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
+
+            // create temporary mapping for the MMIO region to read the device, this can later be overwritten
+            // by the vm allocator, mapping made permanent below
+            Arch::virtual_map(
                 Arch::get_address_space(),
-                virt_addr,
-                base_addr as u64,
+                virt_base,
+                phys_base as u64,
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
             );
 
-                let id = unsafe { core::ptr::read_volatile((virt_addr + 0x8) as *const u32) };
-                kprintln!("id: {}", id);
-                let header = virt_addr as *mut VirtIOHeader;
-                // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
-                unsafe {
-                    let transport = MmioTransport::new(NonNull::new(header).unwrap(), size);
-                    if let Ok(transport) = transport {
-                        if transport.device_type() == DeviceType::Block {
-                            kprintln!("Found virtio block device, creating driver");
-                            let driver = VirtIOBlkDiskDriver::new(transport);
-                            FOUND_BLOCK_DEVICES.lock().push(Box::new(driver));
-                        }
-                    }
+            let header = virt_addr as *mut VirtIOHeader;
+            // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
+            unsafe {
+                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
+                    && transport.device_type() == DeviceType::Block
+                {
+                    let options = PagingOptions::PRESENT
+                        | PagingOptions::WRITABLE
+                        | PagingOptions::DEVICE_MEMORY
+                        | PagingOptions::SHADOW;
+                    // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
+                    VirtualMemoryAllocation::new(
+                        Arch::get_address_space(),
+                        Some((virt_base as usize)),
+                        size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
+                        Some(phys_base as usize),
+                        options,
+                    );
+                    let page_base = base_addr as usize & !(Arch::PAGE_SIZE - 1);
+                    let driver = VirtIOBlkDiskDriver::new(transport);
+                    FOUND_BLOCK_DEVICES.lock().push(Box::new(driver));
                 }
-                // core::mem::forget(vm);
-            // }
+            }
         }
         None
     }

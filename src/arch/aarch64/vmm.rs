@@ -147,7 +147,7 @@ fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
         *entry = (new_table_phys as u64 & PTE_ADDR_MASK) | 0b11;
     }
 
-    (*entry as usize & PTE_ADDR_MASK)
+    (*entry & PTE_ADDR_MASK) as usize
 }
 
 // unmap a virtual address in the given address space, returning the physical address that was mapped there if it was mapped
