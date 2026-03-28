@@ -19,7 +19,7 @@
         {
           devShells.default = with pkgs; mkShell {
             buildInputs = [
-              clang
+              llvmPackages_21.clang-unwrapped
               llvmPackages_21.bintools
               rustToolchain
               pkg-config
@@ -29,7 +29,7 @@
               gdb
               e2fsprogs
             ];
-            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
+            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_21.libclang.lib ];
           };
         }
     );
