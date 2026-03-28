@@ -7,6 +7,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Load environment variables
+        run: |
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
       - name: Run cargo fmt
-        shell: nix develop --command bash -e {0}
         run: cargo fmt --all -- --check

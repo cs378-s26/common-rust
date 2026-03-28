@@ -14,8 +14,12 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Load environment variables
+              run: |
+                  direnv allow .
+                  direnv export gha > "$GITHUB_ENV"
+
             - name: Run all tests
-              shell: nix develop --command bash -e {0}
               run: |
                   cargo buildtool test --target x86-64
                   cargo buildtool test --target aarch64
