@@ -2,7 +2,7 @@ name: PR - Clippy Reviewdog
 on: [pull_request]
 jobs:
     clippy:
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         steps:
             - uses: actions/checkout@v4
             - uses: actions-rust-lang/setup-rust-toolchain@v1
