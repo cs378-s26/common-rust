@@ -28,8 +28,10 @@
               wabt
               gdb
               e2fsprogs
+              sccache
             ];
             LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_21.libclang.lib ];
+            RUSTC_WRAPPER = "sccache";
           };
         }
     );
