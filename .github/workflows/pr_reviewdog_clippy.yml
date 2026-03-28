@@ -2,32 +2,30 @@ name: PR - Clippy Reviewdog
 on: [pull_request]
 jobs:
     clippy:
+        # Note, we aren't use Flake's version of Cargo. We are using
+        # the self-hosted runner's version.
         runs-on: self-hosted
         steps:
             - uses: actions/checkout@v4
             - uses: giraffate/clippy-action@v1
-              shell: nix develop --command bash -e {0}
               with:
                   reporter: "github-pr-review"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
                   fail_on_error: true
                   clippy_flags: --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
             - uses: giraffate/clippy-action@v1
-              shell: nix develop --command bash -e {0}
               with:
                   reporter: "github-pr-review"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
                   fail_on_error: true
                   clippy_flags: --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
             - uses: giraffate/clippy-action@v1
-              shell: nix develop --command bash -e {0}
               with:
                   reporter: "github-pr-review"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
                   fail_on_error: true
                   clippy_flags: --tests --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests
             - uses: giraffate/clippy-action@v1
-              shell: nix develop --command bash -e {0}
               with:
                   reporter: "github-pr-review"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
