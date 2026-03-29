@@ -75,6 +75,8 @@ impl DeviceDiscovery for UartPl011Discovery {
             if uart_driver.init() {
                 // initialize the driver, allocating it's virtual memory mapping
                 set_serial_backend(Box::new(uart_driver));
+            } else {
+                panic!("Failed to initialize UART driver");
             }
         }
         None
