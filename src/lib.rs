@@ -16,7 +16,6 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
-pub mod ext2;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;

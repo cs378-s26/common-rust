@@ -22,7 +22,7 @@ pub enum DeviceNode<'a, 'b> {
     // the idea with this would just be to find what type of node it is, and the driver has to be able to read the fields from the node that it needs
     DTB(FdtNode<'a, 'b>),
     // ACPI(AcpiNode) idk what struct would this be
-} // I didn't include pci here because I assumed since it's dynamic it could be done seperately,
+} // I didn't include pci here because I assumed since it's dynamic it could be done seperately, 
 // and probably doesn't need to be tied to a specific arch (I assume?)
 
 pub enum DeviceType {
