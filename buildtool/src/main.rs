@@ -61,6 +61,12 @@ enum Commands {
         release: bool,
         #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
         target: Target,
+        /// Run tests matching this pattern (partial filename match)
+        #[arg(short = 'p', long)]
+        pattern: Option<String>,
+        /// List available tests instead of running them
+        #[arg(short = 'l', long)]
+        list: bool,
     },
     Clean,
 }
@@ -82,7 +88,20 @@ fn main() -> Result<()> {
             kvm,
             release,
         } => gdb::run(kvm, release, target)?,
-        Commands::Test { release, target } => test::run_all(release, target)?,
+        Commands::Test {
+            release,
+            target,
+            pattern,
+            list,
+        } => {
+            if list {
+                test::list_tests(target)?;
+            } else if let Some(pattern) = pattern {
+                test::run_single(release, target, &pattern)?;
+            } else {
+                test::run_all(release, target)?;
+            }
+        }
         Commands::QemuTest {
             test_cfg_path,
             release,
