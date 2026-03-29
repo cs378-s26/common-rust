@@ -32,16 +32,21 @@ pub enum DeviceType {
     OTHER,
 }
 
-// every driver should implement the following two traits to read device tree nodes and return a match
-// the reason for seperating this into two traits is because a driver could match multiple devices, then
-// have a different impl based on different device nodes found
+// every driver should implement this trait to read device tree nodes and find a match
 pub trait DeviceDriver {
+
+    // when finding a matching node, each driver should either call init or return itself. For example
+    // uart_pl011 will just initialize itself into the serial backend for kprintln, so no need to return it
+    // other drivers that are compatible but not immediately necessary will simply return themselves to be able to be initialized later if needed. 
+    // having this vec could also allow for dynamic use by the user, like sticking them in /dev/...
+    fn am_i_this(&mut self, node: DeviceNode) -> Option<Box<dyn DeviceDriver + Send + Sync>>;
+
     // defined by the driver, like uart_pl011 or virtio_blk
     fn name(&self) -> &str;
 
     // this takes no parameters to make it easy to call later, for example a file system can just find
     // the first block device driver and call init without needing to know where the node is. am_i_this should
-    // store necessary information for init in the struct. Returns true if succeeded.
+    // store necessary information for init in the struct. Returns true if succeeded. 
     fn init(&mut self) -> bool;
 
     fn device_type(&self) -> DeviceType;
