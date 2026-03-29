@@ -1,10 +1,10 @@
 {
     "is_unittest": false,
-    "test_name": "example_integration",
+    "test_name": "filesystem",
     "n_runs": 1,
     "timeout_ms": 60000,
-    "expected_output_path": "test_cfgs/example_integration/out.txt",
-    "filesystem_path": "test_cfgs/example_integration/test_files",
+    "expected_output_path": "test_cfgs/filesystem/out.txt",
+    "filesystem_path": "test_cfgs/filesystem/test_files",
     "target": "x86_64",
     "qemu_args": [
         "-bios",

@@ -1,9 +1,9 @@
 extern crate virtio_drivers;
-use core::ptr::NonNull;
 use crate::arch::{Arch, ArchTrait};
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_alloc, frame_dealloc};
 use crate::print::kprintln;
 use crate::virtual_memory::PagingOptions;
+use core::ptr::NonNull;
 use spin::Once;
 use virtio_drivers::transport::{Transport, mmio::MmioTransport, mmio::VirtIOHeader};
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, device::blk};
@@ -16,7 +16,6 @@ struct VirtioBlkHal;
 
 // necessary struct for virtio driver to communicate with hardware.
 unsafe impl Hal for VirtioBlkHal {
-
     // buffer direction is used to determine writability and readability of the buffer between device and host, for now ignored
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;

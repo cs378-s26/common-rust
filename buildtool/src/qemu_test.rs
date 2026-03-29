@@ -19,6 +19,7 @@ pub struct TestConfig {
     pub timeout_ms: u64,
     pub test_name: Option<String>,
     pub expected_output_path: String,
+    pub filesystem_path: String,
     pub target: TestTarget,
     pub qemu_args: Vec<String>,
 }
@@ -89,6 +90,7 @@ struct CachePaths {
     root_dir: PathBuf,
     serial_output: PathBuf,
     report: PathBuf,
+    filesystem_image: PathBuf,
 }
 
 pub fn run(config_path: String, release: bool) -> Result<()> {
@@ -157,6 +159,106 @@ fn run_with_config(
         target,
         Some(&display_name),
     )?;
+    let source_path = resolve_repo_root_path(Path::new(&test_cfg.filesystem_path))?;
+    let source_meta = fs::symlink_metadata(&source_path).with_context(|| {
+        format!(
+            "failed to read filesystem source metadata: {}",
+            source_path.display()
+        )
+    })?;
+    if !source_meta.file_type().is_dir() {
+        return Err(anyhow!(
+            "filesystem_path must point to a directory: {}",
+            source_path.display()
+        ));
+    }
+
+    // Walk the source tree once to size the image and detect when fixtures changed.
+    let mut total_bytes = 0_u64;
+    let mut entry_count = 0_u64;
+    let mut latest_modified = source_meta
+        .modified()
+        .with_context(|| format!("failed to read mtime: {}", source_path.display()))?;
+    let mut pending = vec![source_path.clone()];
+    while let Some(path) = pending.pop() {
+        let metadata = fs::symlink_metadata(&path)
+            .with_context(|| format!("failed to read metadata: {}", path.display()))?;
+        let file_type = metadata.file_type();
+        entry_count = entry_count.saturating_add(1);
+        if file_type.is_file() || file_type.is_symlink() {
+            total_bytes = total_bytes.saturating_add(metadata.len());
+        }
+        let modified = metadata
+            .modified()
+            .with_context(|| format!("failed to read mtime: {}", path.display()))?;
+        if modified > latest_modified {
+            latest_modified = modified;
+        }
+
+        if file_type.is_dir() {
+            for entry in fs::read_dir(&path)
+                .with_context(|| format!("failed to read directory: {}", path.display()))?
+            {
+                let entry =
+                    entry.with_context(|| format!("failed to read entry in {}", path.display()))?;
+                pending.push(entry.path());
+            }
+        }
+    }
+
+    let filesystem_image = cache_paths.filesystem_image.clone();
+    let needs_rebuild =
+        !filesystem_image.exists() || modified_time(&filesystem_image)? < latest_modified;
+    if needs_rebuild {
+        const MIB: u64 = 1024 * 1024;
+        const MIN_IMAGE_SIZE: u64 = 32 * MIB;
+        const FIXED_OVERHEAD: u64 = 16 * MIB;
+        const ENTRY_OVERHEAD: u64 = 4 * 1024;
+        const MIN_INODES: u64 = 128;
+
+        let required_size = total_bytes
+            .saturating_add(FIXED_OVERHEAD)
+            .saturating_add(entry_count.saturating_mul(ENTRY_OVERHEAD))
+            .max(MIN_IMAGE_SIZE);
+        let image_size = required_size.div_ceil(MIB).saturating_mul(MIB);
+        let inode_count = entry_count.saturating_mul(4).max(MIN_INODES);
+        let image_file = fs::File::create(&filesystem_image).with_context(|| {
+            format!(
+                "failed to create filesystem image: {}",
+                filesystem_image.display()
+            )
+        })?;
+        image_file.set_len(image_size).with_context(|| {
+            format!(
+                "failed to size filesystem image to {} bytes: {}",
+                image_size,
+                filesystem_image.display()
+            )
+        })?;
+
+        let status = Command::new("mkfs.ext2")
+            .arg("-q")
+            .arg("-F")
+            .arg("-t")
+            .arg("ext2")
+            .arg("-m")
+            .arg("0")
+            .arg("-N")
+            .arg(inode_count.to_string())
+            .arg("-d")
+            .arg(&source_path)
+            .arg(&filesystem_image)
+            .status()
+            .with_context(|| "failed to launch mkfs.ext2")?;
+        if !status.success() {
+            return Err(anyhow!(
+                "mkfs.ext2 failed while creating {} from {} with status {}",
+                filesystem_image.display(),
+                source_path.display(),
+                status
+            ));
+        }
+    }
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
     let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
@@ -167,12 +269,13 @@ fn run_with_config(
         )
     })?;
 
-    let deps = [
+    let mut deps = vec![
         config_path,
         expected_output_path.as_path(),
         kernel_path.as_path(),
         img_path.as_path(),
     ];
+    deps.push(filesystem_image.as_path());
     if !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
         && let Some(cached_report) = load_cached_report(&cache_paths.report)
     {
@@ -201,6 +304,17 @@ fn run_with_config(
                     .replace("{PATH_TO_IMG}", &path_to_img)
             })
             .collect();
+        let filesystem_image = path_to_string(&filesystem_image)?;
+        qemu_args.push("-drive".into());
+        qemu_args.push(format!(
+            "if=none,id=testfs0,file={filesystem_image},format=raw"
+        ));
+        qemu_args.push("-device".into());
+        // The block device model is arch-specific: PCI on x86_64, MMIO on aarch64 virt.
+        qemu_args.push(match test_cfg.target {
+            TestTarget::X86_64 => "virtio-blk-pci,drive=testfs0".into(),
+            TestTarget::Aarch64 => "virtio-blk-device,drive=testfs0".into(),
+        });
         qemu_args.push("-serial".into());
         qemu_args.push(format!("file:{}", cache_paths.serial_output.display()));
 
@@ -364,6 +478,7 @@ fn cache_paths(config_path: &Path, target: TestTarget) -> Result<CachePaths> {
     Ok(CachePaths {
         serial_output: root_dir.join(format!("{cache_name}.serial.txt")),
         report: root_dir.join(format!("{cache_name}.report.json")),
+        filesystem_image: root_dir.join(format!("{cache_name}.filesystem.ext2")),
         root_dir,
     })
 }

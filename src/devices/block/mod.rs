@@ -1,5 +1,6 @@
 pub mod virtio_blk;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
     InvalidBlockIndex,
     InvalidBufferSize,
@@ -7,6 +8,7 @@ pub enum BlockError {
     // add more as needed
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PhysicalAddressSize {
     Size16,
     Size32,
@@ -16,7 +18,8 @@ pub enum PhysicalAddressSize {
 pub trait BlockDevice {
     // buffers instead of vecs to avoid needing memory allocation, but maybe this isn't necessary
     fn init() -> Result<(), BlockError>;
-    fn read_blocks(&self, block_idxs: &[usize], buffer: &[&mut [u8]]) -> Result<(), BlockError>;
+    fn read_blocks(&self, block_idxs: &[usize], buffer: &mut [&mut [u8]])
+    -> Result<(), BlockError>;
     fn write_blocks(&self, block_idxs: &[usize], buffer: &[&[u8]]) -> Result<(), BlockError>;
     fn flush(&self) -> Result<(), BlockError>;
     fn block_size(&self) -> usize;

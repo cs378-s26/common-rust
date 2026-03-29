@@ -25,6 +25,7 @@
               pkg-config
               openssl
               qemu
+              e2fsprogs
               wabt
               gdb
             ];

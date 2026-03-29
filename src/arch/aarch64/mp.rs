@@ -87,5 +87,4 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         get_cpu_local_pointer(),
         get_cpu_local_pointer_for(id)
     );
-
 }

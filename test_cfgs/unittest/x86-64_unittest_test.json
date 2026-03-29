@@ -3,6 +3,7 @@
     "n_runs": 1,
     "timeout_ms": 60000,
     "expected_output_path": "test_cfgs/unittest/out.txt",
+    "filesystem_path": "test_cfgs/unittest/test_files",
     "target": "x86_64",
     "qemu_args": [
         "-bios",

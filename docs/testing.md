@@ -25,6 +25,7 @@ type TestConfig = {
     timeout_ms: number, // required, must be >= 1
     test_name?: string,
     expected_output_path: string,
+    filesystem_path: string,
     target: "x86_64" | "aarch64",
     qemu_args: string[]
     
@@ -33,5 +34,6 @@ type TestConfig = {
 
 The build tool will recursively search all directories in `test_cfgs` for files matching the pattern `test_cfgs/**/*_test.json`, and run these as tests.
 Any `qemu_args` sub string matching the pattern `{PATH_TO_EFI}` and `{PATH_TO_IMG}` will get substituted with the corresponding path.
+`filesystem_path` is resolved relative to the repository root, packed into an ext2 disk image, and attached as an additional virtio block disk for the test VM.
 
 An example integration test can be found in `tests/example_integration.rs` with the corresponding config json in `test_cfgs/example_integration/example_x86_64_test.json`.

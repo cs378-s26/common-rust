@@ -1,0 +1,7 @@
+Starting Testing Code...
+mounted ext2 block_size=1024
+absolute path lookup passed
+relative path lookup passed
+file read passed
+concurrent reads passed
+filesystem test complete
