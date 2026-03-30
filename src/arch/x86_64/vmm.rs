@@ -108,7 +108,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     toilet.flush(); // terrific variable name i know
 }
 
-pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+pub fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper = unsafe {
         OffsetPageTable::new(
@@ -124,42 +124,25 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         mapper.unmap(vpage)
     } {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI... // TODO! TLB shootdown
-        unsafe {
-            FrameDeallocatorWrapper {
-                inner: frame_dealloc,
-            }
-            .deallocate_frame(frame)
-        }; // no shared mappings for now
+        if free_frame {
+            unsafe {
+                FrameDeallocatorWrapper {
+                    inner: frame_dealloc,
+                }
+                .deallocate_frame(frame)
+            }; // no shared mappings for now
+        }
         Some(frame.start_address().as_u64()) // returning this will be useful when we allow shared mappings
     } else {
         None
     }
 }
 
-/// Unmaps a page without freeing the underlying physical frame.
-/// Used for MMIO mappings where physical addresses belong to hardware, not RAM.
-pub fn vunmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
-    let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
-    let mut mapper = unsafe {
-        OffsetPageTable::new(
-            &mut *((space + hhdm_offset) as *mut PageTable),
-            VirtAddr::new(hhdm_offset),
-        )
-    };
-
-    let vpage = Page::<Size4KiB>::from_start_address(VirtAddr::new(vaddr)).unwrap_or_else(|_| {
-        panic!(
-            "misaligned virtual address {:x} to vunmap_no_dealloc",
-            vaddr
-        )
-    });
-    if let Ok((frame, toilet)) = {
-        let _ = VMM_PROTECTOR.lock();
-        mapper.unmap(vpage)
-    } {
-        toilet.flush();
-        Some(frame.start_address().as_u64())
-    } else {
-        None
-    }
+pub fn vunmap(space : u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, true)
 }
+
+pub fn vunmap_no_dealloc(space : u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, false)
+}
+
