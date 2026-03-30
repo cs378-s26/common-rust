@@ -1,9 +1,9 @@
 // currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
 // removing this warning for now
 #![allow(irrefutable_let_patterns)]
+use super::{CharDevice, CharDeviceError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use super::{CharDevice, CharDeviceError};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -48,10 +48,7 @@ impl CharSink for UartPl011Driver {
 }
 
 impl CharDevice for UartPl011Driver {
-    fn read(
-        &mut self,
-        _buffer: &mut [u8],
-    ) -> Result<usize, CharDeviceError> {
+    fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, CharDeviceError> {
         // TODO implement this, for now we just support output
         Err(CharDeviceError::Other(
             "Read not implemented for UART driver".to_string(),

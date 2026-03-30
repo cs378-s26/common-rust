@@ -1,5 +1,8 @@
+use crate::arch::{Arch, ArchTrait};
+use crate::devices::char::uart_pl011::UartPl011Discovery;
 use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::sync::IntMutex;
+use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
 use fdt::node::FdtNode;
@@ -41,4 +44,11 @@ pub enum DeviceType {
 pub trait DeviceDiscovery {
     // when finding a matching node, return a corresponding device driver with its proper fields initialized.
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType>;
+}
+
+pub fn create_drivers() {
+    // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+    let mut drivers = SYSTEM_DRIVERS.lock();
+    drivers.push(Box::new(UartPl011Discovery));
+    Arch::create_arch_specific_drivers(&mut drivers);
 }

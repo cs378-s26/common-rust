@@ -7,7 +7,7 @@ use crate::devices::device_discovery::{
 };
 use crate::print::kprintln;
 use crate::sync::MutexLike;
-use fdt::{self, node};
+use fdt::{self};
 use limine::request::DeviceTreeBlobRequest;
 
 #[used]

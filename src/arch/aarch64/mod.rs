@@ -120,7 +120,7 @@ impl ArchTrait for Arch {
     fn configure_vm() {
         vmm::configure_vm();
     }
-        
+
     fn parse_devices() {
         devices::parse_devices();
     }

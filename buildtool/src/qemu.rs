@@ -4,13 +4,7 @@ use crate::util::{
 use anyhow::{Result, anyhow};
 use std::env::current_dir;
 
-pub fn run(
-    kvm: bool,
-    cores: u8,
-    mem_g: u8,
-    release: bool,
-    target: Target,
-) -> Result<()> {
+pub fn run(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
     let machine = target.qemu_machine();
