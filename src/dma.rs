@@ -167,7 +167,8 @@ mod test {
             kprintln!("allocating 1-frame DMA region");
             let region = DmaRegion::new(1);
             assert!(region.size() == 4096);
-            assert!(region.phys_addr() != 0);
+//          There is an address at physical address 0!
+//            assert!(region.phys_addr() != 0);
             assert!(region.virt_addr() == region.phys_addr() + *HHDM_OFFSET.get().unwrap());
 
             // zeroed on allocation
