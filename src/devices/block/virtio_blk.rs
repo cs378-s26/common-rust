@@ -2,7 +2,7 @@ extern crate virtio_drivers;
 // use super::{BlockDevice, BlockError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::devices::block_device::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
+use super::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use core::ptr::NonNull;

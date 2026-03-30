@@ -1,5 +1,6 @@
 use crate::devices::Device;
 use alloc::string::String;
+pub mod uart_pl011;
 
 #[derive(Debug)]
 pub enum CharDeviceError {

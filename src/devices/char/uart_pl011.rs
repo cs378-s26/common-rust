@@ -3,7 +3,7 @@
 #![allow(irrefutable_let_patterns)]
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::devices::char_device::CharDevice;
+use super::devices::char::CharDevice;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};

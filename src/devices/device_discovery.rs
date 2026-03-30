@@ -1,4 +1,4 @@
-use crate::devices::{block_device::BlockDevice, char_device::CharDevice};
+use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::sync::IntMutex;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
@@ -7,10 +7,13 @@ use fdt::node::FdtNode;
 // lists of initialized devices in the system
 pub static BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
+
 pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
+
 // pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> =
 //     IntMutex::new(Vec::new());
+
 /// all implemented drivers in the system, this is what is iterated over to find matches.
 /// order matters here, the first matched driver will get assigned the device.
 pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
@@ -28,7 +31,6 @@ pub enum DeviceNode<'a, 'b> {
     DTB(FdtNode<'a, 'b>),
     // ACPI(AcpiNode) idk what struct would this be
 } // I didn't include pci here because I assumed since it's dynamic it could be done seperately,
-// and probably doesn't need to be tied to a specific arch (I assume?)
 
 pub enum DeviceType {
     Block(Box<dyn BlockDevice + Send + Sync>),
