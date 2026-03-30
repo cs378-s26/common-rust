@@ -43,7 +43,7 @@ pub fn run_all(release: bool, target: Target) -> Result<()> {
 
 pub fn run_single(release: bool, target: Target, pattern: &str) -> Result<()> {
     let all_tests = load_test_config_paths(target)?;
-    
+
     // Filter tests matching the pattern
     let matching_tests: Vec<_> = all_tests
         .iter()
@@ -95,7 +95,7 @@ pub fn run_single(release: bool, target: Target, pattern: &str) -> Result<()> {
 
 pub fn list_tests(target: Target) -> Result<()> {
     let all_tests = load_test_config_paths(target)?;
-    
+
     if all_tests.is_empty() {
         eprintln!("No tests found for target {:?}", target);
         return Ok(());
@@ -107,13 +107,16 @@ pub fn list_tests(target: Target) -> Result<()> {
         let test_name = if test_cfg.is_unittest {
             "unittest".to_string()
         } else {
-            test_cfg.test_name.clone().unwrap_or_else(|| "unnamed".to_string())
+            test_cfg
+                .test_name
+                .clone()
+                .unwrap_or_else(|| "unnamed".to_string())
         };
-        
+
         if let Some(file_name) = test_path.file_name().and_then(|n| n.to_str()) {
             println!("  {} ({})", file_name, test_name);
         }
     }
-    
+
     Ok(())
 }
