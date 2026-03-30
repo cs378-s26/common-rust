@@ -1,14 +1,13 @@
-use anyhow::Result;
-
 use crate::util::{
     Target, build_image, build_kernel, download_ovmf, exec, path_to_string, run_dir,
 };
+use anyhow::{Result, anyhow};
+use std::env::current_dir;
 
 pub fn run(kvm: bool, cores: u8, mem_g: u8, release: bool, target: Target) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
     let machine = target.qemu_machine();
-
     let mut args = vec![
         "-machine".into(),
         machine.into(),

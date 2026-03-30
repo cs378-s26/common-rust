@@ -1,9 +1,9 @@
 // currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
 // removing this warning for now
 #![allow(irrefutable_let_patterns)]
+use super::{CharDevice, CharDeviceError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::devices::char_device::CharDevice;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -19,7 +19,8 @@ pub struct UartPl011Driver {
 impl UartPl011Driver {
     // allocate virtual memory for the UART MMIO region
     fn init(&mut self) -> bool {
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let options =
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
         let backing = Some(self.phys_address);
         let vm = VirtualMemoryAllocation::new(
             Arch::get_address_space(),
@@ -47,17 +48,14 @@ impl CharSink for UartPl011Driver {
 }
 
 impl CharDevice for UartPl011Driver {
-    fn read(
-        &mut self,
-        _buffer: &mut [u8],
-    ) -> Result<usize, crate::devices::char_device::CharDeviceError> {
+    fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, CharDeviceError> {
         // TODO implement this, for now we just support output
-        Err(crate::devices::char_device::CharDeviceError::Other(
+        Err(CharDeviceError::Other(
             "Read not implemented for UART driver".to_string(),
         ))
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, crate::devices::char_device::CharDeviceError> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, CharDeviceError> {
         for &b in buffer {
             if let Some(mapping) = &self.virt_mapping {
                 unsafe {
@@ -83,7 +81,6 @@ pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
     // this gives full ownership of the driver to the serial backend
-    // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()

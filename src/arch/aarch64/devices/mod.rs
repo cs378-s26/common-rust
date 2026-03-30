@@ -7,7 +7,7 @@ use crate::devices::device_discovery::{
 };
 use crate::print::kprintln;
 use crate::sync::MutexLike;
-use fdt;
+use fdt::{self};
 use limine::request::DeviceTreeBlobRequest;
 pub mod psci;
 
@@ -40,15 +40,16 @@ pub fn parse_devices() {
             }
         }
     }
-    dump_device_tree();
 }
 
+#[allow(dead_code)]
 pub fn dump_device_tree() {
     if let Some(resp) = DTB_REQUEST.get_response() {
         let dtb_addr = resp.dtb_ptr();
         let fdt = unsafe {
             fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
         };
+        kprintln!("Device Tree:");
         for node in fdt.all_nodes() {
             kprintln!("Node: {}", node.name);
             for prop in node.properties() {
@@ -56,13 +57,15 @@ pub fn dump_device_tree() {
                     kprintln!(
                         "  Compatible: {:?}",
                         prop.as_str()
-                            .expect("Failed to read compatible property as string")
+                            .expect("Failed to read compatible string from device tree property.")
                     );
                 } else {
-                    kprintln!("  Prop: {} = {:?}", prop.name, prop.value);
+                    kprintln!("  Property: {}", prop.name); // printing value depends on the type
                 }
             }
         }
+    } else {
+        kprintln!("No device tree found.");
     }
 }
 

@@ -1,5 +1,8 @@
-use crate::devices::{block_device::BlockDevice, char_device::CharDevice};
+use crate::arch::{Arch, ArchTrait};
+use crate::devices::char::uart_pl011::UartPl011Discovery;
+use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::sync::IntMutex;
+use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
 use fdt::node::FdtNode;
@@ -7,10 +10,13 @@ use fdt::node::FdtNode;
 // lists of initialized devices in the system
 pub static BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
+
 pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
+
 // pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> =
 //     IntMutex::new(Vec::new());
+
 /// all implemented drivers in the system, this is what is iterated over to find matches.
 /// order matters here, the first matched driver will get assigned the device.
 pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
@@ -28,7 +34,6 @@ pub enum DeviceNode<'a, 'b> {
     DTB(FdtNode<'a, 'b>),
     // ACPI(AcpiNode) idk what struct would this be
 } // I didn't include pci here because I assumed since it's dynamic it could be done seperately,
-// and probably doesn't need to be tied to a specific arch (I assume?)
 
 pub enum DeviceType {
     Block(Box<dyn BlockDevice + Send + Sync>),
@@ -39,4 +44,11 @@ pub enum DeviceType {
 pub trait DeviceDiscovery {
     // when finding a matching node, return a corresponding device driver with its proper fields initialized.
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType>;
+}
+
+pub fn create_drivers() {
+    // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
+    let mut drivers = SYSTEM_DRIVERS.lock();
+    drivers.push(Box::new(UartPl011Discovery));
+    Arch::create_arch_specific_drivers(&mut drivers);
 }
