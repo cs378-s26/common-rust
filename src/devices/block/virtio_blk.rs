@@ -24,6 +24,9 @@ impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 }
 
 impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
+    fn name(&self) -> &str {
+        "virtio_blk"
+    }
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],
@@ -184,29 +187,3 @@ unsafe impl Hal for VirtioBlkHal {
         }
     }
 }
-
-// pub fn init_virtio_blk(base_addr: usize, size: usize) {
-//     unsafe {
-//         let transport =
-//             MmioTransport::new(NonNull::new(base_addr as *mut VirtIOHeader).unwrap(), size)
-//                 .unwrap();
-//         let mut blk_device =
-//             virtio_drivers::device::blk::VirtIOBlk::<VirtioBlkHal, MmioTransport>::new(transport)
-//                 .unwrap();
-//         kprintln!(
-//             "virtio blk device initialized with capacity {} bytes",
-//             blk_device.capacity() * 512
-//         );
-//         let mut buf = [0u8; 512];
-//         // let phys_addr = frame_alloc();
-//         // let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-//         // let mut buf = core::slice::from_raw_parts_mut((phys_addr + hhdm) as *mut u8, 512);
-
-//         buf[0] = 42;
-//         kprintln!("Writing {} to virtio blk device", buf[0]);
-//         blk_device.write_blocks(0, &mut buf).unwrap();
-//         kprintln!("finished writing");
-//         blk_device.read_blocks(0, &mut buf).unwrap();
-//         kprintln!("Read from virtio blk device: {}", buf[0]);
-//     }
-// }

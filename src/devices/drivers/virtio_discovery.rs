@@ -5,7 +5,6 @@ use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::FOUND_BLOCK_DEVICES;
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode};
-use crate::print::kprintln;
 use crate::sync::MutexLike;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
@@ -61,7 +60,6 @@ impl DeviceDiscovery for VirtioDiscovery {
                         Some(phys_base as usize),
                         options,
                     );
-                    let page_base = base_addr as usize & !(Arch::PAGE_SIZE - 1);
                     let driver = VirtIOBlkDiskDriver::new(transport);
                     FOUND_BLOCK_DEVICES.lock().push(Box::new(driver));
                 }

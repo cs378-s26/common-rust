@@ -1,11 +1,13 @@
 use crate::sync::IntMutex;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use derive_more::derive;
 pub mod virtio_blk;
 
 pub static FOUND_BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
     InvalidBlockIndex,
     InvalidBufferSize,
@@ -20,6 +22,7 @@ pub enum PhysicalAddressSize {
 }
 
 pub trait BlockDevice {
+    fn name(&self) -> &str;
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],
