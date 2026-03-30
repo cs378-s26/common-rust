@@ -56,6 +56,7 @@ pub fn setup_timer() {
 }
 
 pub fn gicc_init() {
+    kprintln!("gicc_init starting on core {}", crate::mp::CORE_ID.get());
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     kprintln!("gicc_init: GICC_BASE_VIRT={:#x}", gicc_virt);
 

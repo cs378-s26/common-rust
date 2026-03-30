@@ -28,13 +28,20 @@ pub fn parse_devices() {
 
         // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
         for node in fdt.all_nodes() {
+            kprintln!("new node");
             for driver in SYSTEM_DRIVERS.lock().iter() {
+                kprintln!("checking {} driver against node", driver.name());
                 let matched_device = driver.am_i_this(DeviceNode::DTB(node));
+                if !matched_device.is_none() {
+                    kprintln!("actually found something");
+                }
                 if let Some(device) = matched_device {
                     match device {
                         DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
                         DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
-                        DeviceType::Special => {} // they handle themselves.
+                        DeviceType::Special => {
+                            kprintln!("matching special");
+                        } // they handle themselves.
                     }
                 }
             }
@@ -70,7 +77,9 @@ pub fn dump_device_tree() {
 }
 
 pub fn create_arch_specific_drivers(
-    _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
 ) {
     // create architecture specific drivers, for example the timer
+
+    system_drivers.push(Box::new(a15_gic::GicA15Discovery));
 }

@@ -2,7 +2,6 @@ use crate::arch::ArchTrait;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::kprintln;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 
@@ -22,16 +21,15 @@ pub struct GicA15Driver {
 }
 
 impl GicA15Driver {
-
     fn name(&self) -> &str {
         "arm_a15_gic"
     }
 
     fn init(&mut self) -> bool {
-
         kprintln!("GicA15Driver::init: initializing GICD");
         GICD_INIT.call_once(|| {
-            let options = PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
+            let options =
+                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
             let gicd_vm = VirtualMemoryAllocation::new(
                 crate::arch::Arch::get_address_space(),
@@ -97,32 +95,34 @@ impl GicA15Driver {
         });
         true
     }
-
 }
 
 pub struct GicA15Discovery;
 
 impl DeviceDiscovery for GicA15Discovery {
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
-
-        if let DeviceNode::DTB(node) = node 
+        if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,cortex-a15-gic")
             && let Some(mut reg) = node.reg()
-            {
-                let gicd_phys_address = reg.next().unwrap().starting_address as usize;
-                let gicc_phys_address = reg.next().unwrap().starting_address as usize;
-                kprintln!("GIC addrs: {:x} {:x}", gicc_phys_address, gicd_phys_address);
-                let mut gic = GicA15Driver {
-                    gicd_phys_address,
-                    gicc_phys_address,
-                    gicd_virt_mapping: None,
-                    gicc_virt_mapping: None,
-                };
-                gic.init();
-                return Some(DeviceType::Special);
+        {
+            let gicd_phys_address = reg.next().unwrap().starting_address as usize;
+            let gicc_phys_address = reg.next().unwrap().starting_address as usize;
+            kprintln!("GIC addrs: {:x} {:x}", gicc_phys_address, gicd_phys_address);
+            let mut gic = GicA15Driver {
+                gicd_phys_address,
+                gicc_phys_address,
+                gicd_virt_mapping: None,
+                gicc_virt_mapping: None,
+            };
+            gic.init();
+            return Some(DeviceType::Special);
         }
 
         None
+    }
+
+    fn name(&self) -> &'static str {
+        "arm gic"
     }
 }

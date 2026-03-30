@@ -130,8 +130,11 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_virtual_memory_allocator();
 
     // initialize all system drivers, then parse devices to initialize them
+    kprintln!("creating drivers");
     create_drivers();
+    kprintln!("parsing devices");
     Arch::parse_devices();
+    kprintln!("done parsing");
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

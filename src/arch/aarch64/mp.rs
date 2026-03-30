@@ -1,7 +1,7 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
     arch::aarch64::{exceptions, gic, interrupt},
-    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
+    mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for}, print::{kprint, kprintln},
 };
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -75,6 +75,7 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
 }
 
 pub unsafe fn initialize_core(cpu: &Cpu) {
+    kprintln!("initializing core");
     enable_advsimd();
 
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
