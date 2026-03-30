@@ -1,14 +1,14 @@
 extern crate virtio_drivers;
 // use super::{BlockDevice, BlockError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
+use crate::devices::Device;
+use crate::devices::block_device::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
-use crate::devices::block_device::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
-use crate::devices::Device;
 // wrapper around the virtio blk driver containing the necessary hal implementation for it to work
 // with our system + the system block device trait
 pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
@@ -25,7 +25,6 @@ impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 }
 
 impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
-
     fn name(&self) -> &str {
         "virtio_blk"
     }
@@ -46,31 +45,47 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
         Ok(())
     }
 
-    fn read_blocks(&mut self, block_idxs: &[usize], buffers: &mut [&mut [u8]]) -> Result<(), BlockDeviceError> {
+    fn read_blocks(
+        &mut self,
+        block_idxs: &[usize],
+        buffers: &mut [&mut [u8]],
+    ) -> Result<(), BlockDeviceError> {
         if block_idxs.len() != buffers.len() {
-            return Err(BlockDeviceError::Other("buffer count must match indexes".into()));
+            return Err(BlockDeviceError::Other(
+                "buffer count must match indexes".into(),
+            ));
         }
 
         for (block_idx, buf) in block_idxs.iter().zip(buffers.iter_mut()) {
-            self.read_block(*block_idx, *buf).map_err(|_| BlockDeviceError::ReadError)?;    
+            self.read_block(*block_idx, *buf)
+                .map_err(|_| BlockDeviceError::ReadError)?;
         }
 
         Ok(())
     }
 
-    fn write_blocks(&mut self, block_idxs: &[usize], buffers: &[&[u8]]) -> Result<(), BlockDeviceError> {
+    fn write_blocks(
+        &mut self,
+        block_idxs: &[usize],
+        buffers: &[&[u8]],
+    ) -> Result<(), BlockDeviceError> {
         if block_idxs.len() != buffers.len() {
-            return Err(BlockDeviceError::Other("buffer count must match indexes".into()));
+            return Err(BlockDeviceError::Other(
+                "buffer count must match indexes".into(),
+            ));
         }
 
         for (block_idx, buf) in block_idxs.iter().zip(buffers.iter()) {
-            self.write_block(*block_idx, *buf).map_err(|_| BlockDeviceError::WriteError)?;
+            self.write_block(*block_idx, *buf)
+                .map_err(|_| BlockDeviceError::WriteError)?;
         }
 
         Ok(())
     }
     fn flush(&mut self) -> Result<(), BlockDeviceError> {
-        self.blk.flush().map_err(|_| BlockDeviceError::Other("flush failed".into()))?;
+        self.blk
+            .flush()
+            .map_err(|_| BlockDeviceError::Other("flush failed".into()))?;
         Ok(())
     }
 
@@ -85,9 +100,7 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     fn dma_physical_address_size(&self) -> PhysicalAddressSize {
         PhysicalAddressSize::Size64
     }
-
 }
-
 
 impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     #[allow(unused_variables)]
@@ -99,7 +112,9 @@ impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 
 fn check_buffer_size(buffer: &[u8], block_size: usize) -> Result<(), BlockDeviceError> {
     if buffer.len() != block_size {
-        return Err(BlockDeviceError::Other("buffer size must be equal to block size".into()));
+        return Err(BlockDeviceError::Other(
+            "buffer size must be equal to block size".into(),
+        ));
     }
     Ok(())
 }

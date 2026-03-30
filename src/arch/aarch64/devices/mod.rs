@@ -5,8 +5,9 @@ use alloc::vec::Vec;
 use crate::devices::device_discovery::{
     BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, SYSTEM_DRIVERS,
 };
+use crate::print::kprintln;
 use crate::sync::MutexLike;
-use fdt;
+use fdt::{self, node};
 use limine::request::DeviceTreeBlobRequest;
 
 #[used]
@@ -37,6 +38,33 @@ pub fn parse_devices() {
                 }
             }
         }
+    }
+    dump_device_tree();
+}
+
+pub fn dump_device_tree() {
+    if let Some(resp) = DTB_REQUEST.get_response() {
+        let dtb_addr = resp.dtb_ptr();
+        let fdt = unsafe {
+            fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
+        };
+        kprintln!("Device Tree:");
+        for node in fdt.all_nodes() {
+            kprintln!("Node: {}", node.name);
+            for prop in node.properties() {
+                if prop.name == "compatible" {
+                    kprintln!(
+                        "  Compatible: {:?}",
+                        prop.as_str()
+                            .expect("Failed to read compatible string from device tree property.")
+                    );
+                } else {
+                    kprintln!("  Property: {}", prop.name); // printing value depends on the type 
+                }
+            }
+        }
+    } else {
+        kprintln!("No device tree found.");
     }
 }
 

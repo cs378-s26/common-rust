@@ -24,10 +24,18 @@ pub trait BlockDevice: Device {
     fn write_block(&mut self, block_idx: usize, buffer: &[u8]) -> Result<(), BlockDeviceError>;
 
     // this allows for possible efficient buffering of reads/writes by the disk driver
-    fn read_blocks(&mut self, block_idxs: &[usize], buffers: &mut [&mut [u8]]) -> Result<(), BlockDeviceError>; 
-    fn write_blocks(&mut self, block_idxs: &[usize], buffers: &[&[u8]]) -> Result<(), BlockDeviceError>;
+    fn read_blocks(
+        &mut self,
+        block_idxs: &[usize],
+        buffers: &mut [&mut [u8]],
+    ) -> Result<(), BlockDeviceError>;
+    fn write_blocks(
+        &mut self,
+        block_idxs: &[usize],
+        buffers: &[&[u8]],
+    ) -> Result<(), BlockDeviceError>;
     fn flush(&mut self) -> Result<(), BlockDeviceError>;
-    fn dma_physical_address_size(&self) -> PhysicalAddressSize; 
+    fn dma_physical_address_size(&self) -> PhysicalAddressSize;
 
     fn read(&mut self, byte_offset: usize, buffer: &mut [u8]) -> Result<usize, BlockDeviceError> {
         let block_size = self.block_size();

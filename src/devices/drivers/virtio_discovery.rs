@@ -2,25 +2,21 @@
 #![allow(irrefutable_let_patterns)]
 
 use crate::arch::{Arch, ArchTrait};
-use crate::devices::device_discovery::BLOCK_DEVICES;
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::devices::device_discovery;
+use crate::devices::device_discovery::BLOCK_DEVICES;
+use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::sync::MutexLike;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
-use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
 use virtio_drivers::transport::Transport;
+use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
 
 pub struct VirtioDiscovery;
 
 impl DeviceDiscovery for VirtioDiscovery {
-    fn am_i_this(
-        &self,
-        node: DeviceNode,
-    ) -> Option<DeviceType>
-    {
+    fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
             && c.all().any(|s| s.contains("virtio,mmio"))

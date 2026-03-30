@@ -4,8 +4,8 @@
 #![test_runner(kernel_common::test_runner)]
 
 kernel_common::integration_test!({
-    use kernel_common::print::kprintln;
     use kernel_common::devices::block::FOUND_BLOCK_DEVICES;
+    use kernel_common::print::kprintln;
     use kernel_common::sync::MutexLike;
     kprintln!("Found {} block devices", FOUND_BLOCK_DEVICES.lock().len());
 
@@ -15,8 +15,4 @@ kernel_common::integration_test!({
         .iter_mut()
         .find(|device| device.name() == "virtio_blk")
         .expect("Failed to find virtio block device for testing");
-
-
-
-    
 });
