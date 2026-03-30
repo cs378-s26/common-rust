@@ -41,6 +41,7 @@ pub fn parse_devices() {
     }
 }
 
+#[allow(dead_code)]
 pub fn dump_device_tree() {
     if let Some(resp) = DTB_REQUEST.get_response() {
         let dtb_addr = resp.dtb_ptr();
@@ -58,7 +59,7 @@ pub fn dump_device_tree() {
                             .expect("Failed to read compatible string from device tree property.")
                     );
                 } else {
-                    kprintln!("  Property: {}", prop.name); // printing value depends on the type 
+                    kprintln!("  Property: {}", prop.name); // printing value depends on the type
                 }
             }
         }
