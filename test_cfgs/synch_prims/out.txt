@@ -1,0 +1,12 @@
+Starting Testing Code...
+semaphore basic test passed
+semaphore stress test passed
+promise basic test passed
+promise many waiters test passed
+promise already set test passed
+bounded buffer basic test passed
+bounded buffer stress test passed
+bounded buffer single slot test passed
+rwlock basic test passed
+rwlock reader heavy test passed
+rwlock write stress test passed
