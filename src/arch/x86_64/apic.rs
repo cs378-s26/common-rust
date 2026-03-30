@@ -1,3 +1,4 @@
+use crate::mp::CORE_ID;
 use crate::{mp::core_local, physical_memory::HHDM_REQUEST, virtual_memory::PagingOptions};
 use spin::Once;
 use x86::cpuid::CpuId;
@@ -106,7 +107,9 @@ fn map_xapic_mmio(base: u64) -> u64 {
 
 #[inline]
 fn apic_state() -> ApicState {
-    *APIC_STATE.get().expect("APIC not enabled")
+    *APIC_STATE
+        .get()
+        .unwrap_or_else(|| panic!("APIC not enabled on core {:x}", CORE_ID.get().0))
 }
 
 pub fn enable_apic() -> bool {

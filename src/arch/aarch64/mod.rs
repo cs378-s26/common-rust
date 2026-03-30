@@ -6,6 +6,10 @@ use spin::Once;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
+use crate::devices::device_discovery::DeviceDiscovery;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 pub mod apic;
 mod asm;
 mod context;
@@ -118,17 +122,19 @@ impl ArchTrait for Arch {
         halt()
     }
 
+    fn configure_vm() {
+        vmm::configure_vm();
+    }
+
     fn parse_devices() {
         devices::parse_devices();
     }
 
-    fn create_arch_specific_drivers() {
+    fn create_arch_specific_drivers(
+        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    ) {
         // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        devices::create_arch_specific_drivers();
-    }
-
-    fn init_arch_specific_drivers() {
-        devices::init_arch_specific_drivers();
+        devices::create_arch_specific_drivers(_system_drivers);
     }
 }
 

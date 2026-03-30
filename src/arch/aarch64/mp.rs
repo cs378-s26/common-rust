@@ -2,7 +2,6 @@ use crate::{
     // arch::x86_64::cpuid::Features,
     arch::aarch64::{exceptions, gic, interrupt},
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
-    print::kprintln,
 };
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -82,12 +81,6 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     MPDIR_ID.store(cpu.mpidr, Ordering::Relaxed);
-    kprintln!(
-        "done init core {}, CLS base={:x}, TPIDR_EL1={:x}",
-        id,
-        get_cpu_local_pointer(),
-        get_cpu_local_pointer_for(id)
-    );
 
     exceptions::init_exceptions();
 

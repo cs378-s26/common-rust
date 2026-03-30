@@ -1,4 +1,7 @@
+use crate::devices::device_discovery::DeviceDiscovery;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use core::cell::SyncUnsafeCell;
 
 use limine::{mp::Cpu, request::MpRequest};
@@ -101,6 +104,8 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
+    fn configure_vm() {}
+
     fn get_address_space() -> u64 {
         get_address_space()
     }
@@ -122,8 +127,10 @@ impl ArchTrait for Arch {
     }
 
     fn parse_devices() {}
-    fn create_arch_specific_drivers() {}
-    fn init_arch_specific_drivers() {}
+    fn create_arch_specific_drivers(
+        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    ) {
+    }
 }
 
 #[derive(Clone, Copy)]
