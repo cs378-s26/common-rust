@@ -55,7 +55,7 @@ fn timer_interrupt_handler() {
 
 #[unsafe(no_mangle)]
 extern "C" fn current_elx_irq(_e: &mut ExceptionContext) {
-    let intid = gic::ack_irq();
+    let intid = gic::get_intid_ack_irq();
 
     match intid {
         30 => timer_interrupt_handler(),

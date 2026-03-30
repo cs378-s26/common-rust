@@ -90,11 +90,13 @@ pub fn gicc_init() {
 }
 
 // function appears pure but the act of reading signals the GIC hardware that the interrupt is being handled
-pub fn ack_irq() -> u32 {
+// acknowledges interrupt for gicd and returns the interrupt id
+pub fn get_intid_ack_irq() -> u32 {
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     unsafe { (((gicc_virt + GICC_IAR) as *const u32).read_volatile()) & 0x3FF }
 }
 
+// end of interrupt
 pub fn eoi(intid: u32) {
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
     unsafe {

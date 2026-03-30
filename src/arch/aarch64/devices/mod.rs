@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 
 pub mod a15_gic;
-pub mod uart_pl011;
 use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
 use crate::sync::MutexLike;
 use fdt;
