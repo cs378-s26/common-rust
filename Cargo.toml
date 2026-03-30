@@ -33,7 +33,6 @@ uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 fdt = "0.1.5"
-virtio-drivers = "0.13.0"
 zerocopy = { version = "0.8.40", features = ["derive"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]

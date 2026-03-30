@@ -121,12 +121,6 @@ impl ArchTrait for Arch {
         vmm::configure_vm();
     }
         
-    fn create_arch_specific_drivers() {
-        // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        let mut drivers = crate::devices::device_discovery::SYSTEM_DRIVERS.lock();
-        drivers.push(Box::new(devices::uart_pl011::UartPl011Discovery));
-    }
-
     fn parse_devices() {
         devices::parse_devices();
     }
