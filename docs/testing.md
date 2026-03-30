@@ -55,3 +55,5 @@ kernel_common::integration_test!({
 ```
 
 Note that the output is checked. The test will be run `n_runs` times, and the output of each run will be compared to the expected output. If any run does not match the expected output, the test will fail. The test will also fail if any run exceeds the specified timeout, or if the test binary panics, so assertions provide a convenient way to check a condition many times and get immediate failures at low runtime cost.
+
+For a single test run, `cargo buildtool qemu-test <config> --stdout` streams the serial output live to stdout while still writing the captured serial log used for output comparison. This mode bypasses cached test results and always launches QEMU.

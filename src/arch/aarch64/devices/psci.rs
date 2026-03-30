@@ -4,8 +4,8 @@ use spin::Once;
 pub static PSCI_DEVICE: Once<PSCIDevice> = Once::new();
 
 pub enum PSCIMethod {
-    HVC,
-    SMC,
+    Hvc,
+    Smc,
 }
 
 // https://documentation-service.arm.com/static/6703a8b8d7e4b739d817e10d
@@ -41,10 +41,10 @@ impl PSCIDevice {
 
     pub fn shutdown(&self) {
         match self.method {
-            PSCIMethod::HVC => unsafe {
+            PSCIMethod::Hvc => unsafe {
                 core::arch::asm!("hvc #0", in("x0") PSCI_SYSTEM_OFF_FUNC_ID, options(nostack))
             },
-            PSCIMethod::SMC => unsafe {
+            PSCIMethod::Smc => unsafe {
                 core::arch::asm!("smc #0", in("x0") PSCI_SYSTEM_OFF_FUNC_ID, options(nostack))
             },
         }
@@ -62,8 +62,8 @@ impl DeviceDiscovery for PSCIDiscovery {
         {
             let method = fdt_node.property("method")?.as_str()?;
             let psci_method = match method {
-                "hvc" => PSCIMethod::HVC,
-                "smc" => PSCIMethod::SMC,
+                "hvc" => PSCIMethod::Hvc,
+                "smc" => PSCIMethod::Smc,
                 _ => return None,
             };
 

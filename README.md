@@ -11,7 +11,7 @@ cargo buildtool gdb # runs gdb, and attaches to qemu
 cargo buildtool clean # cleans the buildtool cache
 cargo buildtool help # help message
 cargo buildtool test # runs all tests. QEMU flags specified in run_qemu_{arch_string}.sh
-cargo buildtool qemu-test {path to .json} # runs the test specified by the .json file.
+cargo buildtool qemu-test {path to .json} [--stdout] # runs the test specified by the .json file.
 ```
 
 The current buildtool supports both aarch64 & x86-64, though some qemu args may be funky depending on your system.
