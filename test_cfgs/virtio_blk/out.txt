@@ -1,2 +1,0 @@
-Found 1 block devices
-Read data: AB
