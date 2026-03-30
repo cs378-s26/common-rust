@@ -3,7 +3,7 @@
 #![allow(irrefutable_let_patterns)]
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
-use crate::print::{CharSink, kprintln, set_serial_backend};
+use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 
@@ -76,6 +76,8 @@ impl DeviceDiscovery for UartPl011Discovery {
             if uart_driver.init() {
                 // initialize the driver, allocating it's virtual memory mapping
                 set_serial_backend(Box::new(uart_driver));
+            } else {
+                panic!("Failed to initialize UART driver");
             }
         }
         None
