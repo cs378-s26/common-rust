@@ -17,7 +17,6 @@ mod devices;
 pub mod gic;
 mod interrupt;
 mod mp;
-use alloc::boxed::Box;
 mod exceptions;
 pub use exceptions::{dump_core_state, init_exceptions};
 

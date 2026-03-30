@@ -1,18 +1,16 @@
 use alloc::boxed::Box;
 
 pub mod a15_gic;
-use crate::devices::device_discovery::{DeviceNode, MATCHED_DEVICES, SYSTEM_DRIVERS};
-use crate::sync::MutexLike;
-use fdt;
 use crate::devices::device_discovery::DeviceDiscovery;
-use alloc::boxed::Box;
+use crate::sync::MutexLike;
 use alloc::vec::Vec;
+use fdt;
 
 use crate::devices::device_discovery::{
     BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, SYSTEM_DRIVERS,
 };
 use crate::print::kprintln;
-use crate::sync::MutexLike;
+
 use limine::request::DeviceTreeBlobRequest;
 
 #[used]

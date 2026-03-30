@@ -1,11 +1,10 @@
 use crate::arch::ArchTrait;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceDriver, DeviceNode, DeviceType};
+use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::kprintln;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
-use crate::devices::device_discovery::{DeviceType, DeviceNode};
 
 pub static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 pub static GICD_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
