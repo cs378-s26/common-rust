@@ -32,6 +32,7 @@ pub fn parse_devices() {
             for driver in SYSTEM_DRIVERS.lock().iter() {
                 kprintln!("checking {} driver against node", driver.name());
                 let matched_device = driver.am_i_this(DeviceNode::DTB(node));
+                kprintln!("here");
                 if !matched_device.is_none() {
                     kprintln!("actually found something");
                 }

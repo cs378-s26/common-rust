@@ -116,10 +116,10 @@ impl DeviceDiscovery for GicA15Discovery {
                 gicc_virt_mapping: None,
             };
             gic.init();
+            kprintln!("returning");
             return Some(DeviceType::Special);
         }
-
-        None
+        return None;
     }
 
     fn name(&self) -> &'static str {
