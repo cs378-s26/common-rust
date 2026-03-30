@@ -39,7 +39,6 @@ pub fn parse_devices() {
             }
         }
     }
-    dump_device_tree();
 }
 
 pub fn dump_device_tree() {

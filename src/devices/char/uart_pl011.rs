@@ -3,7 +3,7 @@
 #![allow(irrefutable_let_patterns)]
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use super::devices::char::CharDevice;
+use super::{CharDevice, CharDeviceError};
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -51,14 +51,14 @@ impl CharDevice for UartPl011Driver {
     fn read(
         &mut self,
         _buffer: &mut [u8],
-    ) -> Result<usize, crate::devices::char_device::CharDeviceError> {
+    ) -> Result<usize, CharDeviceError> {
         // TODO implement this, for now we just support output
-        Err(crate::devices::char_device::CharDeviceError::Other(
+        Err(CharDeviceError::Other(
             "Read not implemented for UART driver".to_string(),
         ))
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, crate::devices::char_device::CharDeviceError> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, CharDeviceError> {
         for &b in buffer {
             if let Some(mapping) = &self.virt_mapping {
                 unsafe {
