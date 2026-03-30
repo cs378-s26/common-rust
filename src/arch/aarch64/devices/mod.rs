@@ -9,6 +9,7 @@ use crate::print::kprintln;
 use crate::sync::MutexLike;
 use fdt::{self};
 use limine::request::DeviceTreeBlobRequest;
+pub mod psci;
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -26,8 +27,8 @@ pub fn parse_devices() {
         };
 
         // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
-        for node in fdt.all_nodes() {
-            for driver in SYSTEM_DRIVERS.lock().iter() {
+        for driver in SYSTEM_DRIVERS.lock().iter() {
+            for node in fdt.all_nodes() {
                 let matched_device = driver.am_i_this(DeviceNode::DTB(node));
                 if let Some(device) = matched_device {
                     match device {
@@ -69,7 +70,7 @@ pub fn dump_device_tree() {
 }
 
 pub fn create_arch_specific_drivers(
-    _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
 ) {
-    // create architecture specific drivers, for example the timer
+    system_drivers.push(Box::new(psci::PSCIDiscovery));
 }
