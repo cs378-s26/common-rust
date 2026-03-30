@@ -78,6 +78,7 @@ impl Device for UartPl011Driver {
 pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
+
     // this gives full ownership of the driver to the serial backend
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
         if let DeviceNode::DTB(node) = node
