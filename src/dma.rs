@@ -137,16 +137,6 @@ impl MmioRegion {
     }
 }
 
-impl Drop for MmioRegion {
-    fn drop(&mut self) {
-        // VirtualMemoryAllocation's Drop will unmap the pages, but we don't want it to free frames
-        // since these frames belong to hardware, not RAM. So we just let it do its thing and ignore
-        // the fact that it won't be able to free the frames.
-        Arch::virtual_unmap_no_dealloc(Arch::get_address_space(), self.virt_addr as u64)
-            .expect("failed to unmap MMIO region");
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::dma::DmaRegion;
