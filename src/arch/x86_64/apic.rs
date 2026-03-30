@@ -3,6 +3,7 @@ use spin::Once;
 use x86::cpuid::CpuId;
 use x86::io::outb;
 use x86::msr::{rdmsr, wrmsr};
+use crate::dma::MmioRegion;
 
 use super::tsc::read_tsc;
 use super::{get_address_space, vmap};
@@ -17,7 +18,9 @@ core_local! {
     APIC_STATE: Once<ApicState> = Once::new();
 }
 
-static APIC_MMIO_BASE: Once<u64> = Once::new();
+//static APIC_MMIO_BASE: Once<u64> = Once::new();
+
+static APIC_MMIO : Once<MmioRegion> = Once::new();
 
 const X2APIC_MSR_BASE: u32 = 0x800;
 
@@ -67,20 +70,21 @@ unsafe fn x2apic_write(reg: u32, value: u64) {
 
 #[inline]
 fn xapic_read(reg: u32) -> u32 {
-    let hhdm_base = HHDM_REQUEST.get_response().unwrap().offset();
+    let reg_addr = APIC_MMIO.get().unwrap().virt_addr() + (reg as usize);
     unsafe {
         core::ptr::read_volatile(
-            (APIC_MMIO_BASE.get().unwrap() + hhdm_base + (reg as u64)) as *const u32,
+            reg_addr as *const u32,
         )
     }
 }
 
 #[inline]
 fn xapic_write(reg: u32, value: u32) {
-    let hhdm_base = HHDM_REQUEST.get_response().unwrap().offset();
+    //let hhdm_base = HHDM_REQUEST.get_response().unwrap().offset();
+    let reg_addr = APIC_MMIO.get().unwrap().virt_addr() + (reg as usize);
     unsafe {
         core::ptr::write_volatile(
-            (APIC_MMIO_BASE.get().unwrap() + hhdm_base + (reg as u64)) as *mut u32,
+            reg_addr as *mut u32,
             value,
         )
     };
@@ -123,7 +127,7 @@ pub fn enable_apic() -> bool {
 
     match state {
         ApicState::XApic => {
-            APIC_MMIO_BASE.call_once(|| map_xapic_mmio(base & !0xfff));
+            APIC_MMIO.call_once(|| MmioRegion::new((base & !0xfff) as usize, 0x1000));
         }
         ApicState::X2Apic => {}
     }
