@@ -153,8 +153,6 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
             cpu.goto_address.write(core_init::<Work>);
         }
     }
-    kprintln!("shutting down");
-    Arch::shutdown(0);
     unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
 }
 
