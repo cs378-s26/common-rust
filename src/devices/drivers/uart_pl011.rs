@@ -83,8 +83,8 @@ impl Device for UartPl011Driver {
 pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
+
     // this gives full ownership of the driver to the serial backend
-    // instead of returning like normal. This will likely by the pattern for prespecified devices, like block
     fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()

@@ -10,12 +10,26 @@ pub enum BlockDeviceError {
     Other(String),
 }
 
-pub trait BlockDevice: Device {
-    fn block_size(&self) -> usize;
-    fn read_block(&self, block_idx: usize, buffer: &mut [u8]) -> Result<(), BlockDeviceError>;
-    fn write_block(&self, block_idx: usize, buffer: &[u8]) -> Result<(), BlockDeviceError>;
+pub enum PhysicalAddressSize {
+    Size16,
+    Size32,
+    Size64,
+}
 
-    fn read(&self, byte_offset: usize, buffer: &mut [u8]) -> Result<usize, BlockDeviceError> {
+pub trait BlockDevice: Device {
+    fn name(&self) -> &str;
+    fn block_size(&self) -> usize;
+    fn block_count(&self) -> usize;
+    fn read_block(&mut self, block_idx: usize, buffer: &mut [u8]) -> Result<(), BlockDeviceError>;
+    fn write_block(&mut self, block_idx: usize, buffer: &[u8]) -> Result<(), BlockDeviceError>;
+
+    // this allows for possible efficient buffering of reads/writes by the disk driver
+    fn read_blocks(&mut self, block_idxs: &[usize], buffers: &mut [&mut [u8]]) -> Result<(), BlockDeviceError>; 
+    fn write_blocks(&mut self, block_idxs: &[usize], buffers: &[&[u8]]) -> Result<(), BlockDeviceError>;
+    fn flush(&mut self) -> Result<(), BlockDeviceError>;
+    fn dma_physical_address_size(&self) -> PhysicalAddressSize; 
+
+    fn read(&mut self, byte_offset: usize, buffer: &mut [u8]) -> Result<usize, BlockDeviceError> {
         let block_size = self.block_size();
         if block_size == 0 {
             return Err(BlockDeviceError::Other("block size cannot be zero".into()));
@@ -63,7 +77,7 @@ pub trait BlockDevice: Device {
         Ok(bytes_read)
     }
 
-    fn write(&self, byte_offset: usize, buffer: &[u8]) -> Result<usize, BlockDeviceError> {
+    fn write(&mut self, byte_offset: usize, buffer: &[u8]) -> Result<usize, BlockDeviceError> {
         let block_size = self.block_size();
         if block_size == 0 {
             return Err(BlockDeviceError::Other("block size cannot be zero".into()));

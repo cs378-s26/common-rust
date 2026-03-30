@@ -2,15 +2,16 @@
 #![allow(irrefutable_let_patterns)]
 
 use crate::arch::{Arch, ArchTrait};
-use crate::devices::block::FOUND_BLOCK_DEVICES;
+use crate::devices::device_discovery::BLOCK_DEVICES;
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode};
+use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::device_discovery;
 use crate::sync::MutexLike;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
 use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
-use virtio_drivers::transport::{DeviceType, Transport};
+use virtio_drivers::transport::Transport;
 
 pub struct VirtioDiscovery;
 
@@ -18,7 +19,7 @@ impl DeviceDiscovery for VirtioDiscovery {
     fn am_i_this(
         &self,
         node: DeviceNode,
-    ) -> Option<alloc::boxed::Box<dyn crate::devices::device_discovery::DeviceDriver + Send + Sync>>
+    ) -> Option<DeviceType>
     {
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
@@ -46,7 +47,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
             unsafe {
                 if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
-                    && transport.device_type() == DeviceType::Block
+                    && transport.device_type() == virtio_drivers::transport::DeviceType::Block
                 {
                     let options = PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
@@ -55,13 +56,13 @@ impl DeviceDiscovery for VirtioDiscovery {
                     // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
                     VirtualMemoryAllocation::new(
                         Arch::get_address_space(),
-                        Some((virt_base as usize)),
+                        Some(virt_base as usize),
                         size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
                         Some(phys_base as usize),
                         options,
                     );
                     let driver = VirtIOBlkDiskDriver::new(transport);
-                    FOUND_BLOCK_DEVICES.lock().push(Box::new(driver));
+                    return Some(device_discovery::DeviceType::Block(Box::new(driver)));
                 }
             }
         }

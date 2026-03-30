@@ -1,3 +1,4 @@
+pub mod block;
 pub mod block_device;
 pub mod char_device;
 pub mod device_discovery;
