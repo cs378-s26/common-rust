@@ -11,6 +11,7 @@ use virtio_drivers::transport::Transport;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
 // wrapper around the virtio blk driver containing the necessary hal implementation for it to work
 // with our system + the system block device trait
+// view crate and specs here: https://docs.rs/virtio-drivers/latest/virtio_drivers/ 
 pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
     blk: VirtIOBlk<H, T>,
 }
@@ -31,16 +32,20 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
 
     fn read_block(&mut self, block_idx: usize, buffer: &mut [u8]) -> Result<(), BlockDeviceError> {
         check_buffer_size(buffer, self.block_size())?;
+        let sectors_per_block = self.block_size() / SECTOR_SIZE;
+        let sector_idx = block_idx * sectors_per_block;
         self.blk
-            .read_blocks(block_idx, buffer) // this uses virtio driver's internal read_blocks, which is synchronous
+            .read_blocks(sector_idx, buffer) // this uses virtio driver's internal read_blocks, which is synchronous
             .map_err(|_| BlockDeviceError::ReadError)?;
         Ok(())
     }
 
     fn write_block(&mut self, block_idx: usize, buffer: &[u8]) -> Result<(), BlockDeviceError> {
         check_buffer_size(buffer, self.block_size())?;
+        let sectors_per_block = self.block_size() / SECTOR_SIZE;
+        let sector_idx = block_idx * sectors_per_block;
         self.blk
-            .write_blocks(block_idx, buffer)
+            .write_blocks(sector_idx, buffer)
             .map_err(|_| BlockDeviceError::WriteError)?;
         Ok(())
     }
@@ -177,21 +182,27 @@ unsafe impl Hal for VirtioBlkHal {
                 Arch::get_address_space(),
                 (paddr as usize + page * Arch::PAGE_SIZE + hhdm) as u64,
                 (paddr as usize + page * Arch::PAGE_SIZE) as u64,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE,
+                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY, 
             );
         }
         NonNull::new((paddr as usize + hhdm) as *mut u8).unwrap()
     }
 
-    unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {
+    unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
         let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
-        let (paddr, _) = Self::dma_alloc(pages, _direction);
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                buffer.as_ptr() as *const u8,
-                (paddr + HHDM_REQUEST.get_response().unwrap().offset()) as *mut u8,
-                buffer.len(),
-            );
+        let (paddr, _) = Self::dma_alloc(pages, direction);
+        let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
+        if matches!(
+            direction,
+            BufferDirection::DriverToDevice | BufferDirection::Both
+        ) {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    buffer.as_ptr() as *const u8,
+                    (paddr + hhdm) as *mut u8,
+                    buffer.len(),
+                );
+            }
         }
         paddr
     }
@@ -199,20 +210,24 @@ unsafe impl Hal for VirtioBlkHal {
     unsafe fn unshare(
         paddr: virtio_drivers::PhysAddr,
         buffer: NonNull<[u8]>,
-        _direction: virtio_drivers::BufferDirection,
+        direction: virtio_drivers::BufferDirection,
     ) {
+        let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
         let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
+        let vaddr = NonNull::new((paddr + hhdm) as *mut u8).unwrap();
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                (paddr + HHDM_REQUEST.get_response().unwrap().offset()) as *const u8,
-                buffer.as_ptr() as *mut u8,
-                buffer.len(),
-            );
-            Self::dma_dealloc(
-                paddr,
-                NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
-                pages,
-            );
+            if matches!(
+                direction,
+                virtio_drivers::BufferDirection::DeviceToDriver
+                    | virtio_drivers::BufferDirection::Both
+            ) {
+                core::ptr::copy_nonoverlapping(
+                    vaddr.as_ptr() as *const u8,
+                    buffer.as_ptr() as *mut u8,
+                    buffer.len(),
+                );
+            }
+            Self::dma_dealloc(paddr, vaddr, pages);
         }
     }
 }

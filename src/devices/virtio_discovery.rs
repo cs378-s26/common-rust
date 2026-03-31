@@ -4,9 +4,7 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::device_discovery;
-use crate::devices::device_discovery::BLOCK_DEVICES;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::sync::MutexLike;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
@@ -31,7 +29,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             let phys_base = base_addr as u64 & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
 
             // create temporary mapping for the MMIO region to read the device, this can later be overwritten
-            // by the vm allocator, mapping made permanent below
+            // by the vm allocator, mapping made permanent below for any finalized match
             Arch::virtual_map(
                 Arch::get_address_space(),
                 virt_base,
