@@ -74,7 +74,7 @@ impl INodeKey {
 pub trait Filesystem: Send + Sync {
     fn get_root(&self) -> Arc<dyn INode>;
     fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>>;
-    // create_inode() -> inode
+    fn create_inode(&self) -> usize;
     // delete_inode(inode)
 }
 

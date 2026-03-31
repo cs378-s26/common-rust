@@ -5,11 +5,13 @@ use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use crate::vfs::Filesystem;
 use crate::vfs::INode;
+use spin::Once;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 
 pub struct RAMFilesystem {
+    reference: Once<Arc<RAMFilesystem>>,
     files: IntMutex<Vec<Arc<RAMINode>>>,
 }
 
@@ -27,8 +29,10 @@ impl RAMFilesystem {
     // TODO: Not hardcode files into the constructor...
     pub fn new() -> Arc<Self> {
         let fs: Arc<RAMFilesystem> = Arc::new(Self {
+            reference: Once::new(),
             files: IntMutex::new(vec![]),
         });
+        fs.reference.call_once(|| fs.clone());
         let add = |file| {
             let strong = fs.clone();
             let mut files = fs.files.lock();
@@ -58,6 +62,11 @@ impl Filesystem for RAMFilesystem {
     }
     fn get_root(&self) -> Arc<dyn INode> {
         self.get_inode(0).unwrap()
+    }
+    fn create_inode(&self) -> usize {
+        let mut files = self.files.lock();
+        files.push(Arc::new(RAMINode { filesystem: self.reference.get().expect("creating file in uninitialized fs").clone(), container: RAMINodeContainer::File(IntMutex::new(vec![])) }));
+        files.len() - 1
     }
 }
 
