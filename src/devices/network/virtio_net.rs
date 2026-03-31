@@ -3,11 +3,28 @@ use crate::arch::{Arch, ArchTrait};
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::ptr::NonNull;
+use virtio_drivers::device::net::VirtIONet;
+use virtio_drivers::transport::Transport;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
 
-// VirtioNetHal provides the kernel-side implementation of the virtio Hal trait for the net driver.
-// The virtio-drivers crate is hardware-agnostic, it calls into this to allocate DMA memory and
-// map MMIO regions. Mirrors VirtioBlkHal in src/devices/block/virtio_blk.rs.
+/// VirtIONetDriver wraps the virtio-drivers VirtIONet device and ties it to our kernel's HAL
+/// constructed from a transport (MMIO) and used by the device framework to send and receive packets
+pub struct VirtIONetDriver<H: Hal, T: Transport> {
+    net: VirtIONet<H, T>,
+}
+
+impl<T: Transport> VirtIONetDriver<VirtioNetHal, T> {
+    pub fn new(transport: T) -> Self {
+        Self {
+            net: VirtIONet::<VirtioNetHal, T>::new(transport)
+                .expect("failed to initialize virtio net device"),
+        }
+    }
+}
+
+/// VirtioNetHal provides the kernel-side implementation of the virtio Hal trait for the net driver
+/// the virtio-drivers crate is hardware-agnostic, it calls into this to allocate DMA memory and
+/// map MMIO regions. Mirrors VirtioBlkHal in src/devices/block/virtio_blk.rs
 pub struct VirtioNetHal;
 
 // necessary struct for virtio net driver to communicate with hardware.
