@@ -110,6 +110,14 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
+    fn virtual_invalidate(_vaddr: u64) {
+        panic!("TLB invalidation not implemented for aarch64");
+    }
+
+    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
+        panic!("TLB shootdown not implemented for aarch64");
+    }
+
     fn shutdown(_err_code: u16) {
         PSCI_DEVICE
             .get()
