@@ -76,10 +76,8 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
 }
 
 pub unsafe fn initialize_core(cpu: &Cpu) {
-    kprintln!("initializing core");
     enable_advsimd();
 
-    kprintln!("initializing exceptions");
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
@@ -91,4 +89,5 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
     interrupt::enable();
     gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
+    kprintln!("here");
 }
