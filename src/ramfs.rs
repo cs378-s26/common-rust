@@ -1,10 +1,9 @@
 use crate::arch::Arch;
 use crate::arch::ArchTrait;
 use crate::physical_memory::HHDM_OFFSET;
-use crate::print::kprintln;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
-use crate::vfs::{DirectoryTrait, FileTrait, Filesystem, File};
+use crate::vfs::{DirectoryTrait, FileTrait, Filesystem};
 use crate::vfs::INode;
 use spin::Once;
 use alloc::sync::Arc;
@@ -119,8 +118,8 @@ mod test {
         let Some(root) = fs.get_inode(fs.create_inode(empty)) else {
             panic!("created inode doesn't exist");
         };
-        root.add_entry("small", 1);
-        root.add_entry("big", 2);
+        let _ = root.add_entry("small", 1);
+        let _ = root.add_entry("big", 2);
         // add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
 
         let small = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
@@ -134,7 +133,7 @@ mod test {
             unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
             i += 1;
         }
-        small.write_page(paddr, 0);
+        let _ = small.write_page(paddr, 0);
         
         let big = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
         let Some(big) = fs.get_inode(big) else {
@@ -148,7 +147,7 @@ mod test {
                     i += 1;
                 }
             }
-            big.write_page(paddr, j * Arch::PAGE_SIZE);
+            let _ = big.write_page(paddr, j * Arch::PAGE_SIZE);
         }
     }
 
