@@ -130,18 +130,8 @@ unsafe impl Hal for VirtioBlkHal {
         let paddr = alloc_frames(pages) as u64;
         let vaddr = paddr + hhdm as u64;
 
-        // Remap the HHDM alias uncached for DMA use.
-        // TODO: On aarch64 this needs TLB invalidation before an existing HHDM
-        // mapping is guaranteed to observe the new memory attributes.
-        for page in 0..pages {
-            Arch::virtual_map(
-                Arch::get_address_space(),
-                (vaddr as usize + page * Arch::PAGE_SIZE) as u64,
-                (paddr as usize + page * Arch::PAGE_SIZE) as u64,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE,
-            );
-        }
-
+        // DT virtio-blk is DMA-coherent, so the default HHDM alias is sufficient.
+        // Re-mapping it with different cacheability needs TLB shootdowns first.
         unsafe {
             core::ptr::write_bytes(vaddr as *mut u8, 0, pages * Arch::PAGE_SIZE);
         }
@@ -149,14 +139,8 @@ unsafe impl Hal for VirtioBlkHal {
         (paddr, NonNull::new(vaddr as *mut u8).unwrap())
     }
 
-    unsafe fn dma_dealloc(paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
+    unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, pages: usize) -> i32 {
         for page in 0..pages {
-            Arch::virtual_map(
-                Arch::get_address_space(),
-                (vaddr.as_ptr() as usize + page * Arch::PAGE_SIZE) as u64,
-                (paddr as usize + page * Arch::PAGE_SIZE) as u64,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
-            );
             frame_dealloc(paddr as usize + page * Arch::PAGE_SIZE);
         }
         0
