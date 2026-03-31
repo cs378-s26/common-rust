@@ -108,12 +108,13 @@ impl<D: DirectoryTrait> INode for Directory<D> {
     fn lookup(&self, target: &str) -> Result<usize, &'static str> {
         self.0.lookup(target)
     }
-    fn add_entry(&self, target: &str, inumber: usize)-> Result<(), &'static str> {
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str> {
         self.0.add_entry(target, inumber)
     }
 }
 
-pub trait FileTrait: Send + Sync { // TODO is this just a block device?
+pub trait FileTrait: Send + Sync {
+    // TODO is this just a block device?
     fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str>;
     fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
 }

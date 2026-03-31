@@ -3,13 +3,13 @@ use crate::arch::ArchTrait;
 use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
-use crate::vfs::{DirectoryTrait, FileTrait, Filesystem};
 use crate::vfs::INode;
-use spin::Once;
+use crate::vfs::{DirectoryTrait, FileTrait, Filesystem};
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
-use alloc::string::String;
+use spin::Once;
 
 pub struct RAMFilesystem {
     reference: Once<Arc<RAMFilesystem>>,
@@ -20,7 +20,7 @@ impl DirectoryTrait for IntMutex<Vec<(String, usize)>> {
     fn lookup(&self, target: &str) -> Result<usize, &'static str> {
         for (name, inumber) in &*(self.lock()) {
             if *name == *target {
-                return Ok(*inumber)
+                return Ok(*inumber);
             }
         }
         Err("could not find file")
@@ -69,13 +69,7 @@ impl FileTrait for IntMutex<Vec<u8>> {
     }
 }
 
-// struct RAMINode {
-//     filesystem: Arc<RAMFilesystem>,
-//     container: RAMINodeContainer,
-// }
-
 impl RAMFilesystem {
-    // TODO: Not hardcode files into the constructor...
     pub fn new() -> Arc<Self> {
         let fs: Arc<RAMFilesystem> = Arc::new(Self {
             reference: Once::new(),
@@ -102,16 +96,16 @@ impl Filesystem for RAMFilesystem {
 
 #[cfg(test)]
 mod test {
+    use crate::arch::{Arch, ArchTrait};
     use crate::physical_memory;
     use crate::physical_memory::HHDM_OFFSET;
     use crate::ramfs::RAMFilesystem;
-    use crate::vfs::Filesystem;
-    use crate::arch::{Arch, ArchTrait};
     use crate::sync::IntMutex;
-    use alloc::sync::Arc;
-    use alloc::string::String;
-    use alloc::vec::Vec;
+    use crate::vfs::Filesystem;
     use crate::vfs::{Directory, File};
+    use alloc::string::String;
+    use alloc::sync::Arc;
+    use alloc::vec::Vec;
 
     fn init_test_ramfs(fs: Arc<RAMFilesystem>) {
         let empty = Arc::new(Directory(IntMutex::new(Vec::<(String, usize)>::new())));
@@ -134,7 +128,7 @@ mod test {
             i += 1;
         }
         let _ = small.write_page(paddr, 0);
-        
+
         let big = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
         let Some(big) = fs.get_inode(big) else {
             panic!("created inode doesn't exist")
@@ -187,29 +181,26 @@ mod test {
         init_test_ramfs(fs.clone());
 
         let root = fs.get_root();
-        let big = fs.get_inode(root.lookup("small").unwrap()).unwrap();
+        let big = fs.get_inode(root.lookup("big").unwrap()).unwrap();
         let paddr = physical_memory::frame_alloc();
         let hhdm = *HHDM_OFFSET.get().unwrap();
 
         // TODO change below variable names lol
-        big.read_page(paddr as *mut u8, 0).unwrap();
-        unsafe {
-            let d = *((paddr + hhdm) as *const u8);
-            let o = *((paddr + hhdm + 1) as *const u8);
-            let g = *((paddr + hhdm + 2) as *const u8);
-            assert!(d == b'c');
-            assert!(o == b'a');
-            assert!(g == b't');
-        }
-
-        big.read_page(paddr as *mut u8, 4096).unwrap();
-        unsafe {
-            let o = *((paddr + hhdm) as *const u8);
-            let g = *((paddr + hhdm + 1) as *const u8);
-            let d = *((paddr + hhdm + 2) as *const u8);
-            assert!(o == b'c');
-            assert!(g == b'a');
-            assert!(d == b't');
+        for j in 0..4 {
+            big.read_page(paddr as *mut u8, j * Arch::PAGE_SIZE)
+                .unwrap();
+            for i in 0..1024 {
+                unsafe {
+                    let c = *((paddr + hhdm + 4 * i) as *const u8);
+                    let a = *((paddr + hhdm + 4 * i + 1) as *const u8);
+                    let t = *((paddr + hhdm + 4 * i + 2) as *const u8);
+                    let s = *((paddr + hhdm + 4 * i + 3) as *const u8);
+                    assert!(c == b'c');
+                    assert!(a == b'a');
+                    assert!(t == b't');
+                    assert!(s == b's');
+                }
+            }
         }
 
         physical_memory::frame_dealloc(paddr);
