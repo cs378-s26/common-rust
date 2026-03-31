@@ -28,7 +28,7 @@ pub fn run_all(release: bool, target: Target) -> Result<()> {
 
     for config_path in load_test_config_paths(target)? {
         total += 1;
-        if let Err(err) = qemu_test::run(config_path.display().to_string(), release) {
+        if let Err(err) = qemu_test::run(config_path.display().to_string(), release, false) {
             failed += 1;
             eprintln!("{}: {}", config_path.display(), err);
         }

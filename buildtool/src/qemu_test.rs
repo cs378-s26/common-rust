@@ -91,10 +91,10 @@ struct CachePaths {
     report: PathBuf,
 }
 
-pub fn run(config_path: String, release: bool) -> Result<()> {
+pub fn run(config_path: String, release: bool, stream_serial_stdout: bool) -> Result<()> {
     let config_path = resolve_repo_root_path(Path::new(&config_path))?;
     let test_cfg = load_test_config(&config_path)?;
-    let summary = match run_with_config(&config_path, &test_cfg, release) {
+    let summary = match run_with_config(&config_path, &test_cfg, release, stream_serial_stdout) {
         Ok(summary) => summary,
         Err(err) => {
             let summary = write_failure_artifacts(&config_path, &test_cfg, &err.to_string())
@@ -129,6 +129,7 @@ fn run_with_config(
     config_path: &Path,
     test_cfg: &TestConfig,
     release: bool,
+    stream_serial_stdout: bool,
 ) -> Result<TestRunSummary> {
     if test_cfg.n_runs == 0 {
         return Err(anyhow!("n_runs must be >= 1 in {}", config_path.display()));
@@ -173,7 +174,8 @@ fn run_with_config(
         kernel_path.as_path(),
         img_path.as_path(),
     ];
-    if !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
+    if !stream_serial_stdout
+        && !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
         && let Some(cached_report) = load_cached_report(&cache_paths.report)
     {
         return Ok(cached_report.to_summary());
@@ -201,8 +203,18 @@ fn run_with_config(
                     .replace("{PATH_TO_IMG}", &path_to_img)
             })
             .collect();
-        qemu_args.push("-serial".into());
-        qemu_args.push(format!("file:{}", cache_paths.serial_output.display()));
+        if stream_serial_stdout {
+            qemu_args.push("-chardev".into());
+            qemu_args.push(format!(
+                "stdio,id=serial0,signal=off,logfile={}",
+                cache_paths.serial_output.display()
+            ));
+            qemu_args.push("-serial".into());
+            qemu_args.push("chardev:serial0".into());
+        } else {
+            qemu_args.push("-serial".into());
+            qemu_args.push(format!("file:{}", cache_paths.serial_output.display()));
+        }
 
         let qemu_cmd = test_cfg.target.qemu_cmd();
         eprintln!(

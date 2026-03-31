@@ -101,7 +101,7 @@ pub fn frame_alloc() -> usize {
                 continue;
             }
 
-            // no usable region found — retry allocation
+            // no usable region found - retry allocation
             drop(end);
             return frame_alloc(); // waits for a physical page to be freed
         }
@@ -113,6 +113,9 @@ pub fn frame_alloc() -> usize {
         frame
     } else {
         let first: usize = *head;
+        if !(first.is_multiple_of(Arch::PAGE_SIZE)) {
+            panic!("attempted to allocate unaligned frame {:x}", first);
+        }
         *head = unsafe { *((unwrap(&HHDM_OFFSET) + first) as *const usize) };
         first
     }
@@ -143,6 +146,7 @@ pub fn alloc_frames(frames: usize) -> usize {
 }
 
 pub fn frame_dealloc(frame: usize) {
+    assert!(frame.is_multiple_of(Arch::PAGE_SIZE));
     let mut head = HEAD.lock();
     unsafe {
         *((unwrap(&HHDM_OFFSET) + frame) as *mut usize) = *head;

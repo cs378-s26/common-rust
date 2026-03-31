@@ -26,7 +26,7 @@ impl GicA15Driver {
     }
 
     fn init(&mut self) -> bool {
-        kprintln!("GicA15Driver::init: initializing GICD");
+        // kprintln!("GicA15Driver::init: initializing GICD");
 
         let options =
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
@@ -59,12 +59,6 @@ impl GicA15Driver {
 
         GICD_BASE_VIRT.store(gicd_virt, Ordering::Release);
         GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
-
-        kprintln!(
-            "GicA15Driver::init: GICD_BASE_VIRT={:#x}, GICC_BASE_VIRT={:#x}",
-            gicd_virt,
-            gicc_virt
-        );
 
         unsafe {
             let gicd = gicd_virt as *mut u32;
@@ -106,7 +100,6 @@ impl DeviceDiscovery for GicA15Discovery {
         {
             let gicd_phys_address = reg.next().unwrap().starting_address as usize;
             let gicc_phys_address = reg.next().unwrap().starting_address as usize;
-            kprintln!("GIC addrs: {:x} {:x}", gicc_phys_address, gicd_phys_address);
             let mut gic = GicA15Driver {
                 gicd_phys_address,
                 gicc_phys_address,

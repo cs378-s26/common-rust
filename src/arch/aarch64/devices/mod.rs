@@ -12,6 +12,7 @@ use crate::devices::device_discovery::{
 use crate::print::kprintln;
 
 use limine::request::DeviceTreeBlobRequest;
+pub mod psci;
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]
@@ -27,8 +28,8 @@ pub fn parse_devices() {
         };
 
         // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
-        for node in fdt.all_nodes() {
-            for driver in SYSTEM_DRIVERS.lock().iter() {
+        for driver in SYSTEM_DRIVERS.lock().iter() {
+            for node in fdt.all_nodes() {
                 let matched_device: Option<DeviceType> = driver.am_i_this(DeviceNode::DTB(node));
                 if !matched_device.is_none() {
                     kprintln!("{} driver linked", driver.name());
@@ -75,7 +76,7 @@ pub fn dump_device_tree() {
 pub fn create_arch_specific_drivers(
     system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
 ) {
-    // create architecture specific drivers, for example the timer
+    system_drivers.push(Box::new(psci::PSCIDiscovery));
 
     system_drivers.push(Box::new(a15_gic::GicA15Discovery));
 }
