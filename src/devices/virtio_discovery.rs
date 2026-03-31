@@ -33,7 +33,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             Arch::virtual_map(
                 Arch::get_address_space(),
                 virt_base,
-                phys_base as u64,
+                phys_base,
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
             );
 

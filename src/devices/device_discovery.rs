@@ -1,7 +1,7 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::devices::virtio_discovery::VirtioDiscovery;
+use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};

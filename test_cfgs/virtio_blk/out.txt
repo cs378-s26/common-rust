@@ -1,3 +1,4 @@
 Starting Testing Code...
-Found 1 block devices
-Read data: AB
+Found virtio block device
+Single-block read sanity check passed
+Multi-block read/write test passed

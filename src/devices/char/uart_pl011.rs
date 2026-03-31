@@ -48,10 +48,7 @@ impl CharSink for UartPl011Driver {
 }
 
 impl CharDevice for UartPl011Driver {
-    fn read(
-        &mut self,
-        _buffer: &mut [u8],
-    ) -> Result<usize, CharDeviceError> {
+    fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, CharDeviceError> {
         // TODO implement this, for now we just support output
         Err(CharDeviceError::Other(
             "Read not implemented for UART driver".to_string(),
