@@ -56,6 +56,10 @@ pub struct Arch;
 impl ArchTrait for Arch {
     type Context = Context;
 
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
+
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
         let resp = req
             .get_response()

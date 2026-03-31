@@ -105,7 +105,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
 
     parse_kernel_cmdline();
-    init_malloc(Span::from_slice(&raw mut THE_HEAP));
+    init_malloc((&raw mut THE_HEAP) as usize, 256 * 1024 * 1024);
     init_tty();
 
     // print some system info
