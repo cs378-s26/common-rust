@@ -8,7 +8,7 @@ use crate::{
 use alloc::collections::btree_map::BTreeMap;
 use core::ptr;
 pub struct PageCache {
-    map: BTreeMap<PageKey, Page>,
+    map: BTreeMap<PageKey, usize>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -23,10 +23,6 @@ pub enum PageKey {
     },
 }
 
-struct Page {
-    address: usize,
-}
-
 impl PageCache {
     fn get_file_page(
         &mut self,
@@ -39,13 +35,13 @@ impl PageCache {
             let inode = inode_key.get_inode().ok_or("file doesn't exist anymore")?;
             inode.read_page(paddr as *mut u8, *offset)?;
         }
-        self.map.insert(key.clone(), Page { address: paddr });
+        self.map.insert(key.clone(), paddr);
         Ok(paddr)
     }
 
     fn get_anon_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
         let paddr = physical_memory::frame_alloc();
-        self.map.insert(key.clone(), Page { address: paddr });
+        self.map.insert(key.clone(), paddr);
         unsafe {
             let hhdm = HHDM_OFFSET.get().unwrap();
             ptr::write_bytes((paddr + hhdm) as *mut u8, 0, Arch::PAGE_SIZE);
@@ -55,7 +51,7 @@ impl PageCache {
 
     pub fn get_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
         match self.map.get_mut(key) {
-            Some(page) => Ok(page.address),
+            Some(paddr) => Ok(*paddr),
             None => match key {
                 PageKey::File { inode_key, offset } => self.get_file_page(key, inode_key, offset),
                 key => self.get_anon_page(key),
