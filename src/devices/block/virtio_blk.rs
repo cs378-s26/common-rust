@@ -23,12 +23,6 @@ impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
                 .expect("failed to initialize virtio blk device"),
         }
     }
-}
-
-impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
-    fn name(&self) -> &str {
-        "virtio_blk"
-    }
 
     fn read_block(&mut self, block_idx: usize, buffer: &mut [u8]) -> Result<(), BlockDeviceError> {
         check_buffer_size(buffer, self.block_size())?;
@@ -49,7 +43,14 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
             .map_err(|_| BlockDeviceError::WriteError)?;
         Ok(())
     }
+}
 
+impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
+    fn name(&self) -> &str {
+        "virtio_blk"
+    }
+
+    // no real buffering here, just loop through and read all blocks individually, same logic for write
     fn read_blocks(
         &mut self,
         block_idxs: &[usize],

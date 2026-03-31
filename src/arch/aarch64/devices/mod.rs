@@ -40,7 +40,6 @@ pub fn parse_devices() {
             }
         }
     }
-    dump_device_tree();
 }
 
 #[allow(dead_code)]

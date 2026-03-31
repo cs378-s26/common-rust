@@ -1,4 +1,4 @@
 Starting Testing Code...
 Found virtio block device
-Single-block read sanity check passed
 Multi-block read/write test passed
+BlockDevice::read/write helper tests passed
