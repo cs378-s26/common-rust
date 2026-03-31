@@ -127,21 +127,6 @@ pub trait BlockDevice: Device {
         let start_offset = byte_offset % block_size;
         let end_offset = (byte_offset + buffer.len()) % block_size;
 
-        // // Special case: the whole write lands in a single block.
-        // // We need to preserve the bytes around the written region, so do a
-        // // read-modify-write of that block.
-        if start_idx == end_idx {
-            let mut temp = vec![0u8; block_size];
-            let mut read_bufs = [temp.as_mut_slice()];
-            self.read_blocks(&[start_idx], &mut read_bufs)?;
-
-            temp[start_offset..start_offset + buffer.len()].copy_from_slice(buffer);
-
-            let write_bufs = [temp.as_slice()];
-            self.write_blocks(&[start_idx], &write_bufs)?;
-            return Ok(buffer.len());
-        }
-
         let first_full_idx = if start_offset == 0 {
             start_idx
         } else {
