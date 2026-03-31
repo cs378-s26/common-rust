@@ -1,9 +1,13 @@
+use crate::devices::device_discovery::DeviceDiscovery;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::{
     cell::SyncUnsafeCell,
     hint,
     sync::atomic::{AtomicUsize, Ordering},
 };
+
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
@@ -164,6 +168,12 @@ impl ArchTrait for Arch {
     fn halt() -> ! {
         halt()
     }
+
+    fn parse_devices() {}
+    fn create_arch_specific_drivers(
+        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    ) {
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -216,6 +226,6 @@ impl CharSink for SerialCharSink {
     }
 }
 
-pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0x3f8));
+pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }

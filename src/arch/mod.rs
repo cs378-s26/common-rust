@@ -10,9 +10,12 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
+use crate::devices::device_discovery::DeviceDiscovery;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::mp::CoreId;
 use crate::virtual_memory::PagingOptions;
-use core::sync::atomic::Ordering;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 
@@ -56,32 +59,11 @@ pub trait ContextTrait {
     ) -> Self;
 }
 
-pub trait KernelEntryTrait {
-    fn kernel_main() -> !;
-}
-
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
-    /// calls initalize core
-    fn initialize_mp<E: KernelEntryTrait>(req: &MpRequest) -> ! {
-        let resp = req
-            .get_response()
-            .expect("Expected to find MpResponse, got None");
-        let mut bsp = None;
-        let mut core_id: u64 = 1;
-        for cpu in resp.cpus() {
-            if Self::is_bsp(req, cpu) {
-                bsp = Some(cpu);
-            } else {
-                cpu.extra.store(core_id, Ordering::SeqCst);
-                core_id += 1;
-                cpu.goto_address.write(Self::start_core::<E>);
-            }
-        }
-        unsafe { Self::start_core::<E>(bsp.expect("Couldn't find the bootstrap processor")) }
-    }
+
     /// does per core init
     /// this looks like:
     /// 1. setting up the cpu local ptr
@@ -90,14 +72,6 @@ pub trait ArchTrait {
     /// # Safety
     /// Should only be called from bootstrap processor during kernel initialization
     unsafe fn initialize_core(cpu: &Cpu) -> ();
-
-    /// wrapper around initalize core that goes to kernel main
-    /// # Safety
-    /// Should only be called from bootstrap processor during kernel initialization
-    unsafe extern "C" fn start_core<E: KernelEntryTrait>(cpu: &Cpu) -> ! {
-        unsafe { Self::initialize_core(cpu) };
-        E::kernel_main()
-    }
 
     fn set_irq_enabled(enabled: bool);
     fn irq_is_enabled() -> bool;
@@ -132,4 +106,8 @@ pub trait ArchTrait {
     fn shootdown_tlbs(space: u64, base: usize, length: usize);
     fn shutdown(err_code: u16);
     fn halt() -> !;
+    fn parse_devices(); // this must be called after all system drivers have been set up in SYSTEM_DRIVERS
+    fn create_arch_specific_drivers(
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    );
 }

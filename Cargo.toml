@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-lto = "fat"
+# lto = "fat"
 
 [profile.dev]
 panic = "abort"
@@ -32,6 +32,8 @@ talc = "4.4.3"
 uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
+fdt = "0.1.5"
+zerocopy = { version = "0.8.40", features = ["derive"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"
