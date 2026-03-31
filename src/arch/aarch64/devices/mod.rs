@@ -31,7 +31,7 @@ pub fn parse_devices() {
         for driver in SYSTEM_DRIVERS.lock().iter() {
             for node in fdt.all_nodes() {
                 let matched_device: Option<DeviceType> = driver.am_i_this(DeviceNode::DTB(node));
-                if !matched_device.is_none() {
+                if matched_device.is_some() {
                     kprintln!("{} driver linked", driver.name());
                 }
                 if let Some(device) = matched_device {

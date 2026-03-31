@@ -1,6 +1,5 @@
 use crate::arch::ArchTrait;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::print::kprintln;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
@@ -21,13 +20,7 @@ pub struct GicA15Driver {
 }
 
 impl GicA15Driver {
-    fn name(&self) -> &str {
-        "arm_a15_gic"
-    }
-
     fn init(&mut self) -> bool {
-        // kprintln!("GicA15Driver::init: initializing GICD");
-
         let options =
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
@@ -110,7 +103,7 @@ impl DeviceDiscovery for GicA15Discovery {
             GICD_INIT.call_once(|| gic);
             return Some(DeviceType::Special);
         }
-        return None;
+        None
     }
 
     fn name(&self) -> &'static str {

@@ -46,6 +46,7 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
     default_exception_handler(e);
 }
 
+#[allow(unused_variables)]
 fn timer_interrupt_handler() {
     gic::timer_reset_interval();
     gic::inc_timer_ticks();

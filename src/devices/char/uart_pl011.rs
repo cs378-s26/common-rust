@@ -5,7 +5,7 @@ use super::{CharDevice, CharDeviceError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::print::{CharSink, kprint, kprintln, set_serial_backend};
+use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::string::ToString;
@@ -102,7 +102,7 @@ impl DeviceDiscovery for UartPl011Discovery {
 
             return Some(DeviceType::Special);
         }
-        return None;
+        None
     }
 
     fn name(&self) -> &'static str {

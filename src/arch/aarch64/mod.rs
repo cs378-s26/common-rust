@@ -14,10 +14,10 @@ pub mod apic;
 mod asm;
 mod context;
 mod devices;
+mod exceptions;
 pub mod gic;
 mod interrupt;
 mod mp;
-mod exceptions;
 pub use exceptions::{dump_core_state, init_exceptions};
 
 pub use apic::timer_ticks;
