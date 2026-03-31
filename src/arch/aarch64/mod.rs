@@ -37,6 +37,10 @@ use devices::psci::PSCI_DEVICE;
 
 impl ArchTrait for Arch {
     type Context = Context;
+
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()

@@ -7,7 +7,7 @@ use core::{
 use crate::sync::MutexLike;
 
 use crate::{
-    arch::PAGE_SIZE,
+    arch::{Arch, ArchTrait},
     mp::{CORE_ID, MP_STAGE, MPStage},
     print::kprintln,
     sync::IntMutex,
@@ -101,7 +101,7 @@ impl BuddyPageAllocator {
 
     #[inline(always)]
     fn block_size_bytes(order: usize) -> u64 {
-        (PAGE_SIZE as u64) << order
+        (Arch::page_size() as u64) << order
     }
 
     /// For a requested number of pages, return the buddy order to allocate,
@@ -198,7 +198,7 @@ impl BuddyPageAllocator {
             return;
         }
 
-        let end = base + (pages as u64) * (PAGE_SIZE as u64);
+        let end = base + (pages as u64) * (Arch::page_size() as u64);
         self.add_region(base, end);
 
         while pages > 0 {
@@ -208,7 +208,7 @@ impl BuddyPageAllocator {
             let mut order = MAX_ORDER;
             loop {
                 let block_pages = 1usize << order;
-                let block_bytes = (block_pages as u64) * (PAGE_SIZE as u64);
+                let block_bytes = (block_pages as u64) * (Arch::page_size() as u64);
 
                 if block_pages <= pages && (base % block_bytes) == 0 {
                     break;
@@ -223,7 +223,7 @@ impl BuddyPageAllocator {
             let used_pages = 1usize << order;
             self.push_free(hhdm_offset, order, base);
 
-            base += (used_pages as u64) * (PAGE_SIZE as u64);
+            base += (used_pages as u64) * (Arch::page_size() as u64);
             pages -= used_pages;
         }
     }
@@ -314,6 +314,23 @@ impl HeapAllocator {
         }
     }
 
+    fn init_from_block(&mut self, offset : usize, len : usize) {
+        let start = align_up(offset, Arch::page_size());
+        let end = align_down(offset + len, Arch::page_size());
+        if end <= start {
+            return;
+        }
+
+        let page_count = (end - start) / Arch::page_size();
+        if page_count == 0 {
+            return;
+        }
+
+        self.buddy.add_range(self.hhdm_offset, start as u64, page_count);
+
+    }
+
+    /*
     fn init_from_memory_map(&mut self, hhdm_offset: u64, entries: &[&Entry]) {
         self.hhdm_offset = hhdm_offset;
         self.buddy.reset();
@@ -325,13 +342,13 @@ impl HeapAllocator {
                 continue;
             }
 
-            let start = align_up(entry.base as usize, PAGE_SIZE);
-            let end = align_down((entry.base + entry.length) as usize, PAGE_SIZE);
+            let start = align_up(entry.base as usize, Arch::page_size());
+            let end = align_down((entry.base + entry.length) as usize, Arch::page_size());
             if end <= start {
                 continue;
             }
 
-            let page_count = (end - start) / PAGE_SIZE;
+            let page_count = (end - start) / Arch::page_size();
             if page_count == 0 {
                 continue;
             }
@@ -346,6 +363,7 @@ impl HeapAllocator {
             pages_total
         );
     }
+    */
 
     fn allocate(&mut self, layout: Layout) -> *mut u8 {
         if let Some(class) = class_index_for_layout(layout) {
@@ -394,7 +412,7 @@ impl HeapAllocator {
     }
 
     fn free_small(&mut self, ptr: *mut u8) {
-        let page_base = align_down(ptr as usize, PAGE_SIZE);
+        let page_base = align_down(ptr as usize, Arch::page_size());
         let header = page_base as *mut SlabPageHeader;
 
         unsafe {
@@ -431,7 +449,7 @@ impl HeapAllocator {
     }
 
     fn allocate_large(&mut self, layout: Layout) -> *mut u8 {
-        if layout.align() > PAGE_SIZE {
+        if layout.align() > Arch::page_size() {
             return null_mut();
         }
 
@@ -473,12 +491,12 @@ impl HeapAllocator {
                 virt + core::mem::size_of::<SlabPageHeader>(),
                 object_size.max(8),
             );
-            if start >= virt + PAGE_SIZE {
+            if start >= virt + Arch::page_size() {
                 self.buddy.free_pages(self.hhdm_offset, phys, 0);
                 return false;
             }
 
-            let capacity = (virt + PAGE_SIZE - start) / object_size;
+            let capacity = (virt + Arch::page_size() - start) / object_size;
             if capacity == 0 {
                 self.buddy.free_pages(self.hhdm_offset, phys, 0);
                 return false;
@@ -656,13 +674,13 @@ static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl {
     heap: IntMutex::new(HeapAllocator::new()),
 };
 
-pub fn init_malloc(hhdm_offset: u64, entries: &[&Entry]) {
+pub fn init_malloc(heap : usize, len : usize) {
     kprintln!("init_malloc(): initializing  allocator");
 
     GLOBAL_ALLOC
         .heap
         .lock()
-        .init_from_memory_map(hhdm_offset, entries);
+        .init_from_block(heap, len);
 }
 
 pub fn aligned_slice(size: usize, align: usize) -> Box<[u8]> {
@@ -706,5 +724,5 @@ fn class_index_for_layout(layout: Layout) -> Option<usize> {
 
 #[inline(always)]
 fn page_count_for(size: usize) -> usize {
-    size.max(1).div_ceil(PAGE_SIZE)
+    size.max(1).div_ceil(Arch::page_size())
 }
