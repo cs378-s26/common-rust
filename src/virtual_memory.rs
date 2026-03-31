@@ -32,6 +32,7 @@ bitflags! {
         const GLOBAL = 1 << 6;
         const FIXED = 1 << 7;
         const SHADOW = 1 << 8;
+        const DEVICE_MEMORY = 1 << 9;
     }
 }
 
@@ -90,6 +91,7 @@ impl VirtualMemoryEntryContainer {
 }
 
 pub fn init_virtual_memory_allocator() {
+    Arch::configure_vm();
     kprintln!("initializing virtual memory allocator");
     VMES.call_once(|| {
         Mutex::new(VirtualMemoryEntryContainer::new(

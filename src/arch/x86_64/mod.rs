@@ -119,6 +119,8 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
+    fn configure_vm() {}
+
     fn get_address_space() -> u64 {
         get_address_space()
     }

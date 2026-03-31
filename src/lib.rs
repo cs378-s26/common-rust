@@ -54,7 +54,7 @@ use spin::{Barrier, Once};
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
 
-use crate::devices::drivers::create_drivers;
+use crate::devices::device_discovery::create_drivers;
 
 // some sample limine requests, for no particular reason
 #[used]
