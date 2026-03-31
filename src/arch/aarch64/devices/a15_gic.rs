@@ -7,7 +7,7 @@ use spin::Once;
 
 pub static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 pub static GICD_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
-static GICD_INIT: Once = Once::new();
+static GICD_INIT: Once<GicA15Driver> = Once::new();
 
 const GICD_CTLR: usize = 0x000;
 const GICD_ISENABLER0: usize = 0x100;
@@ -27,72 +27,72 @@ impl GicA15Driver {
 
     fn init(&mut self) -> bool {
         kprintln!("GicA15Driver::init: initializing GICD");
-        GICD_INIT.call_once(|| {
-            let options =
-                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
-            let gicd_vm = VirtualMemoryAllocation::new(
-                crate::arch::Arch::get_address_space(),
-                None,
-                crate::arch::Arch::PAGE_SIZE,
-                Some(self.gicd_phys_address),
-                options,
-            );
+        let options =
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
-            let gicc_vm = VirtualMemoryAllocation::new(
-                crate::arch::Arch::get_address_space(),
-                None,
-                crate::arch::Arch::PAGE_SIZE,
-                Some(self.gicc_phys_address),
-                options,
-            );
+        let gicd_vm = VirtualMemoryAllocation::new(
+            crate::arch::Arch::get_address_space(),
+            None,
+            crate::arch::Arch::PAGE_SIZE,
+            Some(self.gicd_phys_address),
+            options,
+        );
 
-            if gicd_vm.is_none() || gicc_vm.is_none() {
-                panic!("Failed to map GIC memory");
-            }
+        let gicc_vm = VirtualMemoryAllocation::new(
+            crate::arch::Arch::get_address_space(),
+            None,
+            crate::arch::Arch::PAGE_SIZE,
+            Some(self.gicc_phys_address),
+            options,
+        );
 
-            let gicd_virt = gicd_vm.as_ref().unwrap().base;
-            let gicc_virt = gicc_vm.as_ref().unwrap().base;
+        if gicd_vm.is_none() || gicc_vm.is_none() {
+            panic!("Failed to map GIC memory");
+        }
 
-            self.gicd_virt_mapping = gicd_vm;
-            self.gicc_virt_mapping = gicc_vm;
+        let gicd_virt = gicd_vm.as_ref().unwrap().base;
+        let gicc_virt = gicc_vm.as_ref().unwrap().base;
 
-            GICD_BASE_VIRT.store(gicd_virt, Ordering::Release);
-            GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
+        self.gicd_virt_mapping = gicd_vm;
+        self.gicc_virt_mapping = gicc_vm;
 
-            kprintln!(
-                "GicA15Driver::init: GICD_BASE_VIRT={:#x}, GICC_BASE_VIRT={:#x}",
-                gicd_virt,
-                gicc_virt
-            );
+        GICD_BASE_VIRT.store(gicd_virt, Ordering::Release);
+        GICC_BASE_VIRT.store(gicc_virt, Ordering::Release);
 
-            unsafe {
-                let gicd = gicd_virt as *mut u32;
+        kprintln!(
+            "GicA15Driver::init: GICD_BASE_VIRT={:#x}, GICC_BASE_VIRT={:#x}",
+            gicd_virt,
+            gicc_virt
+        );
 
-                // disable gicd
-                gicd.add(GICD_CTLR / 4).write_volatile(0);
+        unsafe {
+            let gicd = gicd_virt as *mut u32;
 
-                // we want intid 30 for the arm's generic timer
-                // we need to access the 4 byte register starting at 28 because register 28 includes [28, 29, 30, 31]
-                let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32;
+            // disable gicd
+            gicd.add(GICD_CTLR / 4).write_volatile(0);
 
-                // read existing config
-                let mut word = pri_reg.read_volatile();
-                // clear intid 30 priority
-                word &= !(0xFF << 16);
-                // sets priority to 0xA0
-                word |= 0xA0 << 16;
-                pri_reg.write_volatile(word);
+            // we want intid 30 for the arm's generic timer
+            // we need to access the 4 byte register starting at 28 because register 28 includes [28, 29, 30, 31]
+            let pri_reg = (gicd_virt + GICD_IPRIORITYR + 28) as *mut u32;
 
-                // enable interrupt 30 in the Interrupt Set ENABLE Register isENABLEr
-                let isenabler0 = gicd.add(GICD_ISENABLER0 / 4);
-                isenabler0.write_volatile(1 << 30);
+            // read existing config
+            let mut word = pri_reg.read_volatile();
+            // clear intid 30 priority
+            word &= !(0xFF << 16);
+            // sets priority to 0xA0
+            word |= 0xA0 << 16;
+            pri_reg.write_volatile(word);
 
-                // reenable gicd
-                gicd.add(GICD_CTLR / 4).write_volatile(1);
-            }
-            kprintln!("gicd_init done");
-        });
+            // enable interrupt 30 in the Interrupt Set ENABLE Register isENABLEr
+            let isenabler0 = gicd.add(GICD_ISENABLER0 / 4);
+            isenabler0.write_volatile(1 << 30);
+
+            // reenable gicd
+            gicd.add(GICD_CTLR / 4).write_volatile(1);
+        }
+        kprintln!("gicd_init done");
+
         true
     }
 }
@@ -116,7 +116,7 @@ impl DeviceDiscovery for GicA15Discovery {
                 gicc_virt_mapping: None,
             };
             gic.init();
-            kprintln!("returning");
+            GICD_INIT.call_once(|| gic);
             return Some(DeviceType::Special);
         }
         return None;
