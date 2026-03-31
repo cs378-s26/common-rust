@@ -31,6 +31,8 @@ pub use crate::arch::{ArchTrait, UnwindContextTrait};
 
 pub struct Arch;
 
+use devices::psci::PSCI_DEVICE;
+
 impl ArchTrait for Arch {
     type Context = Context;
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
@@ -104,13 +106,15 @@ impl ArchTrait for Arch {
         vmm::vmap(space, vaddr, paddr, options)
     }
 
-    fn virtual_unmap(_space: u64, _vaddr: u64) -> Option<u64> {
-        vmm::vunmap(_space, _vaddr)
+    fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {
+        vmm::vunmap(space, vaddr)
     }
 
     fn shutdown(_err_code: u16) {
-        // TODO implement this
-        halt();
+        PSCI_DEVICE
+            .get()
+            .expect("PSCI device not found, cannot shutdown") // very critical this is set, otherwise you get in an infinite shutdown loop
+            .shutdown();
     }
 
     fn halt() -> ! {

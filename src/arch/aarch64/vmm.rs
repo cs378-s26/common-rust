@@ -19,7 +19,7 @@ pub fn configure_vm() {
     let mair_el1 = normal_memory_cacheable | normal_memory_non_cacheable | device_memory;
     unsafe {
         core::arch::asm!(
-            "msr MAIR_EL1, {}",
+            "msr MAIR_EL1, {0:x}",
             "isb",
             in(reg) mair_el1,
             options(nostack, preserves_flags)
