@@ -61,6 +61,7 @@ pub trait ContextTrait {
 
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
+    fn page_size() -> usize;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
 
