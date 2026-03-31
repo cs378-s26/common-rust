@@ -138,7 +138,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Ar
     if let Some(process) = thread.process.get() {
         process
             .virtual_memory
-            .handle_page_fault(cause, address)
+            .handle_page_fault(&cause, address)
             .unwrap();
         return;
     }
