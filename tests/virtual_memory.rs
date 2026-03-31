@@ -126,10 +126,65 @@ kernel_common::integration_test!({
         while LATCH.load(Ordering::SeqCst) > 0 {}
     }
 
+    fn test04() {
+        LATCH.fetch_add(3, Ordering::SeqCst);
+        let process = Process::new();
+        Process::run(process.clone(), move || {
+            let file_shared = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, true, None)
+                .unwrap();
+            let file_private = process
+                .virtual_memory
+                .mmap(Some((INodeKey::new(0, 1), 0, None)), 4096, false, None)
+                .unwrap();
+            let anon_shared = process.virtual_memory.mmap(None, 4096, true, None).unwrap();
+            let anon_private = process
+                .virtual_memory
+                .mmap(None, 4096, false, None)
+                .unwrap();
+            let new_process = process.fork();
+            unsafe {
+                *(anon_shared as *mut u8) = b'x';
+                *(anon_private as *mut u8) = b'x';
+                *(file_shared as *mut u8) = b'x';
+                *(file_private as *mut u8) = b'x';
+            }
+            Process::run(new_process, move || {
+                unsafe {
+                    *(anon_shared as *mut u8) = b'y';
+                    *(anon_private as *mut u8) = b'y';
+                    *(file_shared as *mut u8) = b'y';
+                    *(file_private as *mut u8) = b'y';
+                }
+                LATCH.fetch_sub(1, Ordering::SeqCst);
+                unsafe {
+                    assert!(*(anon_shared as *mut u8) == b'y');
+                    assert!(*(anon_private as *mut u8) == b'y');
+                    assert!(*(anon_shared as *mut u8) == b'y');
+                    assert!(*(anon_private as *mut u8) == b'y');
+                }
+                LATCH.fetch_sub(1, Ordering::SeqCst);
+            });
+            while LATCH.load(Ordering::SeqCst) > 2 {}
+            unsafe {
+                assert!(*(anon_shared as *mut u8) == b'y');
+                assert!(*(anon_private as *mut u8) == b'x');
+                assert!(*(file_shared as *mut u8) == b'y');
+                assert!(*(file_private as *mut u8) == b'x');
+            }
+            while LATCH.load(Ordering::SeqCst) > 1 {}
+            unsafe { *(file_private as *mut u8) = b'c' };
+            LATCH.fetch_sub(1, Ordering::SeqCst);
+        });
+        while LATCH.load(Ordering::SeqCst) > 0 {}
+    }
+
     let fs = RAMFilesystem::new();
     init_test_ramfs(fs.clone());
     VFS.mount(fs);
     test01();
     test02();
     test03();
+    test04();
 });

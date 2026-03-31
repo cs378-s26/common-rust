@@ -7,7 +7,7 @@ use crate::{
     vfs::INodeKey,
     virtual_memory::{PageFaultConditions, PagingOptions},
 };
-use alloc::boxed::Box;
+use alloc::{boxed::Box, collections::btree_map::BTreeMap};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::Once;
@@ -24,6 +24,7 @@ struct Mapping {
     shared: bool,
     base: usize,
     link: RBTreeLink,
+    private_pages: IntMutex<BTreeMap<usize, ()>>,
 }
 
 intrusive_adapter!(MappingAdapter = Box<Mapping>: Mapping { link => RBTreeLink });
@@ -95,6 +96,7 @@ impl VirtualMemory {
             shared,
             base,
             link: RBTreeLink::new(),
+            private_pages: IntMutex::new(BTreeMap::new()),
         }));
         Ok(base)
     }
@@ -116,6 +118,44 @@ impl VirtualMemory {
 
     pub fn get_limine_page_table() -> usize {
         *LIMINE_PAGE_TABLE.get().unwrap()
+    }
+}
+
+impl Clone for VirtualMemory {
+    // TODO: Make this less greedy with the locks
+    fn clone(&self) -> Self {
+        let mut page_cache = PAGE_CACHE.lock();
+        let child_page_table = Self::new_page_table();
+
+        let parent_free_set = self.free_set.lock();
+        let child_free_set = parent_free_set.clone();
+
+        let parent_active_set = self.active_set.lock();
+        let mut child_active_set = RBTree::new(MappingAdapter::new());
+
+        for parent_mapping in parent_active_set.iter() {
+            let mut child_private_pages = BTreeMap::new();
+            for (vaddr, _) in parent_mapping.private_pages.lock().iter() {
+                page_cache
+                    .add_private_reference(*vaddr, self.page_table, child_page_table)
+                    .unwrap();
+                child_private_pages.insert(*vaddr, ());
+                // TODO: Just change cr3 to flush entire TLB
+                self.invlpg(*vaddr);
+            }
+            let child_mapping = Mapping {
+                file: parent_mapping.file.clone(),
+                link: RBTreeLink::new(),
+                private_pages: IntMutex::new(child_private_pages),
+                ..*parent_mapping
+            };
+            child_active_set.insert(Box::new(child_mapping));
+        }
+        Self {
+            active_set: IntMutex::new(child_active_set),
+            free_set: IntMutex::new(child_free_set),
+            page_table: child_page_table,
+        }
     }
 }
 
@@ -146,7 +186,7 @@ impl VirtualMemory {
     // doesn't need to map anything. This hasn't been implemented.
     pub fn handle_page_fault(
         &self,
-        cause: PageFaultConditions,
+        cause: &PageFaultConditions,
         address: usize,
     ) -> Result<(), &'static str> {
         let vaddr = address & !(Arch::PAGE_SIZE - 1);
@@ -172,7 +212,7 @@ impl VirtualMemory {
             }
         } else {
             assert!(!mapping.shared);
-            self.handle_anon_private(vaddr)
+            self.handle_anon_private(cause, vaddr, mapping)
         }
     }
 
@@ -188,25 +228,34 @@ impl VirtualMemory {
             inode_key: inode_key.clone(),
             offset: vaddr - mapping.base + offset,
         };
-        let paddr = PAGE_CACHE.lock().get_page(&key)?;
+        let paddr = PAGE_CACHE.lock().get_page(&key, false)?;
         self.vmap_write(vaddr, paddr);
         Ok(())
     }
 
-    fn handle_anon_private(&self, vaddr: usize) -> Result<(), &'static str> {
+    fn handle_anon_private(
+        &self,
+        cause: &PageFaultConditions,
+        vaddr: usize,
+        mapping: &Mapping,
+    ) -> Result<(), &'static str> {
         assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
+        if self.already_has(cause, vaddr, mapping)? {
+            return Ok(());
+        }
         let key = PageKey::Anonymous {
             process_id: self.page_table,
             virtual_address: vaddr,
         };
-        let paddr = PAGE_CACHE.lock().get_page(&key)?;
+        let paddr = PAGE_CACHE.lock().get_page(&key, false)?;
+        mapping.private_pages.lock().insert(vaddr, ());
         self.vmap_write(vaddr, paddr);
         Ok(())
     }
 
     fn handle_file_private(
         &self,
-        cause: PageFaultConditions,
+        cause: &PageFaultConditions,
         vaddr: usize,
         mapping: &Mapping,
         inode_key: &INodeKey,
@@ -214,6 +263,9 @@ impl VirtualMemory {
         file_length: &Option<usize>,
     ) -> Result<(), &'static str> {
         assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
+        if self.already_has(cause, vaddr, mapping)? {
+            return Ok(());
+        }
         if let Some(file_length) = file_length
             && self.handle_file_private_partial(vaddr, mapping, inode_key, offset, file_length)?
         {
@@ -223,7 +275,7 @@ impl VirtualMemory {
             inode_key: inode_key.clone(),
             offset: *offset,
         };
-        let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
+        let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key, false)?;
         if !cause.contains(PageFaultConditions::WRITE) {
             self.vmap_read(vaddr, shared_paddr);
             return Ok(());
@@ -232,8 +284,9 @@ impl VirtualMemory {
             process_id: self.page_table,
             virtual_address: vaddr,
         };
-        let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
+        let private_paddr = PAGE_CACHE.lock().get_page(&private_key, false)?;
         unsafe { physical_memory::copy(shared_paddr, private_paddr, Arch::PAGE_SIZE) };
+        mapping.private_pages.lock().insert(vaddr, ());
         self.vmap_write(vaddr, private_paddr);
         Ok(())
     }
@@ -253,19 +306,43 @@ impl VirtualMemory {
             process_id: self.page_table,
             virtual_address: vaddr,
         };
-        let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
+        let private_paddr = PAGE_CACHE.lock().get_page(&private_key, false)?;
         if vaddr - mapping.base < *file_length {
             let shared_key = PageKey::File {
                 inode_key: inode_key.clone(),
                 offset: vaddr - mapping.base + offset,
             };
-            let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
+            let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key, false)?;
             unsafe {
                 let partial_file_length = file_length.rem_euclid(Arch::PAGE_SIZE);
                 physical_memory::copy(shared_paddr, private_paddr, partial_file_length);
             }
         }
+        mapping.private_pages.lock().insert(vaddr, ());
         self.vmap_write(vaddr, private_paddr);
+        Ok(true)
+    }
+
+    fn already_has(
+        &self,
+        cause: &PageFaultConditions,
+        vaddr: usize,
+        mapping: &Mapping,
+    ) -> Result<bool, &'static str> {
+        if !mapping.private_pages.lock().contains_key(&vaddr) {
+            return Ok(false);
+        }
+        let key = PageKey::Anonymous {
+            process_id: self.page_table,
+            virtual_address: vaddr,
+        };
+        if cause.contains(PageFaultConditions::WRITE) {
+            let paddr = PAGE_CACHE.lock().get_page(&key, true)?;
+            self.vmap_write(vaddr, paddr);
+        } else {
+            let paddr = PAGE_CACHE.lock().get_page(&key, false)?;
+            self.vmap_read(vaddr, paddr);
+        }
         Ok(true)
     }
 }

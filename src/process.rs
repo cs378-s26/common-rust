@@ -17,6 +17,12 @@ impl Process {
         })
     }
 
+    pub fn fork(&self) -> Arc<Self> {
+        Arc::new(Self {
+            virtual_memory: self.virtual_memory.clone(),
+        })
+    }
+
     pub fn run<T: FnOnce() + Send + 'static>(process: Arc<Self>, task: T) {
         spawn_thread(move || {
             let thread = THIS_THREAD.get().unwrap().upgrade().unwrap();
