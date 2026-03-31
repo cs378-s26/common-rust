@@ -54,6 +54,7 @@ impl DmaRegion {
     }
 
     /// Get a mutable slice of the entire DMA region.
+    /// # Safety
     /// Caller must ensure no concurrent device access to the same range,
     /// or that such concurrent access is acceptable for the use case.
     pub unsafe fn as_slice_mut(&mut self) -> &mut [u8] {
@@ -112,13 +113,14 @@ impl MmioRegion {
     }
 
     /// Read a value at byte offset from the MMIO base.
+    /// # Safety
     /// Caller must ensure the offset is valid for the device and properly aligned for T.
     pub unsafe fn read<T: Copy>(&self, offset: usize) -> T {
         unsafe { ptr::read_volatile((self.virt_addr + offset) as *const T) }
     }
 
     /// Write a value at byte offset from the MMIO base.
-    ///
+    /// # Safety
     /// Caller must ensure the offset is valid for the device and properly aligned for T.
     pub unsafe fn write<T: Copy>(&self, offset: usize, value: T) {
         unsafe { ptr::write_volatile((self.virt_addr + offset) as *mut T, value) }
@@ -171,13 +173,13 @@ mod test {
             kprintln!("testing DMA region read/write");
             unsafe {
                 let buf = region.as_slice_mut();
-                for i in 0..buf.len() {
-                    buf[i] = (i & 0xFF) as u8;
+                for (i, item) in buf.iter_mut().enumerate() {
+                    *item = (i & 0xFF) as u8;
                 }
             }
             let buf = region.as_slice();
-            for i in 0..buf.len() {
-                assert!(buf[i] == (i & 0xFF) as u8);
+            for (i, item) in buf.iter().enumerate() {
+                assert!(*item == (i & 0xFF) as u8);
             }
 
             // zero
@@ -200,8 +202,8 @@ mod test {
             kprintln!("verifying multi-frame DMA region");
             unsafe {
                 let buf = region.as_slice_mut();
-                for i in 0..buf.len() {
-                    buf[i] = (i & 0xFF) as u8;
+                for (i, item) in buf.iter_mut().enumerate() {
+                    *item = (i & 0xFF) as u8;
                 }
             }
             for i in 0..region.size() {
@@ -211,7 +213,7 @@ mod test {
 
             // new_bytes rounds up correctly
             kprintln!("testing DMA new_bytes rounding");
-            let mut region = DmaRegion::new_bytes(5000);
+            let region = DmaRegion::new_bytes(5000);
             assert!(region.size() == 4096 * 2);
             drop(region);
 
