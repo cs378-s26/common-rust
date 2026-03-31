@@ -1,8 +1,11 @@
 use crate::arch::Arch;
 use crate::arch::ArchTrait;
+use crate::physical_memory;
 use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
+use crate::vfs::Directory;
+use crate::vfs::File;
 use crate::vfs::INode;
 use crate::vfs::{DirectoryTrait, FileTrait, Filesystem};
 use alloc::string::String;
@@ -94,56 +97,56 @@ impl Filesystem for RAMFilesystem {
     }
 }
 
+pub fn init_test_ramfs(fs: Arc<RAMFilesystem>) {
+    let empty = Arc::new(Directory(IntMutex::new(Vec::<(String, usize)>::new())));
+    let Some(root) = fs.get_inode(fs.create_inode(empty)) else {
+        panic!("created inode doesn't exist");
+    };
+    let _ = root.add_entry("small", 1);
+    let _ = root.add_entry("big", 2);
+    // add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
+
+    let small = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
+    let Some(small) = fs.get_inode(small) else {
+        panic!("created inode doesn't exist")
+    };
+    let paddr = physical_memory::frame_alloc() as *mut u8;
+    let hhdm = *HHDM_OFFSET.get().unwrap();
+    let mut i = 0;
+    for c in "cat".as_bytes().to_vec() {
+        unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
+        i += 1;
+    }
+    let _ = small.write_page(paddr, 0);
+
+    let big = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
+    let Some(big) = fs.get_inode(big) else {
+        panic!("created inode doesn't exist")
+    };
+    for j in 0..4 {
+        i = 0;
+        for _ in 0..1024 {
+            for c in "cats".as_bytes().to_vec() {
+                unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
+                i += 1;
+            }
+        }
+        let _ = big.write_page(paddr, j * Arch::PAGE_SIZE);
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::arch::{Arch, ArchTrait};
     use crate::physical_memory;
     use crate::physical_memory::HHDM_OFFSET;
-    use crate::ramfs::RAMFilesystem;
+    use crate::ramfs::{RAMFilesystem, init_test_ramfs};
     use crate::sync::IntMutex;
     use crate::vfs::Filesystem;
     use crate::vfs::{Directory, File};
     use alloc::string::String;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
-
-    fn init_test_ramfs(fs: Arc<RAMFilesystem>) {
-        let empty = Arc::new(Directory(IntMutex::new(Vec::<(String, usize)>::new())));
-        let Some(root) = fs.get_inode(fs.create_inode(empty)) else {
-            panic!("created inode doesn't exist");
-        };
-        let _ = root.add_entry("small", 1);
-        let _ = root.add_entry("big", 2);
-        // add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
-
-        let small = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
-        let Some(small) = fs.get_inode(small) else {
-            panic!("created inode doesn't exist")
-        };
-        let paddr = physical_memory::frame_alloc() as *mut u8;
-        let hhdm = *HHDM_OFFSET.get().unwrap();
-        let mut i = 0;
-        for c in "cat".as_bytes().to_vec() {
-            unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
-            i += 1;
-        }
-        let _ = small.write_page(paddr, 0);
-
-        let big = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
-        let Some(big) = fs.get_inode(big) else {
-            panic!("created inode doesn't exist")
-        };
-        for j in 0..4 {
-            i = 0;
-            for _ in 0..1024 {
-                for c in "cats".as_bytes().to_vec() {
-                    unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
-                    i += 1;
-                }
-            }
-            let _ = big.write_page(paddr, j * Arch::PAGE_SIZE);
-        }
-    }
 
     #[test_case]
     fn test_ramfs_small() {
