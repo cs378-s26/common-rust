@@ -91,8 +91,6 @@ impl GicA15Driver {
             // reenable gicd
             gicd.add(GICD_CTLR / 4).write_volatile(1);
         }
-        kprintln!("gicd_init done");
-
         true
     }
 }
@@ -123,6 +121,6 @@ impl DeviceDiscovery for GicA15Discovery {
     }
 
     fn name(&self) -> &'static str {
-        "arm gic"
+        "cortex-a15-gic"
     }
 }

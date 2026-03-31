@@ -56,9 +56,9 @@ pub fn setup_timer() {
 }
 
 pub fn gicc_init() {
-    kprintln!("gicc_init starting on core {}", crate::mp::CORE_ID.get());
+    // kprintln!("gicc_init starting on core {}", crate::mp::CORE_ID.get());
     let gicc_virt = GICC_BASE_VIRT.load(Ordering::Acquire);
-    kprintln!("gicc_init: GICC_BASE_VIRT={:#x}", gicc_virt);
+    // kprintln!("gicc_init: GICC_BASE_VIRT={:#x}", gicc_virt);
 
     assert!(
         gicc_virt != 0,
@@ -87,7 +87,10 @@ pub fn gicc_init() {
         isenabler0.write_volatile(1 << 30);
     }
 
-    kprintln!("gicc_init done on core {}", crate::mp::CORE_ID.get());
+    kprintln!(
+        "gic::gicc_init completed on core {}",
+        crate::mp::CORE_ID.get()
+    );
 }
 
 // function appears pure but the act of reading signals the GIC hardware that the interrupt is being handled

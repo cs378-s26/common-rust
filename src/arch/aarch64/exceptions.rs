@@ -50,7 +50,7 @@ fn timer_interrupt_handler() {
     gic::timer_reset_interval();
     gic::inc_timer_ticks();
     let ticks = gic::timer_ticks();
-    kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
+    // kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
 }
 
 #[unsafe(no_mangle)]
@@ -119,7 +119,6 @@ pub fn current_privilege_level() -> &'static str {
 }
 
 pub fn init_exceptions() {
-    kprintln!("{} enabling exceptions", CORE_ID.get());
     unsafe {
         core::arch::asm!(
             "mov x0, sp",
