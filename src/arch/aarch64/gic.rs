@@ -5,7 +5,7 @@ use spin::Once;
 use crate::arch::aarch64::devices::a15_gic::{GICC_BASE_VIRT, GICD_BASE_VIRT};
 use crate::print::kprintln;
 
-pub const TIMER_HZ: u64 = 1;
+pub const TIMER_HZ: u64 = 1000;
 pub static TIMER_INTERVAL: Once<u64> = Once::new();
 pub static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
