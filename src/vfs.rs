@@ -74,7 +74,7 @@ impl INodeKey {
 pub trait Filesystem: Send + Sync {
     fn get_root(&self) -> Arc<dyn INode>;
     fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>>;
-    fn create_inode(&self) -> usize;
+    fn create_inode(&self, inode: Arc<dyn INode>) -> usize; // TODO mutable reference?
     // delete_inode(inode)
 }
 
@@ -84,9 +84,52 @@ pub trait INode: Send + Sync {
     fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
 
     // Directory
-    fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, &'static str>;
-    // add_direntry(name, inode, file_type)
+    fn lookup(&self, target: &str) -> Result<usize, &'static str>;
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str>;
 
     // Symlink
     // fn traverse() -> str
+}
+
+pub trait DirectoryTrait: Send + Sync {
+    fn lookup(&self, target: &str) -> Result<usize, &'static str>;
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str>;
+    // fn get_fs(&self) -> dyn Filesystem;
+}
+pub struct Directory<D: DirectoryTrait>(pub D); // rust type system moment
+
+impl<D: DirectoryTrait> INode for Directory<D> {
+    fn read_page(&self, _: *mut u8, _: usize) -> Result<(), &'static str> {
+        Err("cannot read from directory")
+    }
+    fn write_page(&self, _: *const u8, _: usize) -> Result<(), &'static str> {
+        Err("cannot write to directory")
+    }
+    fn lookup(&self, target: &str) -> Result<usize, &'static str> {
+        self.0.lookup(target)
+    }
+    fn add_entry(&self, target: &str, inumber: usize)-> Result<(), &'static str> {
+        self.0.add_entry(target, inumber)
+    }
+}
+
+pub trait FileTrait: Send + Sync { // TODO is this just a block device?
+    fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str>;
+    fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
+}
+pub struct File<F: FileTrait>(pub F); // rust type system moment
+
+impl<F: FileTrait> INode for File<F> {
+    fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str> {
+        self.0.read_page(physical_address, offset)
+    }
+    fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str> {
+        self.0.write_page(physical_address, offset)
+    }
+    fn lookup(&self, _: &str) -> Result<usize, &'static str> {
+        Err("cannot perform lookup in file")
+    }
+    fn add_entry(&self, _: &str, _: usize) -> Result<(), &'static str> {
+        Err("cannot add child to file")
+    }
 }

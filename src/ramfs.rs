@@ -1,99 +1,43 @@
 use crate::arch::Arch;
 use crate::arch::ArchTrait;
 use crate::physical_memory::HHDM_OFFSET;
+use crate::print::kprintln;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
-use crate::vfs::Filesystem;
+use crate::vfs::{DirectoryTrait, FileTrait, Filesystem, File};
 use crate::vfs::INode;
 use spin::Once;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::String;
 
 pub struct RAMFilesystem {
     reference: Once<Arc<RAMFilesystem>>,
-    files: IntMutex<Vec<Arc<RAMINode>>>,
+    files: IntMutex<Vec<Arc<dyn INode>>>,
 }
 
-enum RAMINodeContainer {
-    Directory(Vec<(&'static str, usize)>),
-    File(IntMutex<Vec<u8>>),
-}
-
-struct RAMINode {
-    filesystem: Arc<RAMFilesystem>,
-    container: RAMINodeContainer,
-}
-
-impl RAMFilesystem {
-    // TODO: Not hardcode files into the constructor...
-    pub fn new() -> Arc<Self> {
-        let fs: Arc<RAMFilesystem> = Arc::new(Self {
-            reference: Once::new(),
-            files: IntMutex::new(vec![]),
-        });
-        fs.reference.call_once(|| fs.clone());
-        let add = |file| {
-            let strong = fs.clone();
-            let mut files = fs.files.lock();
-            files.push(Arc::new(RAMINode {
-                filesystem: strong,
-                container: file,
-            }))
-        };
-        add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
-        add(RAMINodeContainer::File(IntMutex::new(
-            "cat".as_bytes().to_vec(),
-        )));
-        let mut big_content = vec![];
-        for _ in 0..4096 {
-            big_content.push(b'd');
-            big_content.push(b'o');
-            big_content.push(b'g');
-        }
-        add(RAMINodeContainer::File(IntMutex::new(big_content)));
-        fs
-    }
-}
-
-impl Filesystem for RAMFilesystem {
-    fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>> {
-        Some(self.files.lock()[inumber].clone())
-    }
-    fn get_root(&self) -> Arc<dyn INode> {
-        self.get_inode(0).unwrap()
-    }
-    fn create_inode(&self) -> usize {
-        let mut files = self.files.lock();
-        files.push(Arc::new(RAMINode { filesystem: self.reference.get().expect("creating file in uninitialized fs").clone(), container: RAMINodeContainer::File(IntMutex::new(vec![])) }));
-        files.len() - 1
-    }
-}
-
-impl INode for RAMINode {
-    fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, &'static str> {
-        let RAMINodeContainer::Directory(tree) = &self.container else {
-            return Err("can't traverse a file");
-        };
-        for (name, inumber) in tree {
-            if *name == target {
-                return self
-                    .filesystem
-                    .get_inode(*inumber)
-                    .ok_or("file found with an invalid inode?");
+impl DirectoryTrait for IntMutex<Vec<(String, usize)>> {
+    fn lookup(&self, target: &str) -> Result<usize, &'static str> {
+        for (name, inumber) in &*(self.lock()) {
+            if *name == *target {
+                return Ok(*inumber)
             }
         }
         Err("could not find file")
     }
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str> {
+        self.lock().push((target.into(), inumber));
+        Ok(())
+    }
+}
 
+impl FileTrait for IntMutex<Vec<u8>> {
     fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str> {
         if !offset.is_multiple_of(Arch::PAGE_SIZE) {
             return Err("given offset is not multiple of page size");
         }
-        let RAMINodeContainer::File(content) = &self.container else {
-            return Err("can't read the pages of a directory");
-        };
-        let content = content.lock();
+        let content = self.lock();
         if offset > content.len() {
             return Err("given offset is above file size");
         }
@@ -111,21 +55,49 @@ impl INode for RAMINode {
         if !offset.is_multiple_of(Arch::PAGE_SIZE) {
             return Err("given offset is not multiple of page size");
         }
-        let RAMINodeContainer::File(content) = &self.container else {
-            return Err("can't write to the pages of a directory");
-        };
-        let mut content = content.lock();
-        if offset > content.len() {
-            return Err("given offset is above file size");
+        let mut content = self.lock();
+        while offset + Arch::PAGE_SIZE > content.len() {
+            content.push(0);
         }
         let length = Arch::PAGE_SIZE.min(content.len() - offset);
         let hhdm = *HHDM_OFFSET.get().unwrap();
         for i in 0..length {
             let adjusted = (physical_address as usize) + hhdm + i;
             let adjusted = adjusted as *mut u8;
-            unsafe { content[offset + i] = *adjusted }
+            content[offset + i] = unsafe { *adjusted }
         }
         Ok(())
+    }
+}
+
+// struct RAMINode {
+//     filesystem: Arc<RAMFilesystem>,
+//     container: RAMINodeContainer,
+// }
+
+impl RAMFilesystem {
+    // TODO: Not hardcode files into the constructor...
+    pub fn new() -> Arc<Self> {
+        let fs: Arc<RAMFilesystem> = Arc::new(Self {
+            reference: Once::new(),
+            files: IntMutex::new(vec![]),
+        });
+        fs.reference.call_once(|| fs.clone());
+        fs
+    }
+}
+
+impl Filesystem for RAMFilesystem {
+    fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>> {
+        Some(self.files.lock()[inumber].clone())
+    }
+    fn get_root(&self) -> Arc<dyn INode> {
+        self.get_inode(0).unwrap()
+    }
+    fn create_inode(&self, inode: Arc<dyn INode>) -> usize {
+        let mut files = self.files.lock();
+        files.push(inode);
+        files.len() - 1
     }
 }
 
@@ -135,12 +107,58 @@ mod test {
     use crate::physical_memory::HHDM_OFFSET;
     use crate::ramfs::RAMFilesystem;
     use crate::vfs::Filesystem;
+    use crate::arch::{Arch, ArchTrait};
+    use crate::sync::IntMutex;
+    use alloc::sync::Arc;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use crate::vfs::{Directory, File};
+
+    fn init_test_ramfs(fs: Arc<RAMFilesystem>) {
+        let empty = Arc::new(Directory(IntMutex::new(Vec::<(String, usize)>::new())));
+        let Some(root) = fs.get_inode(fs.create_inode(empty)) else {
+            panic!("created inode doesn't exist");
+        };
+        root.add_entry("small", 1);
+        root.add_entry("big", 2);
+        // add(RAMINodeContainer::Directory(vec![("small", 1), ("big", 2)]));
+
+        let small = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
+        let Some(small) = fs.get_inode(small) else {
+            panic!("created inode doesn't exist")
+        };
+        let paddr = physical_memory::frame_alloc() as *mut u8;
+        let hhdm = *HHDM_OFFSET.get().unwrap();
+        let mut i = 0;
+        for c in "cat".as_bytes().to_vec() {
+            unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
+            i += 1;
+        }
+        small.write_page(paddr, 0);
+        
+        let big = fs.create_inode(Arc::new(File(IntMutex::new(Vec::<u8>::new()))));
+        let Some(big) = fs.get_inode(big) else {
+            panic!("created inode doesn't exist")
+        };
+        for j in 0..4 {
+            i = 0;
+            for _ in 0..1024 {
+                for c in "cats".as_bytes().to_vec() {
+                    unsafe { *(paddr.wrapping_add(hhdm).wrapping_add(i)) = c };
+                    i += 1;
+                }
+            }
+            big.write_page(paddr, j * Arch::PAGE_SIZE);
+        }
+    }
 
     #[test_case]
     fn test_ramfs_small() {
         let fs = RAMFilesystem::new();
+        init_test_ramfs(fs.clone());
+
         let root = fs.get_root();
-        let small = root.lookup("small").unwrap();
+        let small = fs.get_inode(root.lookup("small").unwrap()).unwrap();
         let paddr = physical_memory::frame_alloc();
         let hhdm = *HHDM_OFFSET.get().unwrap();
 
@@ -167,19 +185,22 @@ mod test {
     #[test_case]
     fn test_ramfs_big() {
         let fs = RAMFilesystem::new();
+        init_test_ramfs(fs.clone());
+
         let root = fs.get_root();
-        let big = root.lookup("big").unwrap();
+        let big = fs.get_inode(root.lookup("small").unwrap()).unwrap();
         let paddr = physical_memory::frame_alloc();
         let hhdm = *HHDM_OFFSET.get().unwrap();
 
+        // TODO change below variable names lol
         big.read_page(paddr as *mut u8, 0).unwrap();
         unsafe {
             let d = *((paddr + hhdm) as *const u8);
             let o = *((paddr + hhdm + 1) as *const u8);
             let g = *((paddr + hhdm + 2) as *const u8);
-            assert!(d == b'd');
-            assert!(o == b'o');
-            assert!(g == b'g');
+            assert!(d == b'c');
+            assert!(o == b'a');
+            assert!(g == b't');
         }
 
         big.read_page(paddr as *mut u8, 4096).unwrap();
@@ -187,9 +208,9 @@ mod test {
             let o = *((paddr + hhdm) as *const u8);
             let g = *((paddr + hhdm + 1) as *const u8);
             let d = *((paddr + hhdm + 2) as *const u8);
-            assert!(o == b'o');
-            assert!(g == b'g');
-            assert!(d == b'd');
+            assert!(o == b'c');
+            assert!(g == b'a');
+            assert!(d == b't');
         }
 
         physical_memory::frame_dealloc(paddr);
