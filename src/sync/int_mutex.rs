@@ -7,13 +7,11 @@ use core::{
 
 use crate::{
     arch::{Arch, ArchTrait},
-    mp::CoreId,
     state::{Irq, State},
-    thread::{
-        CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, ThreadQueue, can_yield, new_thread_queue,
-        suspend_to_queue,
-    },
+    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
 };
+
+use super::{MutexLike, int_spinlock::IntSpinLock};
 
 pub struct IntMutexGuard<'a, T> {
     mutex: &'a IntMutex<T>,
@@ -25,12 +23,7 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
         self.mutex.lock.store(false, Ordering::Release);
 
         if let Some(task) = self.mutex.blocked.lock().pop_front() {
-            if PINNED_TO_CORE.read_for(&task).load(Ordering::Relaxed) {
-                let core = CoreId(CORE_PINNED_TO.read_for(&task).load(Ordering::Relaxed));
-                LOCAL_WORK_QUEUE.read_for(core).lock().push_back(task);
-            } else {
-                LOCAL_WORK_QUEUE.lock().push_back(task);
-            }
+            schedule_thread(task);
         }
 
         self.irq_state.restore();
@@ -59,16 +52,6 @@ pub struct IntMutex<T> {
     lock: AtomicBool,
     data: UnsafeCell<T>,
     blocked: IntSpinLock<ThreadQueue>,
-}
-
-pub trait MutexLike<T> {
-    type Guard<'a>: DerefMut<Target = T>
-    where
-        Self: 'a;
-
-    fn lock(&self) -> Self::Guard<'_>;
-
-    fn lock_no_restore_irq(&self) -> Self::Guard<'_>;
 }
 
 impl<T> IntMutex<T> {
@@ -162,96 +145,3 @@ impl<T> MutexLike<T> for IntMutex<T> {
 
 unsafe impl<T: Send> Send for IntMutex<T> {}
 unsafe impl<T: Send> Sync for IntMutex<T> {}
-
-pub struct IntSpinLockGuard<'a, T> {
-    mutex: &'a IntSpinLock<T>,
-    irq_state: State<Irq>,
-}
-
-impl<'a, T> Drop for IntSpinLockGuard<'a, T> {
-    fn drop(&mut self) {
-        self.mutex.lock.store(false, Ordering::Release);
-        self.irq_state.restore();
-    }
-}
-
-impl<'a, T> Deref for IntSpinLockGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.mutex.data.get() }
-    }
-}
-
-impl<'a, T> DerefMut for IntSpinLockGuard<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.mutex.data.get() }
-    }
-}
-
-pub struct IntSpinLock<T> {
-    lock: AtomicBool,
-    data: UnsafeCell<T>,
-}
-
-impl<T> IntSpinLock<T> {
-    pub const fn new(init: T) -> IntSpinLock<T> {
-        IntSpinLock {
-            lock: AtomicBool::new(false),
-            data: UnsafeCell::new(init),
-        }
-    }
-
-    #[inline(always)]
-    fn attempt_acquire_lock(&self, state: State<Irq>) -> bool {
-        Arch::set_irq_enabled(false);
-
-        if !self.lock.swap(true, Ordering::Acquire) {
-            // we got the lock
-            return true;
-        }
-
-        state.restore();
-        false
-    }
-
-    #[inline(always)]
-    fn lock_block(&self, state: State<Irq>) {
-        while !self.attempt_acquire_lock(state) {
-            while self.lock.load(Ordering::Relaxed) {
-                hint::spin_loop();
-            }
-        }
-    }
-
-    fn lock_impl(&self, guard_state: State<Irq>) -> IntSpinLockGuard<'_, T> {
-        let state = State::<Irq>::save();
-
-        if !self.attempt_acquire_lock(state) {
-            self.lock_block(state);
-        }
-
-        IntSpinLockGuard {
-            mutex: self,
-            irq_state: guard_state,
-        }
-    }
-}
-
-unsafe impl<T: Send> Send for IntSpinLock<T> {}
-unsafe impl<T: Send> Sync for IntSpinLock<T> {}
-
-impl<T> MutexLike<T> for IntSpinLock<T> {
-    type Guard<'a>
-        = IntSpinLockGuard<'a, T>
-    where
-        Self: 'a;
-
-    fn lock(&self) -> Self::Guard<'_> {
-        self.lock_impl(State::<Irq>::save())
-    }
-
-    fn lock_no_restore_irq(&self) -> Self::Guard<'_> {
-        self.lock_impl(State::<Irq>::new(false))
-    }
-}

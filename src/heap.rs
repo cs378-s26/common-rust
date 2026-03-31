@@ -8,10 +8,7 @@ use alloc::boxed::Box;
 use spin::Once;
 use talc::{ErrOnOom, Span, Talc};
 
-use crate::{
-    print::kprintln,
-    sync::{IntSpinLock, MutexLike},
-};
+use crate::sync::{IntSpinLock, MutexLike};
 
 struct GlobalAllocImpl {
     delegate: Once<IntSpinLock<Talc<ErrOnOom>>>,
@@ -95,8 +92,6 @@ static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl {
 };
 
 pub fn init_malloc(memory: Span) {
-    kprintln!("mem::init_malloc(): initializing heap");
-
     GLOBAL_ALLOC.delegate.call_once(|| {
         let mut talc = Talc::new(ErrOnOom);
         unsafe { talc.claim(memory).expect("failed to initialize talc") };

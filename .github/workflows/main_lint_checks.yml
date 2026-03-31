@@ -6,11 +6,14 @@ on:
 jobs:
     checks:
         name: Run Lint Checks
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
-            - uses: actions-rust-lang/setup-rust-toolchain@v1
+            - name: Load environment variables
+              run: |
+                  direnv allow .
+                  direnv export gha > "$GITHUB_ENV"
             - name: Run cargo fmt
               run: cargo fmt --all -- --check
             - name: Run cargo clippy (x86_64)

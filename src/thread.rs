@@ -3,6 +3,7 @@ extern crate alloc;
 use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
+    ops::DerefMut,
     pin::Pin,
     ptr,
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -23,7 +24,7 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    mp::{CORE_ID, MP_STAGE, MPStage, core_local},
+    mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
@@ -171,7 +172,7 @@ thread_local! {
 
 static CURR_TID: AtomicU64 = AtomicU64::new(1);
 
-pub static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
+static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 
 fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
@@ -371,6 +372,23 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
 }
 
 #[inline(always)]
+// Queue must already be locked.
+// adds the current thread to the queue, unlocks it, then switches to idle
+// may combine with suspend_to_queue later
+pub fn suspend_to_locked_queue<G>(mut guard: G)
+where
+    G: DerefMut<Target = ThreadQueue>,
+{
+    suspend_impl(
+        move |t| {
+            guard.push_back(t);
+            drop(guard);
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
+
+#[inline(always)]
 pub fn suspend_to_thread(thread: Arc<Thread>) {
     let _guard = StateGuard::<Irq>::guard();
     suspend_impl(drop, thread);
@@ -378,10 +396,20 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 
 #[inline(always)]
 pub fn yield_thread() {
+    // TODO use the schedule_thread() function
     if PINNED_TO_CORE.load(Ordering::Relaxed) {
         suspend_to_queue(&*LOCAL_WORK_QUEUE);
     } else {
         suspend_to_queue(&GLOBAL_WORK_QUEUE);
+    }
+}
+
+pub fn schedule_thread(task: Arc<Thread>) {
+    if PINNED_TO_CORE.read_for(&task).load(Ordering::Relaxed) {
+        let core = CoreId(CORE_PINNED_TO.read_for(&task).load(Ordering::Relaxed));
+        LOCAL_WORK_QUEUE.read_for(core).lock().push_back(task);
+    } else {
+        LOCAL_WORK_QUEUE.lock().push_back(task);
     }
 }
 
