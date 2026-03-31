@@ -19,7 +19,7 @@
         {
           devShells.default = with pkgs; mkShell {
             buildInputs = [
-              clang
+              llvmPackages_21.clang-unwrapped
               llvmPackages_21.bintools
               rustToolchain
               pkg-config
@@ -27,8 +27,11 @@
               qemu
               wabt
               gdb
+              e2fsprogs
+              sccache
             ];
-            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
+            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_21.libclang.lib ];
+            RUSTC_WRAPPER = "sccache";
           };
         }
     );

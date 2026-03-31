@@ -10,6 +10,10 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
+use crate::devices::device_discovery::DeviceDiscovery;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::mp::CoreId;
 use crate::virtual_memory::PagingOptions;
 use limine::{mp::Cpu, request::MpRequest};
@@ -96,62 +100,17 @@ pub trait ArchTrait {
     fn read_cycle_counter() -> u64;
     const PAGE_SIZE: usize;
     fn get_address_space() -> u64;
+    fn configure_vm();
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     /// Unmaps a page without freeing the physical frame (for MMIO / externally-owned backing).
     fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64>;
+    fn virtual_invalidate(vaddr: u64);
+    fn shootdown_tlbs(space: u64, base: usize, length: usize);
     fn shutdown(err_code: u16);
     fn halt() -> !;
-}
-
-#[repr(transparent)]
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct IrqState(bool);
-
-impl IrqState {
-    #[inline(always)]
-    pub fn save() -> IrqState {
-        IrqState(Arch::irq_is_enabled())
-    }
-
-    #[inline(always)]
-    pub fn restore(&self) {
-        Arch::set_irq_enabled(self.0);
-    }
-
-    pub fn is_masked(&self) -> bool {
-        !self.0
-    }
-
-    pub const fn new(value: bool) -> IrqState {
-        IrqState(value)
-    }
-}
-
-#[repr(transparent)]
-pub struct IrqGuard(IrqState);
-
-impl IrqGuard {
-    pub fn disabled_guard() -> IrqGuard {
-        let state = IrqState::save();
-        Arch::set_irq_enabled(false);
-        IrqGuard(state)
-    }
-
-    pub fn enable_guard() -> IrqGuard {
-        let state = IrqState::save();
-        Arch::set_irq_enabled(true);
-        IrqGuard(state)
-    }
-
-    pub fn guard() -> IrqGuard {
-        let state = IrqState::save();
-        IrqGuard(state)
-    }
-}
-
-impl Drop for IrqGuard {
-    fn drop(&mut self) {
-        self.0.restore();
-    }
+    fn parse_devices(); // this must be called after all system drivers have been set up in SYSTEM_DRIVERS
+    fn create_arch_specific_drivers(
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    );
 }

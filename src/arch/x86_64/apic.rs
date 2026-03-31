@@ -1,12 +1,12 @@
-use crate::{mp::core_local, physical_memory::HHDM_REQUEST, virtual_memory::PagingOptions};
+use crate::dma::MmioRegion;
+use crate::mp::CORE_ID;
+use crate::mp::core_local;
 use spin::Once;
 use x86::cpuid::CpuId;
 use x86::io::outb;
 use x86::msr::{rdmsr, wrmsr};
-use crate::dma::MmioRegion;
 
 use super::tsc::read_tsc;
-use super::{get_address_space, vmap};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ApicState {
@@ -20,7 +20,7 @@ core_local! {
 
 //static APIC_MMIO_BASE: Once<u64> = Once::new();
 
-static APIC_MMIO : Once<MmioRegion> = Once::new();
+static APIC_MMIO: Once<MmioRegion> = Once::new();
 
 const X2APIC_MSR_BASE: u32 = 0x800;
 
@@ -71,23 +71,14 @@ unsafe fn x2apic_write(reg: u32, value: u64) {
 #[inline]
 fn xapic_read(reg: u32) -> u32 {
     let reg_addr = APIC_MMIO.get().unwrap().virt_addr() + (reg as usize);
-    unsafe {
-        core::ptr::read_volatile(
-            reg_addr as *const u32,
-        )
-    }
+    unsafe { core::ptr::read_volatile(reg_addr as *const u32) }
 }
 
 #[inline]
 fn xapic_write(reg: u32, value: u32) {
     //let hhdm_base = HHDM_REQUEST.get_response().unwrap().offset();
     let reg_addr = APIC_MMIO.get().unwrap().virt_addr() + (reg as usize);
-    unsafe {
-        core::ptr::write_volatile(
-            reg_addr as *mut u32,
-            value,
-        )
-    };
+    unsafe { core::ptr::write_volatile(reg_addr as *mut u32, value) };
 }
 
 #[inline]
@@ -97,20 +88,11 @@ fn xapic_wait_for_ipi_delivery() {
     }
 }
 
-fn map_xapic_mmio(base: u64) -> u64 {
-    let hhdm_base = HHDM_REQUEST.get_response().unwrap().offset();
-    vmap(
-        get_address_space(),
-        hhdm_base + base,
-        base,
-        PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::GLOBAL,
-    );
-    base
-}
-
 #[inline]
 fn apic_state() -> ApicState {
-    *APIC_STATE.get().expect("APIC not enabled")
+    *APIC_STATE
+        .get()
+        .unwrap_or_else(|| panic!("APIC not enabled on core {:x}", CORE_ID.get().0))
 }
 
 pub fn enable_apic() -> bool {

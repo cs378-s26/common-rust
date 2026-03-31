@@ -63,3 +63,5 @@ unsafe { regs.write::<u32>(0x00, 0x1) };               // write command reg at o
 ```
 
 All reads/writes are volatile. The mapping is uncacheable so register accesses go straight to the device.
+
+While normal virtual memory allocations own their backing pages, MMIO regions do not: this control is transferred to the hardware. This is reflected in the options passed when allocating a new virtual memory region.

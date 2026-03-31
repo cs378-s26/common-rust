@@ -29,7 +29,7 @@ impl DmaRegion {
     }
 
     pub fn new_bytes(size: usize) -> DmaRegion {
-        let num_frames = (size + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE;
+        let num_frames = size.div_ceil(Arch::PAGE_SIZE);
         Self::new(num_frames)
     }
 
@@ -56,7 +56,7 @@ impl DmaRegion {
     /// Get a mutable slice of the entire DMA region.
     /// Caller must ensure no concurrent device access to the same range,
     /// or that such concurrent access is acceptable for the use case.
-    pub unsafe fn as_slice_mut(&self) -> &mut [u8] {
+    pub unsafe fn as_slice_mut(&mut self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.virt_addr as *mut u8, self.size()) }
     }
 
@@ -155,10 +155,10 @@ mod test {
 
             // basic allocation
             kprintln!("allocating 1-frame DMA region");
-            let region = DmaRegion::new(1);
+            let mut region = DmaRegion::new(1);
             assert!(region.size() == 4096);
-//          There is an address at physical address 0!
-//            assert!(region.phys_addr() != 0);
+            //          There is an address at physical address 0!
+            //            assert!(region.phys_addr() != 0);
             assert!(region.virt_addr() == region.phys_addr() + *HHDM_OFFSET.get().unwrap());
 
             // zeroed on allocation
@@ -193,7 +193,7 @@ mod test {
 
             // multi-frame allocation
             kprintln!("allocating 4-frame DMA region");
-            let region = DmaRegion::new(4);
+            let mut region = DmaRegion::new(4);
             assert!(region.size() == 4096 * 4);
 
             // verify contiguous read/write across pages
@@ -211,7 +211,7 @@ mod test {
 
             // new_bytes rounds up correctly
             kprintln!("testing DMA new_bytes rounding");
-            let region = DmaRegion::new_bytes(5000);
+            let mut region = DmaRegion::new_bytes(5000);
             assert!(region.size() == 4096 * 2);
             drop(region);
 

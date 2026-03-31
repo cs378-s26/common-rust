@@ -17,13 +17,17 @@ pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
 pub mod dma;
+pub mod event;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
 pub mod panic;
 pub mod physical_memory;
 pub mod print;
+pub mod ramdisk;
+pub mod state;
 pub mod sync;
+pub mod syscall;
 pub mod thread;
 pub mod virtual_memory;
 
@@ -31,6 +35,7 @@ extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
 use crate::cmdline::parse_kernel_cmdline;
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+use crate::event::init_event_handler;
 use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
@@ -46,6 +51,8 @@ use physical_memory::{THE_HEAP, init_physical_memory_allocator};
 use spin::{Barrier, Once};
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
+
+use crate::devices::device_discovery::create_drivers;
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -97,6 +104,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
 
     parse_kernel_cmdline();
+    init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_tty();
 
     // print some system info
@@ -121,9 +129,12 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
         )
     }
 
-    init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+
+    // initialize all system drivers, then parse devices to initialize them
+    create_drivers();
+    Arch::parse_devices();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -184,6 +195,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     one!({ init_coroutine_queue() });
     all!({ set_up_idle() });
     all!({ init_coroutine_executor() });
+    all!({ init_event_handler() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
     one!({
         spawn_thread(move || {
