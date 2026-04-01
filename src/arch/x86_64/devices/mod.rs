@@ -1,3 +1,4 @@
+pub mod pci;
 pub mod serial;
 
 use crate::print::kprintln;
@@ -149,6 +150,7 @@ fn match_device(node: AcpiDeviceNode) {
             match device {
                 DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
                 DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
+                DeviceType::Network(_) => {} // no x86 network driver yet
                 DeviceType::Special => {}
             }
             return;
@@ -157,6 +159,9 @@ fn match_device(node: AcpiDeviceNode) {
 }
 
 pub fn parse_devices() {
+    // PCI discovery is independent of ACPI; scan before ACPI early-returns.
+    pci::scan_pci_for_virtio();
+
     let rsdp_virt = match RSDP_REQUEST.get_response() {
         Some(resp) => resp.address(),
         None => {

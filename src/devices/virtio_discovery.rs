@@ -1,20 +1,25 @@
-// TODO once acpi handling gets added this will need to be removed, used for device node enum that only has one enum rn
-#![allow(irrefutable_let_patterns)]
-
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::device_discovery;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+
+#[cfg(target_arch = "aarch64")]
+use crate::arch::{Arch, ArchTrait};
+#[cfg(target_arch = "aarch64")]
+use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
+#[cfg(target_arch = "aarch64")]
+use crate::devices::device_discovery;
+#[cfg(target_arch = "aarch64")]
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+#[cfg(target_arch = "aarch64")]
 use alloc::boxed::Box;
+#[cfg(target_arch = "aarch64")]
 use core::ptr::NonNull;
-use virtio_drivers::transport::Transport;
+#[cfg(target_arch = "aarch64")]
 use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
 
 pub struct VirtioDiscovery;
 
 impl DeviceDiscovery for VirtioDiscovery {
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
+        #[cfg(target_arch = "aarch64")]
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
             && c.all().any(|s| s.contains("virtio,mmio"))
@@ -61,6 +66,10 @@ impl DeviceDiscovery for VirtioDiscovery {
                 }
             }
         }
+        // x86: PCI virtio devices are discovered by pci::scan_pci_for_virtio() and don't go
+        // through the per-node DeviceDiscovery path.
+        #[cfg(target_arch = "x86_64")]
+        let _ = node;
         None
     }
 }

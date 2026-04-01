@@ -133,7 +133,13 @@ unsafe impl Hal for VirtioBlkHal {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
-        let paddr = alloc_frames(pages) as u64;
+        // virtio-drivers treats paddr=0 as a DMA allocation failure. QEMU's first
+        // usable physical region starts at 0x0, so the very first alloc_frames call
+        // returns 0. Discard it and allocate again so we never hand paddr=0 to the driver.
+        let mut paddr = alloc_frames(pages) as u64;
+        if paddr == 0 {
+            paddr = alloc_frames(pages) as u64;
+        }
         let vaddr = paddr + hhdm as u64;
         // zero the frames
         // TODO: thankfully virtio-blk is dma-coherent (as seen by device tree property dma-coherent),
@@ -156,25 +162,28 @@ unsafe impl Hal for VirtioBlkHal {
 
     // maps a physical mmio region to a virtual address, must be mapped
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-
         let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
         let options = PagingOptions::PRESENT
             | PagingOptions::WRITABLE
-            | PagingOptions::DEVICE_MEMORY
-            | PagingOptions::SHADOW;
+            | PagingOptions::DEVICE_MEMORY;
 
-        VirtualMemoryAllocation::new(
+        // Allocate a permanent VMM-tracked virtual region backed by the device's physical
+        // address. We do NOT use SHADOW so we get the handle back (and thus the base address).
+        // mem::forget prevents Drop from unmapping — the region must live as long as the device.
+        let vma = VirtualMemoryAllocation::new(
             Arch::get_address_space(),
             None,
             pages_covered * Arch::PAGE_SIZE,
             Some(phys_base),
             options,
             false,
-        );
-        NonNull::new((paddr as usize + hhdm) as *mut u8).unwrap()
+        )
+        .expect("failed to allocate virtual region for device MMIO");
+        let virt_addr = vma.base + page_offset;
+        core::mem::forget(vma);
+        NonNull::new(virt_addr as *mut u8).unwrap()
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
