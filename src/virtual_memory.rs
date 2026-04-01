@@ -202,8 +202,7 @@ impl VirtualMemoryAllocation {
             .lock();
 
         let mut chosen = if let Some(base) = start {
-            // For SHADOW allocations: if the region is already covered by an active entry
-            // (e.g., two MMIO devices sharing a physical page), nothing more to do.
+            // For SHADOW allocations: if the region is already covered by an active entry nothing more to do.
             if options.contains(PagingOptions::SHADOW) {
                 let cursor = vmes.active.upper_bound(Bound::Included(&base));
                 if let Some(entry) = cursor.get()
