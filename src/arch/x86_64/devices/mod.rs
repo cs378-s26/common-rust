@@ -1,17 +1,20 @@
 pub mod serial;
 
-use acpi::{Handler as AcpiHandler, AcpiTables, PhysicalMapping, sdt::madt::{Madt, MadtEntry}};
+use crate::print::kprintln;
+use acpi::{
+    AcpiTables, Handler as AcpiHandler, PhysicalMapping,
+    sdt::madt::{Madt, MadtEntry},
+};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 use limine::request::RsdpRequest;
-use crate::print::kprintln;
 
 use crate::devices::device_discovery::{
-    AcpiDeviceNode, BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceDiscovery, DeviceType,
+    AcpiDeviceNode, BLOCK_DEVICES, CHAR_DEVICES, DeviceDiscovery, DeviceNode, DeviceType,
     SYSTEM_DRIVERS,
 };
-use crate::physical_memory::{HHDM_OFFSET};
+use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::MutexLike;
 
 use serial::Uart16550Discovery;
@@ -60,16 +63,24 @@ impl AcpiHandler for KernelAcpiHandler {
     }
 
     fn write_u8(&self, address: usize, value: u8) {
-        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u8, value) }
+        unsafe {
+            core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u8, value)
+        }
     }
     fn write_u16(&self, address: usize, value: u16) {
-        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u16, value) }
+        unsafe {
+            core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u16, value)
+        }
     }
     fn write_u32(&self, address: usize, value: u32) {
-        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u32, value) }
+        unsafe {
+            core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u32, value)
+        }
     }
     fn write_u64(&self, address: usize, value: u64) {
-        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u64, value) }
+        unsafe {
+            core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u64, value)
+        }
     }
 
     fn read_io_u8(&self, port: u16) -> u8 {
@@ -174,13 +185,25 @@ pub fn parse_devices() {
                 MadtEntry::IoApic(e) => {
                     // copy fields out of packed struct to avoid unaligned reference UB
                     let id = e.io_apic_id;
-                    let address = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(e.io_apic_address)) };
-                    let gsi_base = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(e.global_system_interrupt_base)) };
+                    let address = unsafe {
+                        core::ptr::read_unaligned(core::ptr::addr_of!(e.io_apic_address))
+                    };
+                    let gsi_base = unsafe {
+                        core::ptr::read_unaligned(core::ptr::addr_of!(
+                            e.global_system_interrupt_base
+                        ))
+                    };
                     kprintln!(
                         "[devices] I/O APIC: id={} addr={:#x} gsi_base={}",
-                        id, address, gsi_base
+                        id,
+                        address,
+                        gsi_base
                     );
-                    match_device(AcpiDeviceNode::IoApic { id, address, gsi_base });
+                    match_device(AcpiDeviceNode::IoApic {
+                        id,
+                        address,
+                        gsi_base,
+                    });
                 }
                 _ => {}
             }

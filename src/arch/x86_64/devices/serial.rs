@@ -13,7 +13,9 @@ impl Uart16550Driver {
     fn new(port: u16) -> Self {
         let mut serial = unsafe { SerialPort::new(port) };
         serial.init();
-        Self { port: SyncUnsafeCell::new(serial) }
+        Self {
+            port: SyncUnsafeCell::new(serial),
+        }
     }
 }
 
@@ -27,7 +29,9 @@ impl CharSink for Uart16550Driver {
 
 impl CharDevice for Uart16550Driver {
     fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, CharDeviceError> {
-        Err(CharDeviceError::Other(alloc::string::String::from("read not implemented")))
+        Err(CharDeviceError::Other(alloc::string::String::from(
+            "read not implemented",
+        )))
     }
 
     fn write(&self, buffer: &[u8]) -> Result<usize, CharDeviceError> {
