@@ -122,6 +122,10 @@ impl ArchTrait for Arch {
         panic!("TLB shootdown not implemented for aarch64");
     }
 
+    fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
+        vmm::vunmap_no_dealloc(_space, _vaddr)
+    }
+
     fn shutdown(_err_code: u16) {
         PSCI_DEVICE
             .get()

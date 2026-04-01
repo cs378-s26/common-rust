@@ -133,6 +133,10 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap_no_dealloc(space, vaddr)
+    }
+
     fn virtual_invalidate(vaddr: u64) {
         unsafe { flush(vaddr as usize) };
     }

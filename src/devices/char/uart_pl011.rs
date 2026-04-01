@@ -28,6 +28,7 @@ impl UartPl011Driver {
             Arch::PAGE_SIZE,
             backing,
             options,
+            true,
         );
         if let Some(mapping) = vm {
             self.virt_mapping = Some(mapping);
