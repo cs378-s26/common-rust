@@ -1,4 +1,7 @@
-use crate::{Arch, ArchTrait, thread::PINNED_TO_CORE};
+use crate::{
+    Arch, ArchTrait,
+    thread::{CAN_YIELD, PINNED_TO_CORE},
+};
 use core::sync::atomic::Ordering;
 
 // for saving and restoring interrupts, preemption, core pinning, ...
@@ -81,5 +84,23 @@ impl StateTrait for CorePin {
     #[inline(always)]
     fn exchange_guarded() -> Self::Value {
         PINNED_TO_CORE.swap(true, Ordering::AcqRel)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Preemption;
+impl StateTrait for Preemption {
+    type Value = bool;
+    #[inline(always)]
+    fn set(val: bool) {
+        CAN_YIELD.store(val, Ordering::Release);
+    }
+    #[inline(always)]
+    fn get() -> Self::Value {
+        CAN_YIELD.load(Ordering::Acquire)
+    }
+    #[inline(always)]
+    fn exchange_guarded() -> Self::Value {
+        CAN_YIELD.swap(false, Ordering::AcqRel)
     }
 }

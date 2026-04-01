@@ -1,8 +1,7 @@
 use crate::util::{
     Target, build_image, build_kernel, download_ovmf, exec, path_to_string, run_dir,
 };
-use anyhow::{Result, anyhow};
-use std::env::current_dir;
+use anyhow::Result;
 
 pub fn run(
     kvm: bool,

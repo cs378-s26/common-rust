@@ -16,6 +16,8 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
+pub mod dma;
+pub mod event;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -33,6 +35,7 @@ extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
 use crate::cmdline::parse_kernel_cmdline;
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
+use crate::event::init_event_handler;
 use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
@@ -192,6 +195,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     one!({ init_coroutine_queue() });
     all!({ set_up_idle() });
     all!({ init_coroutine_executor() });
+    all!({ init_event_handler() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
     one!({
         spawn_thread(move || {

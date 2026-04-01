@@ -1,4 +1,7 @@
-use crate::virtual_memory::{PageFaultConditions, handle_page_fault};
+use crate::event::{Event::PageFault, push_event};
+use crate::mp::CORE_ID;
+use crate::thread::this_thread;
+use crate::virtual_memory::PageFaultConditions;
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -114,8 +117,12 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
     );
 }
 
-pub const TIMER_INTERRUPT_VECTOR: u8 = 0x20;
-pub const IPI_WAKE_VECTOR: u8 = 0x21;
+pub mod irq_vector {
+    pub const PAGE_FAULT: u8 = 0x0e;
+    pub const TIMER_INTERRUPT: u8 = 0x20;
+    pub const IPI_WAKE: u8 = 0x21;
+    pub const TLB_SHOOTDOWN: u8 = 0x22;
+}
 
 pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
@@ -130,8 +137,9 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
 
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
+    use irq_vector::*;
     match context.id as u8 {
-        14 => {
+        PAGE_FAULT => {
             if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
                 // seems like kind of a lot of overhead for interface translation...
                 let mut cause = PageFaultConditions::empty();
@@ -150,15 +158,27 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                 if code.contains(PageFaultErrorCode::INSTRUCTION_FETCH) {
                     cause.insert(PageFaultConditions::FETCH);
                 }
-                handle_page_fault(cause, unsafe { cr2() });
+                push_event(
+                    PageFault {
+                        cause,
+                        address: unsafe { cr2() },
+                        thread: this_thread(),
+                    },
+                    CORE_ID.get(),
+                );
+                unsafe { crate::thread::block_to_idle(context) };
             } else {
                 panic!("hi: {} #{}, cr2={}", context.err, context.id, unsafe {
                     cr2()
                 });
             }
         }
-        TIMER_INTERRUPT_VECTOR => timer_interrupt_handler(context),
-        IPI_WAKE_VECTOR => ipi_wake_handler(context),
+        TIMER_INTERRUPT => timer_interrupt_handler(context),
+        IPI_WAKE => ipi_wake_handler(context),
+        TLB_SHOOTDOWN => {
+            apic::eoi();
+            unsafe { crate::thread::preempt_to_idle(context) };
+        }
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
             context.id,
