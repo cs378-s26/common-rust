@@ -3,9 +3,9 @@
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::network::virtio_net::VirtIONetDriver;
 use crate::devices::device_discovery;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::network::virtio_net::VirtIONetDriver;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
