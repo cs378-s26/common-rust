@@ -161,7 +161,7 @@ fn match_device(node: AcpiDeviceNode) {
 pub fn parse_devices() {
     // PCI discovery is independent of ACPI; scan before ACPI early-returns.
     pci::scan_pci_for_virtio();
-
+  
     let rsdp_virt = match RSDP_REQUEST.get_response() {
         Some(resp) => resp.address(),
         None => {
