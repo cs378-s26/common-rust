@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use fdt;
 
 use crate::devices::device_discovery::{
-    BLOCK_DEVICES, CHAR_DEVICES, NETWORK_DEVICES, DeviceNode, DeviceType, SYSTEM_DRIVERS,
+    BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, NETWORK_DEVICES, SYSTEM_DRIVERS,
 };
 use crate::print::kprintln;
 
