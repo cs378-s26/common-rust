@@ -104,6 +104,8 @@ impl DeviceDiscovery for VirtioNetDiscovery {
                 if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
                     && transport.device_type() == virtio_drivers::transport::DeviceType::Network
                 {
+                    // uncomment to verify NIC discovery locally via serial output
+                    // kprintln!("virtio_net: found network device at {:#x}", base_addr as u64);
                     let options = PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
                         | PagingOptions::DEVICE_MEMORY
@@ -118,6 +120,8 @@ impl DeviceDiscovery for VirtioNetDiscovery {
                         false,
                     );
                     let driver = VirtIONetDriver::new(transport);
+                    // uncomment to verify NIC discovery locally via serial output
+                    // kprintln!("virtio_net: driver initialized");
                     return Some(device_discovery::DeviceType::Network(Box::new(driver)));
                 }
             }
