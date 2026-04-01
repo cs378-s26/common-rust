@@ -172,6 +172,7 @@ unsafe impl Hal for VirtioBlkHal {
             pages_covered * Arch::PAGE_SIZE,
             Some(phys_base),
             options,
+            false,
         );
         NonNull::new((paddr as usize + hhdm) as *mut u8).unwrap()
     }

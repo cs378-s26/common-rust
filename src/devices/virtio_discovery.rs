@@ -54,6 +54,7 @@ impl DeviceDiscovery for VirtioDiscovery {
                         size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
                         Some(phys_base as usize),
                         options,
+                        false,
                     );
                     let driver = VirtIOBlkDiskDriver::new(transport);
                     return Some(device_discovery::DeviceType::Block(Box::new(driver)));
