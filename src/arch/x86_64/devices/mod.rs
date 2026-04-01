@@ -11,7 +11,7 @@ use crate::devices::device_discovery::{
     AcpiDeviceNode, BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceDiscovery, DeviceType,
     SYSTEM_DRIVERS,
 };
-use crate::physical_memory::HHDM_REQUEST;
+use crate::physical_memory::{HHDM_OFFSET};
 use crate::sync::MutexLike;
 
 use serial::Uart16550Discovery;
@@ -32,8 +32,7 @@ impl AcpiHandler for KernelAcpiHandler {
         physical_address: usize,
         size: usize,
     ) -> PhysicalMapping<Self, T> {
-        let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        let virt = physical_address + hhdm_offset;
+        let virt = physical_address + HHDM_OFFSET.get().unwrap();
         PhysicalMapping {
             physical_start: physical_address,
             virtual_start: NonNull::new(virt as *mut T).unwrap(),
@@ -48,37 +47,29 @@ impl AcpiHandler for KernelAcpiHandler {
     }
 
     fn read_u8(&self, address: usize) -> u8 {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::read_volatile((address + hhdm) as *const u8) }
+        unsafe { core::ptr::read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u8) }
     }
     fn read_u16(&self, address: usize) -> u16 {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::read_volatile((address + hhdm) as *const u16) }
+        unsafe { core::ptr::read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u16) }
     }
     fn read_u32(&self, address: usize) -> u32 {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::read_volatile((address + hhdm) as *const u32) }
+        unsafe { core::ptr::read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u32) }
     }
     fn read_u64(&self, address: usize) -> u64 {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::read_volatile((address + hhdm) as *const u64) }
+        unsafe { core::ptr::read_volatile((address + HHDM_OFFSET.get().unwrap()) as *const u64) }
     }
 
     fn write_u8(&self, address: usize, value: u8) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::write_volatile((address + hhdm) as *mut u8, value) }
+        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u8, value) }
     }
     fn write_u16(&self, address: usize, value: u16) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::write_volatile((address + hhdm) as *mut u16, value) }
+        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u16, value) }
     }
     fn write_u32(&self, address: usize, value: u32) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::write_volatile((address + hhdm) as *mut u32, value) }
+        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u32, value) }
     }
     fn write_u64(&self, address: usize, value: u64) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        unsafe { core::ptr::write_volatile((address + hhdm) as *mut u64, value) }
+        unsafe { core::ptr::write_volatile((address + HHDM_OFFSET.get().unwrap()) as *mut u64, value) }
     }
 
     fn read_io_u8(&self, port: u16) -> u8 {
@@ -163,8 +154,7 @@ pub fn parse_devices() {
         }
     };
     // limine gives us a virtual (HHDM-mapped) address; from_rsdp needs the physical address
-    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-    let rsdp_phys = rsdp_virt - hhdm_offset;
+    let rsdp_phys = rsdp_virt - HHDM_OFFSET.get().unwrap();
     kprintln!("[devices] RSDP virt={:#x} phys={:#x}", rsdp_virt, rsdp_phys);
 
     let tables = unsafe { AcpiTables::from_rsdp(KernelAcpiHandler, rsdp_phys) };
