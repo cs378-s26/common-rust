@@ -1,6 +1,6 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::virtio_discovery::VirtioDiscovery;
+use crate::devices::virtio_discovery::{VirtioDiscovery, VirtioNetDiscovery};
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
@@ -53,5 +53,6 @@ pub fn create_drivers() {
     let mut drivers = SYSTEM_DRIVERS.lock();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
+    drivers.push(Box::new(VirtioNetDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
 }
