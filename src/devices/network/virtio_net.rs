@@ -46,7 +46,7 @@ unsafe impl Hal for VirtioNetHal {
         for page in 0..pages {
             frame_dealloc(paddr as usize + page * Arch::PAGE_SIZE);
         }
-        0
+        0 // 0 = success, required by Hal trait (C-style status code)
     }
 
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
@@ -60,6 +60,9 @@ unsafe impl Hal for VirtioNetHal {
             | PagingOptions::DEVICE_MEMORY
             | PagingOptions::SHADOW;
 
+        // mark the physical region as in-use in the VM allocator so it won't be
+        // handed out for other allocations. the actual pointer we return is the
+        // HHDM direct map address, not the newly allocated VA
         VirtualMemoryAllocation::new(
             Arch::get_address_space(),
             None,
@@ -71,6 +74,9 @@ unsafe impl Hal for VirtioNetHal {
         NonNull::new((paddr as usize + hhdm) as *mut u8).unwrap()
     }
 
+    // allocates a DMA bounce buffer and copies data into it if the direction is
+    // driver-to-device. returns the physical address for the device to read from.
+    // the bounce buffer is freed by unshare when the transfer is complete
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
         let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
         let (paddr, _) = Self::dma_alloc(pages, direction);
@@ -134,6 +140,6 @@ impl<T: Transport> NetworkDevice for VirtIONetDriver<VirtioNetHal, T> {
 impl<T: Transport> Device for VirtIONetDriver<VirtioNetHal, T> {
     #[allow(unused_variables)]
     fn ioctl(&self, request: u64, arg1: u64, arg2: u64) -> u64 {
-        0
+        0 // stub, 0 = success, required by Device supertrait
     }
 }
