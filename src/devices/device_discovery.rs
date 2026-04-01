@@ -1,10 +1,12 @@
 use crate::arch::{Arch, ArchTrait};
+#[cfg(target_arch = "aarch64")]
 use crate::devices::char::uart_pl011::UartPl011Discovery;
 use crate::devices::{block::BlockDevice, char::CharDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
+#[cfg(target_arch = "aarch64")]
 use fdt::node::FdtNode;
 
 // lists of initialized devices in the system
@@ -22,18 +24,25 @@ pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
 pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
-/* ideally what we'd do is define a common DeviceNode struct or trait that gives all the information
-necessary for init, including compatibility, interrupts, memory location, etc, but this isn't that easy, for example
-compatibility is checked through a compatible string when parsing device tree, but a hardware ID on acpi,
-which I don't think is very easily translatable. What you could do is have
-maybe a struct that has enums for its fields, like an id enum that depends on where it came from, but
-it seems difficult to properly specify in a shared struct all information necessary in a clean way.
-*/
+// Each architecture provides its own variant of DeviceNode. Drivers only match the variant
+// for their architecture, so arch-specific types never leak into cross-arch compilation units.
 pub enum DeviceNode<'a, 'b> {
-    // the idea with this would just be to find what type of node it is, and the driver has to be able to read the fields from the node that it needs
+    #[cfg(target_arch = "aarch64")]
     DTB(FdtNode<'a, 'b>),
-    // ACPI(AcpiNode) idk what struct would this be
-} // I didn't include pci here because I assumed since it's dynamic it could be done seperately,
+    #[cfg(target_arch = "x86_64")]
+    Acpi(AcpiDeviceNode),
+    // suppress unused lifetime warnings when only one variant is active
+    #[cfg(not(target_arch = "aarch64"))]
+    _Phantom(core::marker::PhantomData<(&'a (), &'b ())>),
+}
+
+/// Identifies a device discovered via ACPI table parsing.
+#[cfg(target_arch = "x86_64")]
+#[derive(Clone, Copy)]
+pub enum AcpiDeviceNode {
+    Serial16550 { port: u16 },
+    IoApic { id: u8, address: u32, gsi_base: u32 },
+}
 
 pub enum DeviceType {
     Block(Box<dyn BlockDevice + Send + Sync>),
@@ -47,8 +56,8 @@ pub trait DeviceDiscovery {
 }
 
 pub fn create_drivers() {
-    // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
     let mut drivers = SYSTEM_DRIVERS.lock();
+    #[cfg(target_arch = "aarch64")]
     drivers.push(Box::new(UartPl011Discovery));
     Arch::create_arch_specific_drivers(&mut drivers);
 }

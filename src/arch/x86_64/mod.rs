@@ -14,6 +14,7 @@ mod asm;
 mod context;
 mod cpuid;
 mod debug;
+mod devices;
 mod interrupt;
 mod mp;
 mod tables;
@@ -126,10 +127,14 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn parse_devices() {}
+    fn parse_devices() {
+        devices::parse_devices();
+    }
+
     fn create_arch_specific_drivers(
-        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 
