@@ -9,6 +9,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
+use tempfile;
 
 use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
 
@@ -158,8 +159,14 @@ fn run_with_config(
         target,
         Some(&display_name),
     )?;
+
+    // use a temporary file for testing, gets removed after Drop
+    let disk_file = tempfile::NamedTempFile::new_in(&cache_paths.root_dir)?;
+    disk_file.as_file().set_len(64 * 1024 * 1024)?; // 64 MiB disk image
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
+    let path_to_disk = path_to_string(disk_file.path())?;
+
     let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
     let expected_output = fs::read_to_string(&expected_output_path).with_context(|| {
         format!(
@@ -201,6 +208,7 @@ fn run_with_config(
             .map(|arg| {
                 arg.replace("{PATH_TO_EFI}", &path_to_efi)
                     .replace("{PATH_TO_IMG}", &path_to_img)
+                    .replace("{PATH_TO_DISK}", &path_to_disk)
             })
             .collect();
         if stream_serial_stdout {
