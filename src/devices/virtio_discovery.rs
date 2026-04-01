@@ -3,6 +3,7 @@
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
+use crate::devices::network::virtio_net::VirtIONetDriver;
 use crate::devices::device_discovery;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -62,6 +63,58 @@ impl DeviceDiscovery for VirtioDiscovery {
                     );
                     let driver = VirtIOBlkDiskDriver::new(transport);
                     return Some(device_discovery::DeviceType::Block(Box::new(driver)));
+                }
+            }
+        }
+        None
+    }
+}
+
+/// VirtioNetDiscovery scans device tree nodes for virtio,mmio devices and claims any that
+/// identify as network devices, constructing a VirtIONetDriver and returning it to the framework
+pub struct VirtioNetDiscovery;
+
+impl DeviceDiscovery for VirtioNetDiscovery {
+    fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
+        if let DeviceNode::DTB(fdt_node) = node
+            && let Some(c) = fdt_node.compatible()
+            && c.all().any(|s| s.contains("virtio,mmio"))
+            && let Some(reg) = fdt_node.reg().and_then(|mut r| r.next())
+        {
+            let base_addr = reg.starting_address;
+            let size = reg.size.unwrap();
+
+            let hhdm_offset = crate::physical_memory::HHDM_OFFSET.get().unwrap();
+            let virt_addr = base_addr as u64 + *hhdm_offset as u64;
+            let virt_base = virt_addr & !(Arch::PAGE_SIZE as u64 - 1);
+            let phys_base = base_addr as u64 & !(Arch::PAGE_SIZE as u64 - 1);
+
+            Arch::virtual_map(
+                Arch::get_address_space(),
+                virt_base,
+                phys_base,
+                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
+            );
+
+            let header = virt_addr as *mut VirtIOHeader;
+            unsafe {
+                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
+                    && transport.device_type() == virtio_drivers::transport::DeviceType::Network
+                {
+                    let options = PagingOptions::PRESENT
+                        | PagingOptions::WRITABLE
+                        | PagingOptions::DEVICE_MEMORY
+                        | PagingOptions::SHADOW;
+                    VirtualMemoryAllocation::new(
+                        Arch::get_address_space(),
+                        Some(virt_base as usize),
+                        size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE,
+                        Some(phys_base as usize),
+                        options,
+                        false,
+                    );
+                    let driver = VirtIONetDriver::new(transport);
+                    return Some(device_discovery::DeviceType::Network(Box::new(driver)));
                 }
             }
         }
