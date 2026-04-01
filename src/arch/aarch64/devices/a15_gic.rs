@@ -30,6 +30,7 @@ impl GicA15Driver {
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicd_phys_address),
             options,
+            false,
         );
 
         let gicc_vm = VirtualMemoryAllocation::new(
@@ -38,6 +39,7 @@ impl GicA15Driver {
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicc_phys_address),
             options,
+            false,
         );
 
         if gicd_vm.is_none() || gicc_vm.is_none() {
