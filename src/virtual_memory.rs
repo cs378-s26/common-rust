@@ -202,6 +202,17 @@ impl VirtualMemoryAllocation {
             .lock();
 
         let mut chosen = if let Some(base) = start {
+            // For SHADOW allocations: if the region is already covered by an active entry
+            // (e.g., two MMIO devices sharing a physical page), nothing more to do.
+            if options.contains(PagingOptions::SHADOW) {
+                let cursor = vmes.active.upper_bound(Bound::Included(&base));
+                if let Some(entry) = cursor.get()
+                    && entry.base + entry.length >= base + length
+                {
+                    return None;
+                }
+            }
+
             // TODO there ought to be a better way to find the free region that contains this fixed region
             let mut cursor = vmes.active.upper_bound(Bound::Excluded(&base));
             let bottom = if let Some(entry) = cursor.get() {
