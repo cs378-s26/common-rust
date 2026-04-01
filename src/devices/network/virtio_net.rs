@@ -1,5 +1,7 @@
 extern crate virtio_drivers;
+use super::{NetworkDevice, NetworkError};
 use crate::arch::{Arch, ArchTrait};
+use crate::devices::Device;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::ptr::NonNull;
@@ -112,5 +114,26 @@ unsafe impl Hal for VirtioNetHal {
             }
             Self::dma_dealloc(paddr, vaddr, pages);
         }
+    }
+}
+
+impl<T: Transport> NetworkDevice for VirtIONetDriver<VirtioNetHal, T> {
+    fn name(&self) -> &str {
+        "virtio_net"
+    }
+
+    fn send_packet(&mut self, packet: &[u8]) -> Result<(), NetworkError> {
+        self.net.send(packet).map_err(|_| NetworkError::SendError)
+    }
+
+    fn receive_packet(&mut self, buffer: &mut [u8]) -> Result<usize, NetworkError> {
+        self.net.receive(buffer).map_err(|_| NetworkError::ReceiveError)
+    }
+}
+
+impl<T: Transport> Device for VirtIONetDriver<VirtioNetHal, T> {
+    #[allow(unused_variables)]
+    fn ioctl(&self, request: u64, arg1: u64, arg2: u64) -> u64 {
+        0
     }
 }
