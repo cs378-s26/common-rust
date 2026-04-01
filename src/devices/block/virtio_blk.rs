@@ -3,8 +3,8 @@ extern crate virtio_drivers;
 use super::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
+use crate::dma::MmioRegion;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
@@ -165,24 +165,12 @@ unsafe impl Hal for VirtioBlkHal {
         let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
-        let options = PagingOptions::PRESENT
-            | PagingOptions::WRITABLE
-            | PagingOptions::DEVICE_MEMORY;
 
-        // Allocate a permanent VMM-tracked virtual region backed by the device's physical
-        // address. We do NOT use SHADOW so we get the handle back (and thus the base address).
-        // mem::forget prevents Drop from unmapping — the region must live as long as the device.
-        let vma = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
-            None,
-            pages_covered * Arch::PAGE_SIZE,
-            Some(phys_base),
-            options,
-            false,
-        )
-        .expect("failed to allocate virtual region for device MMIO");
-        let virt_addr = vma.base + page_offset;
-        core::mem::forget(vma);
+        // MmioRegion maps phys_base as uncacheable and owns the VMA lifetime.
+        // mem::forget keeps the mapping alive permanently — virtio-drivers has no unmap callback.
+        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
+        let virt_addr = region.virt_addr() + page_offset;
+        core::mem::forget(region);
         NonNull::new(virt_addr as *mut u8).unwrap()
     }
 
