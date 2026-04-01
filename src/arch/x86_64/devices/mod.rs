@@ -188,24 +188,6 @@ pub fn parse_devices() {
     } else {
         kprintln!("[devices] no MADT found");
     }
-
-    // Check FADT for legacy serial presence
-    if let Some(fadt) = tables.find_table::<acpi::sdt::fadt::Fadt>() {
-        // copy field out of packed struct to avoid unaligned reference UB
-        let iapc_boot_arch = unsafe {
-            core::ptr::read_unaligned(
-                core::ptr::addr_of!(fadt.get().get_ref().iapc_boot_arch),
-            )
-        };
-        if iapc_boot_arch.legacy_devices_are_accessible() {
-            kprintln!("[devices] legacy serial present, registering COM1 (0x3F8)");
-            match_device(AcpiDeviceNode::Serial16550 { port: 0x3F8 });
-        } else {
-            kprintln!("[devices] FADT: no legacy serial devices");
-        }
-    } else {
-        kprintln!("[devices] no FADT found");
-    }
 }
 
 pub fn create_arch_specific_drivers(
