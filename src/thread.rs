@@ -235,20 +235,10 @@ pub fn poll_tasks() -> ! {
         Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
-
-    let mut counter = false;
     loop {
-        while let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
+        if let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
-                if counter {
-                    counter = false;
-                    suspend_to_thread(thread); // TODO scheduled unfairly often
-                    continue;
-                } else {
-                    LOCAL_WORK_QUEUE.lock().push_back(thread);
-                    counter = true;
-                    break;
-                }
+                suspend_to_thread(thread); // TODO scheduled unfairly often
             } else {
                 GLOBAL_WORK_QUEUE.lock().push_back(thread);
                 Arch::wake_other_cores();
@@ -280,32 +270,33 @@ pub fn can_yield_for_preempt() -> bool {
 /// Handles preemption. Resumes execution on the target thread.
 /// # Safety
 /// Can only be called from IRQ
-pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>) -> ! {
+pub unsafe fn preempt_to(ctx: &InterruptContext, target: Arc<Thread>, requeue: bool) {
     // idle thread is allowed to call preempt_to
-    assert!(can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed));
-    assert!(
-        !Arch::irq_is_enabled(),
-        "IRQ cannot be enabled on preempt_to"
-    );
+    if can_yield_for_preempt() || IS_IDLE.load(Ordering::Relaxed) {
+        assert!(
+            !Arch::irq_is_enabled(),
+            "IRQ cannot be enabled on preempt_to"
+        );
 
-    // Save the interrupted context and release the CONTEXT lock.
-    let mut guard = CTX_GUARD
-        .take()
-        .expect("CTX_GUARD not set during preemption");
-    guard.save_from_interrupt(ctx);
-    drop(guard);
+        // Save the interrupted context and release the CONTEXT lock.
+        let mut guard = CTX_GUARD
+            .take()
+            .expect("CTX_GUARD not set during preemption");
+        guard.save_from_interrupt(ctx);
+        drop(guard);
 
-    let thread = this_thread();
-    let is_idle = IS_IDLE.load(Ordering::Relaxed);
+        let thread = this_thread();
+        let is_idle = IS_IDLE.load(Ordering::Relaxed);
 
-    thread_exit();
+        thread_exit();
 
-    // can't queue idle
-    if !is_idle {
-        LOCAL_WORK_QUEUE.lock().push_back(thread);
+        // can't queue idle
+        if !is_idle && requeue {
+            LOCAL_WORK_QUEUE.lock().push_back(thread);
+        }
+
+        unsafe { go_to_thread(target) }
     }
-
-    unsafe { go_to_thread(target) }
 }
 
 // flowey writes "worst function in mos history" asked to drop the class
@@ -339,8 +330,15 @@ fn suspend_impl<T: FnOnce(Arc<Thread>)>(action: T, target: Arc<Thread>) {
 /// Preempt to the idle thread, for general purpose rescheduling.
 /// # Safety
 /// Can only be called from IRQ
-pub unsafe fn preempt_to_idle(ctx: &InterruptContext) -> ! {
-    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone()) }
+pub unsafe fn preempt_to_idle(ctx: &InterruptContext) {
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone(), true) }
+}
+
+/// Preempt to the idle thread, for general purpose rescheduling.
+/// # Safety
+/// Can only be called from IRQ
+pub unsafe fn block_to_idle(ctx: &InterruptContext) {
+    unsafe { preempt_to(ctx, IDLE.get().unwrap().clone(), false) }
 }
 
 #[inline(always)]
@@ -398,7 +396,7 @@ pub fn suspend_to_thread(thread: Arc<Thread>) {
 
 #[inline(always)]
 pub fn yield_thread() {
-    // TODO use the below
+    // TODO use the schedule_thread() function
     if PINNED_TO_CORE.load(Ordering::Relaxed) {
         suspend_to_queue(&*LOCAL_WORK_QUEUE);
     } else {
