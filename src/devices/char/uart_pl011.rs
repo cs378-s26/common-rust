@@ -100,7 +100,13 @@ impl DeviceDiscovery for UartPl011Discovery {
             } else {
                 panic!("Failed to initialize UART driver");
             }
+
+            return Some(DeviceType::Special);
         }
-        Some(DeviceType::Special)
+        None
+    }
+
+    fn name(&self) -> &'static str {
+        "Uart Pl011"
     }
 }

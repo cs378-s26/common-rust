@@ -46,6 +46,8 @@ pub enum DeviceType {
 pub trait DeviceDiscovery {
     // when finding a matching node, return a corresponding device driver with its proper fields initialized.
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType>;
+
+    fn name(&self) -> &'static str;
 }
 
 pub fn create_drivers() {

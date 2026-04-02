@@ -1,13 +1,16 @@
-use crate::devices::device_discovery::DeviceDiscovery;
 use alloc::boxed::Box;
+
+pub mod a15_gic;
+use crate::devices::device_discovery::DeviceDiscovery;
+use crate::sync::MutexLike;
 use alloc::vec::Vec;
+use fdt;
 
 use crate::devices::device_discovery::{
     BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, NETWORK_DEVICES, SYSTEM_DRIVERS,
 };
 use crate::print::kprintln;
-use crate::sync::MutexLike;
-use fdt::{self};
+
 use limine::request::DeviceTreeBlobRequest;
 pub mod psci;
 
@@ -16,8 +19,6 @@ pub mod psci;
 pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
 // parse the device tree and match devices to drivers. This should be called after all system drivers have been set up in SYSTEM_DRIVERS
-// TODO: ideally we abstract this out, we just give a list of nodes to a function in the shared driver code
-// and it handles this business of matching and pushing to the right lists
 pub fn parse_devices() {
     // get dtb pointer
     if let Some(resp) = DTB_REQUEST.get_response() {
@@ -29,7 +30,10 @@ pub fn parse_devices() {
         // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
         for driver in SYSTEM_DRIVERS.lock().iter() {
             for node in fdt.all_nodes() {
-                let matched_device = driver.am_i_this(DeviceNode::DTB(node));
+                let matched_device: Option<DeviceType> = driver.am_i_this(DeviceNode::DTB(node));
+                if matched_device.is_some() {
+                    kprintln!("{} driver linked", driver.name());
+                }
                 if let Some(device) = matched_device {
                     match device {
                         DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
@@ -74,4 +78,6 @@ pub fn create_arch_specific_drivers(
     system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
 ) {
     system_drivers.push(Box::new(psci::PSCIDiscovery));
+
+    system_drivers.push(Box::new(a15_gic::GicA15Discovery));
 }
