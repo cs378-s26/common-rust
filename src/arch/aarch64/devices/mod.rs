@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use fdt;
 
 use crate::devices::device_discovery::{
-    BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, SYSTEM_DRIVERS,
+    BLOCK_DEVICES, CHAR_DEVICES, DeviceNode, DeviceType, NETWORK_DEVICES, SYSTEM_DRIVERS,
 };
 use crate::print::kprintln;
 
@@ -38,6 +38,7 @@ pub fn parse_devices() {
                     match device {
                         DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
                         DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
+                        DeviceType::Network(d) => NETWORK_DEVICES.lock().push(d),
                         DeviceType::Special => {} // they handle themselves.
                     }
                 }

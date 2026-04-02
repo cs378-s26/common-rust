@@ -1,6 +1,7 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::{block::BlockDevice, char::CharDevice};
+use crate::devices::virtio_discovery::VirtioDiscovery;
+use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
@@ -14,8 +15,8 @@ pub static BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =
 pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
-// pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn DeviceDriver + Send + Sync>>> =
-//     IntMutex::new(Vec::new());
+pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn NetworkDevice + Send + Sync>>> =
+    IntMutex::new(Vec::new());
 
 /// all implemented drivers in the system, this is what is iterated over to find matches.
 /// order matters here, the first matched driver will get assigned the device.
@@ -38,6 +39,7 @@ pub enum DeviceNode<'a, 'b> {
 pub enum DeviceType {
     Block(Box<dyn BlockDevice + Send + Sync>),
     Char(Box<dyn CharDevice + Send + Sync>),
+    Network(Box<dyn NetworkDevice + Send + Sync>),
     Special, // these are special drivers that interop directly with the system and don't return anything.
 }
 
@@ -52,5 +54,6 @@ pub fn create_drivers() {
     // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
     let mut drivers = SYSTEM_DRIVERS.lock();
     drivers.push(Box::new(UartPl011Discovery));
+    drivers.push(Box::new(VirtioDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
 }
