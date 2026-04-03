@@ -5,6 +5,7 @@ use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
 use crate::dma::MmioRegion;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
+use crate::dma::MmioRegion;
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
@@ -156,15 +157,16 @@ unsafe impl Hal for VirtioBlkHal {
 
     // maps a physical mmio region to a virtual address, must be mapped
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, size: usize) -> NonNull<u8> {
+
         let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
+        let region = MmioRegion::new(phys_base, pages_covered);
+        let vaddr = region.virt_addr() + page_offset;
 
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr();
-
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
-        NonNull::new(virt_addr as *mut u8).unwrap()
+        // don't want the region to be deallocated on drop, but nowhere easy to put ownership
+        core::mem::forget(region);
+        NonNull::new(vaddr as *mut u8).unwrap()
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
