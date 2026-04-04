@@ -1,9 +1,9 @@
-use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use super::context::GPRegisters;
 use super::interrupt::InterruptContext;
+use crate::thread::preempt_to_idle;
+use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;
-use crate::thread::preempt_to_idle;
 
 global_asm!(include_str!("exception.s"));
 
@@ -65,10 +65,8 @@ fn timer_interrupt_handler(e: &mut ExceptionContext) {
 
     gic::eoi(30);
     unsafe {
-        
-        preempt_to_idle(&interrupt_context); 
+        preempt_to_idle(&interrupt_context);
     }
-
 }
 
 #[unsafe(no_mangle)]

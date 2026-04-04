@@ -114,11 +114,9 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
-    fn virtual_invalidate(_vaddr: u64) {
-    }
+    fn virtual_invalidate(_vaddr: u64) {}
 
-    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
-    }
+    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {}
 
     fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
         vmm::vunmap_no_dealloc(_space, _vaddr)
