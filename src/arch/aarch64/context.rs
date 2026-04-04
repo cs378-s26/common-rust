@@ -34,7 +34,7 @@ fn slice_stack_ptr(stack: &[u8]) -> u64 {
 impl ContextTrait for Context {
     type Arch = Arch;
     fn setup_kthread_context(&mut self) {
-        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
+        self.spsr = SPSR_MODE_EL1H;
     }
 
     fn jump_to(&self) -> ! {
