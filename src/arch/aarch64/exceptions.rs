@@ -1,19 +1,33 @@
-use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
-use crate::virtual_memory::PageFaultConditions;
 use crate::event::{push_event, Event::PageFault};
+use crate::thread::this_thread;
+use crate::virtual_memory::PageFaultConditions;
+use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;
 
 global_asm!(include_str!("exception.s"));
 
+// docs for all this here:
 // https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
-static SVC: u64 = 0b010101; // SVC instruction from AArch64
-static INSTRUCTION_ABORT: u64 = 0b100001; // Instruction Abort from same EL
-static INSTRUCTION_ABORT_LOWER: u64 = 0b100000; // Instruction Abort from lower EL
-static DATA_ABORT: u64 = 0b100101; // Data Abort from same EL
-static DATA_ABORT_LOWER: u64 = 0b100100; // Data Abort from lower EL
-static ISS_MASK: u64 = 0x1FFFFFF; // Instruction Specific Syndrome mask
+const SVC: u64 = 0b010101; // SVC instruction from AArch64
+const INSTRUCTION_ABORT: u64 = 0b100001; // Instruction Abort from same EL
+const INSTRUCTION_ABORT_LOWER: u64 = 0b100000; // Instruction Abort from lower EL
+const DATA_ABORT: u64 = 0b100101; // Data Abort from same EL
+const DATA_ABORT_LOWER: u64 = 0b100100; // Data Abort from lower EL
+const ISS_MASK: u64 = 0x1FFFFFF; // Instruction Specific Syndrome mask
 
+// Data Abort ISS bits from ESR_EL1.
+const DATA_ABORT_DFSC_MASK: u64 = 0b11_1111;
+const DATA_ABORT_WNR: u64 = 1 << 6;
+const DATA_ABORT_S1PTW: u64 = 1 << 7; 
+const DATA_ABORT_FNV: u64 = 1 << 10;
+
+const DFSC_TRANSLATION_FAULT_L0: u64 = 0b000100;
+const DFSC_TRANSLATION_FAULT_L3: u64 = 0b000111;
+const DFSC_ACCESS_FLAG_FAULT_L0: u64 = 0b001000;
+const DFSC_ACCESS_FLAG_FAULT_L3: u64 = 0b001011;
+const DFSC_PERMISSION_FAULT_L0: u64 = 0b001100;
+const DFSC_PERMISSION_FAULT_L3: u64 = 0b001111;
 
 
 /// The exception context as it is stored on the stack on exception entry.
@@ -50,10 +64,19 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
             "Data abort at address {:#018x}, FAR_EL1: {:#018x}",
             exc.elr_el1, far_el1
         );
-        let iss = exc.esr_el1 & 0x1FFFFFF; // Instruction Specific Syndrome
-        push_event(
-        );
-
+        let iss = exc.esr_el1 & ISS_MASK;
+        if let Some(cause) = page_fault_cause(exception_class, iss) {
+            push_event(
+                PageFault {
+                    cause,
+                    address: far_el1 as usize,
+                    thread: this_thread(),
+                },
+                CORE_ID.get(),
+            );
+        } else {
+            kprintln!("Data abort is not a page fault: ISS={:#010x}", iss);
+        }
 
     } else {
         kprintln!("Unhandled exception class: {:x}", exception_class);
@@ -213,6 +236,45 @@ pub fn dump_core_state(label: &str) {
     kprintln!("  cpacr_el1 = {:#018x}", cpacr_el1);
     kprintln!("  x0        = {:#018x}", x0);
     kprintln!("  x1        = {:#018x}", x1);
+}
+
+fn page_fault_cause(exception_class: u64, iss: u64) -> Option<PageFaultConditions> {
+    let dfsc = iss & DATA_ABORT_DFSC_MASK;
+
+    // if it's a translation fault, present bit should be set to zero, otherwise if it's
+    let mut cause = if is_translation_fault(dfsc) {
+        PageFaultConditions::empty()
+    } else if is_access_or_permission_fault(dfsc) {
+        PageFaultConditions::PRESENT
+    } else {
+        return None;
+    };
+
+    if (iss & DATA_ABORT_WNR) != 0 {
+        cause.insert(PageFaultConditions::WRITE);
+    }
+    if exception_class == DATA_ABORT_LOWER {
+        cause.insert(PageFaultConditions::USER);
+    }
+    
+    // this means walking page tables caused a fault (besides for causes above) or Far Not Valid, 
+    // meaning we don't have an address for the fault
+    if (iss & (DATA_ABORT_S1PTW | DATA_ABORT_FNV)) != 0 {
+        cause.insert(PageFaultConditions::CORRUPT);
+    }
+
+    Some(cause)
+}
+
+// look into the dfsc code to find the cause of the data abort. There are different bit codes for 
+// each level of page table, so we check if it's inbetween L0 and L3 
+fn is_translation_fault(dfsc: u64) -> bool {
+    (DFSC_TRANSLATION_FAULT_L0..=DFSC_TRANSLATION_FAULT_L3).contains(&dfsc)
+}
+
+fn is_access_or_permission_fault(dfsc: u64) -> bool {
+    (DFSC_ACCESS_FLAG_FAULT_L0..=DFSC_ACCESS_FLAG_FAULT_L3).contains(&dfsc)
+        || (DFSC_PERMISSION_FAULT_L0..=DFSC_PERMISSION_FAULT_L3).contains(&dfsc)
 }
 
 impl fmt::Display for ExceptionContext {

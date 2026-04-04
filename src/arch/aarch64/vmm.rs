@@ -129,13 +129,23 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     attr
 }
 
-fn tlb_shootdown() {
+fn tlb_shootdown(address: u64) {
+    // TODO right now this is assuming we are invalidating a global address, like hhdm or mmio, the
+    // pattern will look different for non-global addresses, like user pages
+    // pattern is documented here: https://developer.arm.com/documentation/ddi0487/maa/-Part-K-Appendixes/-Appendix-K11-Barrier-Litmus-Tests/-K11-5-Cache-and-TLB-maintenance-instructions-and-barriers/-K11-5-3-TLB-maintenance-instructions-and-barriers
+    // tlbi ops here: https://developer.arm.com/documentation/ddi0601/2025-12/AArch64-Instructions
+
+    let page_size_shift: u64 = 12; // log2 of page size
+
     unsafe {
         asm!(
-            "dsb ishst", // ensure all page table updates are visible before the tlb shootdown
-            "tlbi vmalle1is", // invalidate all entries in the TLB for EL1 and below, inner shareable domain
-            "dsb ish", // ensure the TLB invalidation is complete before any further instructions are executed
-            "isb", // ensure the effects of the TLB shootdown are seen by subsequent instructions
+            // data synchronization barrier, inner shareable domain, st means store. This ensures 
+            // the write to the page table will be seen before the TLB shootdown
+            "dsb ishst", 
+            "tlbi vaae1is, {}", // invalidate the virtual address in the TLB for EL1 and the inner shareable domain, ensuring all cores see it
+            "dsb ish", // stronger synch, ensure tlb shootdown is done before any other memory accesses
+            "isb", // ensure next instructions see updates to page tables and tlb
+            in(reg) (address >> page_size_shift), // pass in page number
             options(nostack, preserves_flags)
         )
     }
@@ -201,6 +211,7 @@ fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
         let paddr = l3[index_3] & PTE_ADDR_MASK;
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
+        tlb_shootdown(vaddr);
         free_unused_tables(vaddr, l0, l1, l2, l3);
         if free_frame {
             frame_dealloc(paddr as usize);

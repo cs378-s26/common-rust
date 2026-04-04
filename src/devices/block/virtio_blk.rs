@@ -5,7 +5,6 @@ use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
 use crate::dma::MmioRegion;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
-use crate::dma::MmioRegion;
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
