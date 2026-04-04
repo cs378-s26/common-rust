@@ -1,3 +1,6 @@
+use super::context::GPRegisters;
+use super::interrupt::InterruptContext;
+use crate::thread::preempt_to_idle;
 use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;
@@ -7,11 +10,12 @@ global_asm!(include_str!("exception.s"));
 /// The exception context as it is stored on the stack on exception entry.
 #[repr(C)]
 struct ExceptionContext {
-    gpr: [u64; 30],
-    lr: u64,
+    gpr: GPRegisters,
     elr_el1: u64,
     spsr_el1: u64,
     esr_el1: u64,
+    sp: u64,
+    _pad: u64, // padding to make the size a multiple of 16 bytes for alignment, see SAVE_REGS in exception.s
 }
 
 /// Prints verbose information about the exception and then panics.
@@ -47,19 +51,30 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 }
 
 #[allow(unused_variables)]
-fn timer_interrupt_handler() {
+fn timer_interrupt_handler(e: &mut ExceptionContext) {
     gic::timer_reset_interval();
     gic::inc_timer_ticks();
     let ticks = gic::timer_ticks();
-    // kprintln!("Timer ticked on core {} total {}", CORE_ID.get(), ticks);
+
+    let interrupt_context = InterruptContext {
+        gpr: e.gpr,
+        sp: e.sp,
+        pc: e.elr_el1,
+        spsr: e.spsr_el1,
+    };
+
+    gic::eoi(30);
+    unsafe {
+        preempt_to_idle(&interrupt_context);
+    }
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn current_elx_irq(_e: &mut ExceptionContext) {
+extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     let intid = gic::get_intid_ack_irq();
 
     match intid {
-        30 => timer_interrupt_handler(),
+        30 => timer_interrupt_handler(e),
         1023 => {
             kprintln!("Spurrious interrupt");
             // No EOI for spurious interrupts
@@ -214,7 +229,7 @@ impl fmt::Display for ExceptionContext {
 
         // Print general purpose registers
         writeln!(f, "\nGeneral Purpose Registers:")?;
-        for (i, reg) in self.gpr.iter().enumerate() {
+        for (i, reg) in self.gpr.regs.iter().enumerate() {
             write!(f, "  x{:<2}: {:#018x}", i, reg)?;
             if i % 2 == 1 {
                 writeln!(f)?;
@@ -222,7 +237,6 @@ impl fmt::Display for ExceptionContext {
                 write!(f, "    ")?;
             }
         }
-        writeln!(f, "  x30: {:#018x} (LR)", self.lr)?;
 
         Ok(())
     }

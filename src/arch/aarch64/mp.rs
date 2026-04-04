@@ -1,6 +1,6 @@
 use crate::{
     // arch::x86_64::cpuid::Features,
-    arch::aarch64::{exceptions, gic, interrupt},
+    arch::aarch64::{exceptions, gic},
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
 };
 use core::arch::asm;
@@ -83,6 +83,5 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
     exceptions::init_exceptions(); // force switches to kernel stack and sets up vbar to point to ISR
     gic::gicc_init(); // initialized gicc
-    interrupt::enable(); // enables interrupts
     gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
 }
