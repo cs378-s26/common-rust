@@ -1,8 +1,20 @@
 use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
+use crate::virtual_memory::PageFaultConditions;
+use crate::event::{push_event, Event::PageFault};
 use core::arch::{asm, global_asm};
 use core::fmt;
 
 global_asm!(include_str!("exception.s"));
+
+// https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
+static SVC: u64 = 0b010101; // SVC instruction from AArch64
+static INSTRUCTION_ABORT: u64 = 0b100001; // Instruction Abort from same EL
+static INSTRUCTION_ABORT_LOWER: u64 = 0b100000; // Instruction Abort from lower EL
+static DATA_ABORT: u64 = 0b100101; // Data Abort from same EL
+static DATA_ABORT_LOWER: u64 = 0b100100; // Data Abort from lower EL
+static ISS_MASK: u64 = 0x1FFFFFF; // Instruction Specific Syndrome mask
+
+
 
 /// The exception context as it is stored on the stack on exception entry.
 #[repr(C)]
@@ -19,7 +31,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     kprintln!("core {} exc class: {:x}", CORE_ID.get(), exception_class);
-    if exception_class == 0x15 {
+    if exception_class == SVC {
         kprintln!("SVC");
         exc.elr_el1 += 4;
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
@@ -27,6 +39,24 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         // system_call_handler(exc);
 
         return;
+    } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
+        kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+    } else if exception_class == DATA_ABORT || exception_class == DATA_ABORT_LOWER {
+        let far_el1: u64;
+        unsafe {
+            asm!("mrs {}, FAR_EL1", out(reg) far_el1);
+        }
+        kprintln!(
+            "Data abort at address {:#018x}, FAR_EL1: {:#018x}",
+            exc.elr_el1, far_el1
+        );
+        let iss = exc.esr_el1 & 0x1FFFFFF; // Instruction Specific Syndrome
+        push_event(
+        );
+
+
+    } else {
+        kprintln!("Unhandled exception class: {:x}", exception_class);
     }
     panic!(
         "Exception on core {}!\n\n\
@@ -120,6 +150,8 @@ pub fn current_privilege_level() -> &'static str {
 }
 
 pub fn init_exceptions() {
+
+    // set up multiple stacks and start working on the kernel stack
     unsafe {
         core::arch::asm!(
             "mov x0, sp",

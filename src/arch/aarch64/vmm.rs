@@ -129,6 +129,18 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     attr
 }
 
+fn tlb_shootdown() {
+    unsafe {
+        asm!(
+            "dsb ishst", // ensure all page table updates are visible before the tlb shootdown
+            "tlbi vmalle1is", // invalidate all entries in the TLB for EL1 and below, inner shareable domain
+            "dsb ish", // ensure the TLB invalidation is complete before any further instructions are executed
+            "isb", // ensure the effects of the TLB shootdown are seen by subsequent instructions
+            options(nostack, preserves_flags)
+        )
+    }
+}
+
 // make sure a pt entry contains a valid next-level table, allocating one if necessary,
 // and return the physical address of the next-level table
 fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {

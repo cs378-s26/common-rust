@@ -67,7 +67,7 @@
 exception_vector_table:
     // Current EL with SP0
     .align 7
-    b .
+    b c_elx_sync_handler
     .align 7
     b c_default_irq_handler
     .align 7
