@@ -115,11 +115,9 @@ impl ArchTrait for Arch {
     }
 
     fn virtual_invalidate(_vaddr: u64) {
-        panic!("TLB invalidation not implemented for aarch64");
     }
 
     fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
-        panic!("TLB shootdown not implemented for aarch64");
     }
 
     fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
@@ -146,10 +144,10 @@ impl ArchTrait for Arch {
     }
 
     fn create_arch_specific_drivers(
-        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
         // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        devices::create_arch_specific_drivers(_system_drivers);
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 
