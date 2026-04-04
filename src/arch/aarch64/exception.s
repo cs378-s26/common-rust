@@ -1,5 +1,5 @@
 .macro SAVE_REGS
-    sub sp, sp, #17 * 16
+    sub sp, sp, #18 * 16
 
     stp x0, x1, [sp, #16 * 0]
     stp x2, x3, [sp, #16 * 1]
@@ -24,6 +24,9 @@
 
     stp x30, x0, [sp, #16 * 15]  
     stp x1, x2, [sp, #16 * 16]   
+    add x3, sp, #18 * 16
+    stp x3, xzr, [sp, #16 * 17] // store stack pointer, xzr is just to pad to keep stack 16B aligned
+    
 .endm
 
 .macro RESTORE_REGS
@@ -51,7 +54,7 @@
     ldp x28, x29, [sp, #16 * 14]
 
     // Deallocate the whole frame at once
-    add sp, sp, #17 * 16
+    add sp, sp, #18 * 16
 .endm
 
 

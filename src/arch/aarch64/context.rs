@@ -34,7 +34,7 @@ fn slice_stack_ptr(stack: &[u8]) -> u64 {
 impl ContextTrait for Context {
     type Arch = Arch;
     fn setup_kthread_context(&mut self) {
-        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
+        self.spsr = SPSR_MODE_EL1H;
     }
 
     fn jump_to(&self) -> ! {
@@ -68,8 +68,11 @@ impl const Default for Context {
 }
 
 impl Context {
-    pub fn save_from_interrupt(&mut self, _ctx: &InterruptContext) {
-        panic!("save_from_interrupt not implemented on aarch64");
+    pub fn save_from_interrupt(&mut self, ctx: &InterruptContext) {
+        self.gp = ctx.gpr;
+        self.sp = ctx.sp;
+        self.pc = ctx.pc;
+        self.spsr = ctx.spsr;
     }
 }
 
@@ -83,9 +86,29 @@ unsafe extern "C" fn jump_to_context(
     naked_asm!(
         // AAPCS64 call ABI:
         // x0 = buf, x1 = sp, x2 = spsr, x3 = pc
-        "mov x16, x3",
         "mov sp, x1",
+        // set things up for eret
+        "msr spsr_el1, x2",
+        "msr elr_el1, x3",
         // Restore callee-saved state + x0 argument register.
+        "ldr x1, [x0, #8]",
+        "ldr x2, [x0, #16]",
+        "ldr x3, [x0, #24]",
+        "ldr x4, [x0, #32]",
+        "ldr x5, [x0, #40]",
+        "ldr x6, [x0, #48]",
+        "ldr x7, [x0, #56]",
+        "ldr x8, [x0, #64]",
+        "ldr x9, [x0, #72]",
+        "ldr x10, [x0, #80]",
+        "ldr x11, [x0, #88]",
+        "ldr x12, [x0, #96]",
+        "ldr x13, [x0, #104]",
+        "ldr x14, [x0, #112]",
+        "ldr x15, [x0, #120]",
+        "ldr x16, [x0, #128]",
+        "ldr x17, [x0, #136]",
+        "ldr x18, [x0, #144]",
         "ldr x19, [x0, #152]",
         "ldr x20, [x0, #160]",
         "ldr x21, [x0, #168]",
@@ -99,9 +122,7 @@ unsafe extern "C" fn jump_to_context(
         "ldr x29, [x0, #232]",
         "ldr x30, [x0, #240]",
         "ldr x0, [x0, #0]",
-        // Restore interrupt mask state from SPSR before transferring control.
-        "msr daif, x2",
-        "br x16",
+        "eret"
     )
 }
 
