@@ -81,12 +81,6 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     } else {
         kprintln!("Unhandled exception class: {:x}", exception_class);
     }
-    panic!(
-        "Exception on core {}!\n\n\
-        {}",
-        CORE_ID.get(),
-        exc
-    );
 }
 
 //------------------------------------------------------------------------------
