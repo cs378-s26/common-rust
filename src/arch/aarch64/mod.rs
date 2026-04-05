@@ -10,7 +10,6 @@ use crate::devices::device_discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-pub mod apic;
 mod asm;
 mod context;
 mod devices;
@@ -66,9 +65,9 @@ impl ArchTrait for Arch {
         asm::sleep_core();
     }
 
-    fn wake_other_cores() {
-        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
-    }
+    // TODO implement this
+    // doesn't really affect correctness just can give a performance boost
+    fn wake_other_cores() {}
 
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
