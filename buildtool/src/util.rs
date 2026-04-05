@@ -73,7 +73,7 @@ impl Target {
 
     pub fn qemu_machine(self) -> &'static str {
         match self {
-            Target::X86_64 => "pc",
+            Target::X86_64 => "q35",
             Target::Aarch64 => "virt,acpi=off",
         }
     }

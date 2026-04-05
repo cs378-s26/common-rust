@@ -7,8 +7,6 @@ use crate::devices::virtio_discovery::VirtioDiscovery;
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
-use ::acpi::aml::object::WrappedObject;
-use ::acpi::sdt::{self};
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
 use fdt::node::FdtNode;
@@ -32,12 +30,8 @@ pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>>
 // for their architecture, so arch-specific types never leak into cross-arch compilation units.
 pub enum DeviceNode<'a, 'b> {
     DTB(FdtNode<'a, 'b>),
-    Acpi(AcpiDeviceNode<'a>),
-}
-
-pub enum AcpiDeviceNode<'a> {
-    MadtEntry(sdt::madt::MadtEntry<'a>),
-    WrappedObject(WrappedObject),
+    MadtEntry(acpi::MadtEntry),
+    Mcfg(acpi::Mcfg),
 }
 
 pub enum DeviceType {
@@ -48,8 +42,8 @@ pub enum DeviceType {
 }
 
 pub trait DeviceDiscovery {
-    // when finding a matching node, return a corresponding device driver with its proper fields initialized.
-    fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType>;
+    // When a node matches, return all device handles it should contribute.
+    fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>>;
 
     fn name(&self) -> &'static str;
 }

@@ -6,6 +6,8 @@ use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::ptr::NonNull;
 use virtio_drivers::transport::Transport;
 use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
@@ -13,11 +15,7 @@ use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
 pub struct VirtioDiscovery;
 
 impl DeviceDiscovery for VirtioDiscovery {
-    fn name(&self) -> &'static str {
-        "virtio_discovery"
-    }
-
-    fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
             && c.all().any(|s| s.contains("virtio,mmio"))
@@ -60,10 +58,14 @@ impl DeviceDiscovery for VirtioDiscovery {
                         false,
                     );
                     let driver = VirtIOBlkDiskDriver::new(transport);
-                    return Some(discovery::DeviceType::Block(Box::new(driver)));
+                    return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
                 }
             }
         }
         None
+    }
+
+    fn name(&self) -> &'static str {
+        "virtio_discovery"
     }
 }

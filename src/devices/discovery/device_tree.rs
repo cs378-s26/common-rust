@@ -10,9 +10,6 @@ use limine::request::DeviceTreeBlobRequest;
 #[unsafe(link_section = ".limine_requests")]
 pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
-// parse the device tree and match devices to drivers. This should be called after all system drivers have been set up in SYSTEM_DRIVERS
-// TODO: ideally we abstract this out, we just give a list of nodes to a function in the shared driver code
-// and it handles this business of matching and pushing to the right lists
 pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
     // get dtb pointer
     let mut matched_devices = Vec::new();
@@ -26,8 +23,8 @@ pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
     for driver in SYSTEM_DRIVERS.lock().iter() {
         for node in fdt.all_nodes() {
             let matched_device = driver.am_i_this(DeviceNode::DTB(node));
-            if let Some(device) = matched_device {
-                matched_devices.push(device);
+            if let Some(devices) = matched_device {
+                matched_devices.extend(devices);
             }
         }
     }

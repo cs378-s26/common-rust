@@ -6,7 +6,7 @@ use spin::Once;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -135,10 +135,6 @@ impl ArchTrait for Arch {
 
     fn configure_vm() {
         vmm::configure_vm();
-    }
-
-    fn parse_devices() {
-        devices::parse_devices();
     }
 
     fn create_arch_specific_drivers(
