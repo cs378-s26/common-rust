@@ -1,4 +1,4 @@
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -173,10 +173,6 @@ impl ArchTrait for Arch {
 
     fn halt() -> ! {
         halt()
-    }
-
-    fn parse_devices() {
-        devices::parse_devices();
     }
 
     fn create_arch_specific_drivers(

@@ -3,8 +3,7 @@
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::device_discovery;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
@@ -61,7 +60,7 @@ impl DeviceDiscovery for VirtioDiscovery {
                         false,
                     );
                     let driver = VirtIOBlkDiskDriver::new(transport);
-                    return Some(device_discovery::DeviceType::Block(Box::new(driver)));
+                    return Some(discovery::DeviceType::Block(Box::new(driver)));
                 }
             }
         }

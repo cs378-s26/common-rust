@@ -10,7 +10,7 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -109,7 +109,6 @@ pub trait ArchTrait {
     fn shootdown_tlbs(space: u64, base: usize, length: usize);
     fn shutdown(err_code: u16);
     fn halt() -> !;
-    fn parse_devices(); // this must be called after all system drivers have been set up in SYSTEM_DRIVERS
     fn create_arch_specific_drivers(
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );

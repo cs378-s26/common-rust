@@ -1,6 +1,6 @@
 pub mod block;
 pub mod char;
-pub mod device_discovery;
+pub mod discovery;
 pub mod network;
 pub mod virtio_discovery;
 

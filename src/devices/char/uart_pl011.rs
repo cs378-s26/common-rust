@@ -1,7 +1,7 @@
 use super::{CharDevice, CharDeviceError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;

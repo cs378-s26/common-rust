@@ -1,6 +1,5 @@
 use crate::devices::Device;
 use alloc::string::String;
-#[cfg(target_arch = "aarch64")]
 pub mod uart_pl011;
 
 #[derive(Debug)]

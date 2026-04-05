@@ -1,13 +1,16 @@
+pub mod acpi;
+pub mod device_tree;
+
 use crate::arch::{Arch, ArchTrait};
-#[cfg(target_arch = "aarch64")]
 use crate::devices::char::uart_pl011::UartPl011Discovery;
 use crate::devices::virtio_discovery::VirtioDiscovery;
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
+use ::acpi::aml::object::WrappedObject;
+use ::acpi::sdt::{self};
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
-#[cfg(target_arch = "aarch64")]
 use fdt::node::FdtNode;
 
 // lists of initialized devices in the system
@@ -28,21 +31,13 @@ pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>>
 // Each architecture provides its own variant of DeviceNode. Drivers only match the variant
 // for their architecture, so arch-specific types never leak into cross-arch compilation units.
 pub enum DeviceNode<'a, 'b> {
-    #[cfg(target_arch = "aarch64")]
     DTB(FdtNode<'a, 'b>),
-    #[cfg(target_arch = "x86_64")]
-    Acpi(AcpiDeviceNode),
-    // suppress unused lifetime warnings when only one variant is active
-    #[cfg(not(target_arch = "aarch64"))]
-    _Phantom(core::marker::PhantomData<(&'a (), &'b ())>),
+    Acpi(AcpiDeviceNode<'a>),
 }
 
-/// Identifies a device discovered via ACPI table parsing.
-#[cfg(target_arch = "x86_64")]
-#[derive(Clone, Copy)]
-pub enum AcpiDeviceNode {
-    Serial16550 { port: u16 },
-    IoApic { id: u8, address: u32, gsi_base: u32 },
+pub enum AcpiDeviceNode<'a> {
+    MadtEntry(sdt::madt::MadtEntry<'a>),
+    WrappedObject(WrappedObject),
 }
 
 pub enum DeviceType {
@@ -61,8 +56,26 @@ pub trait DeviceDiscovery {
 
 pub fn create_drivers() {
     let mut drivers = SYSTEM_DRIVERS.lock();
-    #[cfg(target_arch = "aarch64")]
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
+}
+
+pub fn discover_devices() {
+    let mut devices = Vec::new();
+    if let Some(acpi_devices) = acpi::parse_acpi() {
+        devices.extend(acpi_devices);
+    }
+    if let Some(dtb_devices) = device_tree::parse_device_tree() {
+        devices.extend(dtb_devices);
+    }
+
+    for device in devices {
+        match device {
+            DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
+            DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
+            DeviceType::Network(d) => NETWORK_DEVICES.lock().push(d),
+            DeviceType::Special => {}
+        }
+    }
 }
