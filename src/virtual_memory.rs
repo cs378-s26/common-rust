@@ -375,9 +375,11 @@ mod test {
         kprintln!("frame allocator sanity-checked");
         let hhdm = HHDM_OFFSET.get().unwrap();
 
-        // for aarch64 this has to be higher half because there are seperate page tables for
-        // higher and lower half, ttbr0 and ttbr1, currently everything is for ttbr1
+        // bit of a clunky edit to the test, but for aarch64 currently only higher half mappings are available
+        // because of the different page tables for higher and lower half, but on x86 we can't map something that's
+        // already mapped, so we just unmap first and make sure remapping works
         let vaddr: usize = 0x1000 + hhdm; // unsafe!
+        Arch::virtual_unmap_no_dealloc(Arch::get_address_space(), vaddr as u64);
         let paddr: usize = frame_alloc();
 
         kprintln!("manually mapping vmem");
