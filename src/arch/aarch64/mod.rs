@@ -114,6 +114,7 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
+    // no-op on aarch64 shootdowns are handled within the vmm functions, the shootdown pattern is completely different
     fn virtual_invalidate(_vaddr: u64) {}
 
     fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {}
