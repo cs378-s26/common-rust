@@ -197,7 +197,7 @@ pub fn current_privilege_level() -> &'static str {
 }
 
 pub fn init_exceptions() {
-    // set up multiple stacks and start working on the kernel stack
+    // set up a stack per EL and move stack pointer to work with the EL1 stack
     unsafe {
         core::arch::asm!(
             "mov x0, sp",
@@ -264,7 +264,7 @@ pub fn dump_core_state(label: &str) {
 fn page_fault_cause(exception_class: u64, iss: u64) -> Option<PageFaultConditions> {
     let dfsc = iss & DATA_ABORT_DFSC_MASK;
 
-    // if it's a translation fault, present bit should be set to zero, otherwise if it's
+    // if it's a translation fault, present bit should be set to zero, otherwise the page must have been present
     let mut cause = if is_translation_fault(dfsc) {
         PageFaultConditions::empty()
     } else if is_access_or_permission_fault(dfsc) {
