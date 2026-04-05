@@ -30,6 +30,7 @@ pub mod sync;
 pub mod syscall;
 pub mod thread;
 pub mod virtual_memory;
+pub mod devices;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
