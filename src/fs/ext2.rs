@@ -1,12 +1,13 @@
 extern crate alloc;
 
-use crate::ramdisk::Disk;
+use super::ramdisk::Disk;
+use crate::devices::block::BlockDevice;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-pub struct Ext2<D: Disk> {
+pub struct Ext2_old<D: Disk> {
     block_size: usize,
     disk: IntMutex<D>,
     superblock: Superblock,
@@ -17,7 +18,7 @@ pub struct Ext2<D: Disk> {
 }
 
 pub struct FNode<D: Disk> {
-    fs: Arc<Ext2<D>>,
+    fs: Arc<Ext2_old<D>>,
     inode: IntMutex<INode>,
 }
 
@@ -114,7 +115,124 @@ struct INodeData {
     osd2: [u8; 12],
 }
 
-impl<D: Disk> Ext2<D> {
+pub struct Ext2<B: BlockDevice> {
+    block_size: usize,
+    block_device: IntMutex<B>,
+    superblock: Superblock,
+    fnode_cache: IntMutex<BTreeMap<u32, Arc<FNode<B>>>>,
+    block_map_lock: IntMutex<()>,
+    inode_map_lock: IntMutex<()>,
+    group_lock: IntMutex<()>,
+}
+
+impl<B: BlockDevice> Ext2<B> {
+    fn alloc_block(
+        self: &Arc<Self>,
+        preferred_group: usize,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> Option<usize> {
+        None
+    }
+
+    fn alloc_block_given_group(
+        self: &Arc<Self>,
+        group: usize,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> Option<usize> {
+        None
+    }
+
+    pub fn alloc_inode(
+        self: &Arc<Self>,
+        preferred_group: usize,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> Option<usize> {
+        None
+    }
+
+    fn alloc_inode_given_group(
+        self: &Arc<Self>,
+        group: usize,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> Option<usize> {
+        None
+    }
+    pub fn dealloc_block(self: &Arc<Self>, block_number: usize, scratch_buffer: Option<&mut [u8]>) {
+    }
+
+    pub fn dealloc_inode(self: &Arc<Self>, inumber: usize, scratch_buffer: Option<&mut [u8]>) {}
+
+    fn get_block_group_descriptor(
+        self: &Arc<Self>,
+        block_group: usize,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> (BlockGroupDescriptor, (usize, usize)) {
+        return BlockGroupDescriptor {
+            block_bitmap: 0,
+            inode_bitmap: 0,
+            inode_table: 0,
+            free_blocks_count: 0,
+            free_inodes_count: 0,
+            used_dirs_count: 0,
+        }(0, 0);
+    }
+        fn get_inode(
+        self: &Arc<Self>,
+        inumber: u32,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> (INode, (usize, usize)) {
+        unimplemented!()
+    }
+
+    fn get_fnode(
+        self: &Arc<Self>,
+        inumber: u32,
+        scratch_buffer: Option<&mut [u8]>,
+    ) -> Weak<FNode<D>> {
+        unimplemented!()
+    }
+
+    pub fn new(block_device: B) -> Result<Self, &'static str> {
+        if block_device.block_size() < 512 {
+            return Err("sector size not big enough");
+        }
+
+        // get the superblock
+        const SUPERBLOCK_START: usize = 1024;
+        const SUPERBLOCK_SIZE: usize = 1024;
+        let superblock_sector = SUPERBLOCK_START / block_device.block_size();
+        let superblock_offset = SUPERBLOCK_START % block_device.block_size();
+        let mut buffer = alloc::vec![0u8; SUPERBLOCK_SIZE];
+        block_device.read(SUPERBLOCK_START, &mut buffer);
+        let (superblock, _) = Superblock::read_from_prefix(&buffer)
+            .map_err(|_| "could not parse superblock")?;
+
+        // safety checks
+        if superblock.magic != 0xEF53 {
+            return Err("is not a valid ext2 file system");
+        }
+        if superblock.log_block_size > 2 {
+            return Err("invalid block size");
+        }
+        if superblock.rev_level != 1 {
+            return Err("this version of ext2 is too old");
+        }
+
+        // TODO: mark superblock as dirty
+        Ok(Self {
+            block_size: 1024 << superblock.log_block_size,
+            block_device: IntMutex::new(block_device),
+            superblock,
+            fnode_cache: IntMutex::new(BTreeMap::new()),
+            block_map_lock: IntMutex::new(()),
+            inode_map_lock: IntMutex::new(()),
+            group_lock: IntMutex::new(()),
+        })
+        
+    }
+}
+
+impl<D: Disk> Ext2_old<D> {
     fn alloc_block(
         self: &Arc<Self>,
         preferred_group: usize,
@@ -463,7 +581,7 @@ impl<D: Disk> Ext2<D> {
     }
 }
 
-impl<D: Disk> FNode<D> {
+impl<D: Disk> FNode_old<D> {
     fn block_tree(
         self: &Arc<Self>,
         block_number: usize,
