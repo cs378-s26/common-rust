@@ -91,9 +91,9 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
             core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
 
         l3[index_3] = (paddr & PTE_ADDR_MASK) | create_aarch64_attributes(options);
-        // ensure all cores see the updated mapping in case they has an old one. 
+        // ensure all cores see the updated mapping in case they has an old one.
         // This is just for safety, in general a break-before-make pattern should be followed for page tables
-        tlb_shootdown(vaddr); 
+        tlb_shootdown(vaddr);
     }
 }
 
