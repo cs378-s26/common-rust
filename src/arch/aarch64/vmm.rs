@@ -139,9 +139,9 @@ fn tlb_shootdown(address: u64) {
 
     unsafe {
         asm!(
-            // data synchronization barrier, inner shareable domain, st means store. This ensures 
+            // data synchronization barrier, inner shareable domain, st means store. This ensures
             // the write to the page table will be seen before the TLB shootdown
-            "dsb ishst", 
+            "dsb ishst",
             "tlbi vaae1is, {}", // invalidate the virtual address in the TLB for EL1 and the inner shareable domain, ensuring all cores see it
             "dsb ish", // stronger synch, ensure tlb shootdown is done before any other memory accesses
             "isb", // ensure next instructions see updates to page tables and tlb

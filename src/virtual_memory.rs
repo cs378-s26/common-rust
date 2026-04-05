@@ -359,6 +359,7 @@ mod test {
 
     use super::kprintln;
     use crate::arch::{Arch, ArchTrait};
+    use crate::physical_memory::HHDM_OFFSET;
     use crate::physical_memory::{frame_alloc, frame_dealloc};
     use crate::thread::spawn_thread;
     use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -372,7 +373,11 @@ mod test {
         kprintln!("virtual memory mapping test started");
         frame_dealloc(frame_alloc()); // quick check that frame allocator works
         kprintln!("frame allocator sanity-checked");
-        let vaddr: usize = 0x10000000; // unsafe!
+        let hhdm = HHDM_OFFSET.get().unwrap();
+
+        // for aarch64 this has to be higher half because there are seperate page tables for
+        // higher and lower half, ttbr0 and ttbr1, currently everything is for ttbr1
+        let vaddr: usize = 0x1000 + hhdm; // unsafe!
         let paddr: usize = frame_alloc();
 
         kprintln!("manually mapping vmem");
