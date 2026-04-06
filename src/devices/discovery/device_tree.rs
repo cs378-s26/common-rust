@@ -19,12 +19,13 @@ pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
         fdt::Fdt::from_ptr(dtb_addr as *const u8).expect("Failed to parse device tree blob.")
     };
 
-    // go through all nodes and pass them into all devices, and if any are returned push them to the matched devices list
-    for driver in SYSTEM_DRIVERS.lock().iter() {
-        for node in fdt.all_nodes() {
+    // Walk nodes outermost so the first matching discovery driver claims each node.
+    for node in fdt.all_nodes() {
+        for driver in SYSTEM_DRIVERS.lock().iter() {
             let matched_device = driver.am_i_this(DeviceNode::DTB(node));
             if let Some(devices) = matched_device {
                 matched_devices.extend(devices);
+                break;
             }
         }
     }

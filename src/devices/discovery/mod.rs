@@ -21,8 +21,9 @@ pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
 pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn NetworkDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
-/// all implemented drivers in the system, this is what is iterated over to find matches.
-/// order matters here, the first matched driver will get assigned the device.
+/// all implemented discovery drivers in the system.
+/// DTB discovery walks this list in order and lets the first matching driver
+/// claim a node; other walkers may define different stop semantics.
 pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
