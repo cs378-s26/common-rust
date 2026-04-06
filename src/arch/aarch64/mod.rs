@@ -113,10 +113,15 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
-    // no-op on aarch64 shootdowns are handled within the vmm functions, the shootdown pattern is completely different
+    // no-op on aarch64
     fn virtual_invalidate(_vaddr: u64) {}
 
-    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {}
+    // TODO this needs to be made more flexible to allow different kinds of shootdowns, not just global
+    fn shootdown_tlbs(_space: u64, base: usize, length: usize) {
+        for page in (0..length).step_by(Self::PAGE_SIZE) {
+            vmm::tlb_shootdown((base + page) as u64);
+        }
+    }
 
     fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
         vmm::vunmap_no_dealloc(_space, _vaddr)

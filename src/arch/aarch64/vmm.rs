@@ -62,6 +62,7 @@ pub fn get_address_space() -> u64 {
 }
 
 // map a virtual address to a physical address in the given address space, with the given paging options
+// if calling this directly, make sure to call tlb shootdown to prevent any caching issues with overwriting
 pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
@@ -91,9 +92,6 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
             core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
 
         l3[index_3] = (paddr & PTE_ADDR_MASK) | create_aarch64_attributes(options);
-        // ensure all cores see the updated mapping in case they has an old one.
-        // This is just for safety, in general a break-before-make pattern should be followed for page tables
-        tlb_shootdown(vaddr);
     }
 }
 
@@ -132,7 +130,7 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     attr
 }
 
-fn tlb_shootdown(vaddr: u64) {
+pub fn tlb_shootdown(vaddr: u64) {
     // TODO right now this is assuming we are invalidating a global address, like hhdm or mmio, the
     // pattern will look different for non-global addresses, like user pages
     // pattern is documented here: https://developer.arm.com/documentation/ddi0487/maa/-Part-K-Appendixes/-Appendix-K11-Barrier-Litmus-Tests/-K11-5-Cache-and-TLB-maintenance-instructions-and-barriers/-K11-5-3-TLB-maintenance-instructions-and-barriers
@@ -214,7 +212,6 @@ fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
         let paddr = l3[index_3] & PTE_ADDR_MASK;
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
-        tlb_shootdown(vaddr);
         free_unused_tables(vaddr, l0, l1, l2, l3);
         if free_frame {
             frame_dealloc(paddr as usize);
