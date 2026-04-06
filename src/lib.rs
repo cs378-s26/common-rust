@@ -16,6 +16,7 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
+pub mod dma;
 pub mod event;
 // pub mod ext2;
 pub mod heap;
@@ -205,7 +206,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
             Work::work();
         })
     });
-    one!({ Arch::set_irq_enabled(true) });
+    all!({ Arch::set_irq_enabled(true) });
     poll_tasks() // runs on all cores, never to return
 }
 

@@ -150,7 +150,7 @@ fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
 }
 
 // unmap a virtual address in the given address space, returning the physical address that was mapped there if it was mapped
-pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
     let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
@@ -190,9 +190,19 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
         free_unused_tables(vaddr, l0, l1, l2, l3);
-        frame_dealloc(paddr as usize);
+        if free_frame {
+            frame_dealloc(paddr as usize);
+        }
         Some(paddr)
     }
+}
+
+pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, true)
+}
+
+pub fn vunmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, false)
 }
 
 fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64], l3: &mut [u64]) {
