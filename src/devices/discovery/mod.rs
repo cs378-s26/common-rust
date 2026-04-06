@@ -1,8 +1,10 @@
 pub mod acpi;
 pub mod device_tree;
+pub mod pci;
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
+use crate::devices::discovery::pci::PciVirtioDiscovery;
 use crate::devices::virtio_discovery::VirtioDiscovery;
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
@@ -52,6 +54,7 @@ pub fn create_drivers() {
     let mut drivers = SYSTEM_DRIVERS.lock();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
+    drivers.push(Box::new(PciVirtioDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
 }
 

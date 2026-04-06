@@ -154,15 +154,25 @@ impl Madt {
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
+pub struct McfgEntry {
+    pub base_address: u64,
+    pub segment_group: u16,
+    pub start_bus: u8,
+    pub end_bus: u8,
+    reserved: u32,
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
 pub struct Mcfg {
     header: SDTHeader,
     reserved: u64,
-    entries: usize,
+    entries: usize, // virtual pointer to first McfgEntry, set in from_addr
 }
 
 impl Mcfg {
     fn from_addr(addr: usize) -> Option<Self> {
-        let mcfg = unsafe { *(addr as *mut Mcfg) };
+        let mut mcfg = unsafe { *(addr as *mut Mcfg) };
         // checksum validation
         let bytes =
             unsafe { core::slice::from_raw_parts(addr as *const u8, mcfg.header.length as usize) };
@@ -173,7 +183,23 @@ impl Mcfg {
         if checksum != 0 {
             return None;
         }
+        mcfg.entries = addr + core::mem::size_of::<SDTHeader>() + core::mem::size_of::<u64>();
         Some(mcfg)
+    }
+
+    pub fn iterate_entries(&self) -> impl Iterator<Item = McfgEntry> {
+        let header_and_reserved = core::mem::size_of::<SDTHeader>() + core::mem::size_of::<u64>();
+        // SAFETY: addr_of! avoids creating a misaligned reference to packed fields.
+        let length =
+            unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(self.header.length)) };
+        let entry_bytes = length as usize - header_and_reserved;
+        let count = entry_bytes / core::mem::size_of::<McfgEntry>();
+        let base = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(self.entries)) };
+        (0..count).map(move |i| unsafe {
+            core::ptr::read_unaligned(
+                (base + i * core::mem::size_of::<McfgEntry>()) as *const McfgEntry,
+            )
+        })
     }
 }
 
