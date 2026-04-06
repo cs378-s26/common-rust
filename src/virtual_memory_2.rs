@@ -19,11 +19,8 @@ const USERSPACE_END: usize = 0x8000_0000_0000_0000;
 static LIMINE_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
-    #[allow(unused)]
     file: Option<(INodeKey, usize, Option<usize>)>,
-    #[allow(unused)]
     length: usize,
-    #[allow(unused)]
     shared: bool,
     base: usize,
     link: RBTreeLink,
@@ -161,6 +158,9 @@ impl VirtualMemory {
         if mapping.base + mapping.length <= vaddr {
             return Err("out of mapped range");
         }
+        // TODO: This is too broad with how it deals with TLB
+        // shootdowns. It does a shootdown, even when we are doing a
+        // read->write promotion, which is not needed.
         if cause.contains(PageFaultConditions::PRESENT) {
             self.invlpg(vaddr);
         }
