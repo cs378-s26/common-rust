@@ -159,6 +159,64 @@ kernel_common::integration_test!({
     }
 
     // Test 3:
+    // Exercise BlockDevice::read on a byte range that starts at a block boundary but ends within
+    // the same block. This is the aligned-start single-block case that used to return zero bytes.
+    {
+        let [b0, b1, b2] = test_blocks;
+        let block_idxs = [b0, b1, b2];
+
+        let mut original0 = vec![0u8; block_size];
+        let mut original1 = vec![0u8; block_size];
+        let mut original2 = vec![0u8; block_size];
+        let mut original_blocks: [&mut [u8]; 3] = [
+            original0.as_mut_slice(),
+            original1.as_mut_slice(),
+            original2.as_mut_slice(),
+        ];
+
+        virtio_blk_device
+            .read_blocks(&block_idxs, &mut original_blocks)
+            .expect("Failed to read original blocks for aligned single-block read test");
+
+        let mut block0 = vec![0u8; block_size];
+        let mut block1 = vec![0u8; block_size];
+        let mut block2 = vec![0u8; block_size];
+        fill_pattern(&mut block0, 17, 0x19);
+        fill_pattern(&mut block1, 19, 0x2B);
+        fill_pattern(&mut block2, 23, 0x3D);
+
+        let setup_blocks: [&[u8]; 3] = [block0.as_slice(), block1.as_slice(), block2.as_slice()];
+        virtio_blk_device
+            .write_blocks(&block_idxs, &setup_blocks)
+            .expect("Failed to program blocks for aligned single-block read test");
+
+        let read_len = block_size / 2 + 37;
+        let mut read_buf = vec![0u8; read_len];
+        let bytes_read = virtio_blk_device
+            .read(b1 * block_size, &mut read_buf)
+            .expect("BlockDevice::read failed for aligned single-block read test");
+
+        assert_eq!(
+            bytes_read, read_len,
+            "BlockDevice::read returned the wrong byte count for an aligned single-block range"
+        );
+        assert_eq!(
+            &read_buf[..],
+            &block1[..read_len],
+            "BlockDevice::read returned the wrong bytes for an aligned single-block range"
+        );
+
+        let restore_blocks: [&[u8]; 3] = [
+            original0.as_slice(),
+            original1.as_slice(),
+            original2.as_slice(),
+        ];
+        virtio_blk_device
+            .write_blocks(&block_idxs, &restore_blocks)
+            .expect("Failed to restore original contents after aligned single-block read test");
+    }
+
+    // Test 4:
     // Exercise BlockDevice::read across three blocks so we hit all helper paths:
     // partial first block, full middle block(s), and partial final block.
     {
@@ -223,7 +281,7 @@ kernel_common::integration_test!({
             .expect("Failed to restore original contents after multi-block read test");
     }
 
-    // Test 4:
+    // Test 5:
     // Exercise BlockDevice::write within a single block. This should patch only the requested
     // byte range and preserve the prefix and suffix around it.
     {
