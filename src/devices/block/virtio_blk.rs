@@ -3,8 +3,8 @@ extern crate virtio_drivers;
 use super::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
+use crate::dma::MmioRegion;
 use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use core::ptr::NonNull;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
@@ -151,18 +151,11 @@ unsafe impl Hal for VirtioBlkHal {
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
 
-        let mapping = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
-            None,
-            pages_covered * Arch::PAGE_SIZE,
-            Some(phys_base),
-            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
-            false,
-        )
-        .expect("failed to allocate virtio MMIO mapping");
-        let virt_addr = mapping.base + page_offset;
+        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
+        let virt_addr = region.virt_addr();
 
-        core::mem::forget(mapping);
+        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
+
         NonNull::new(virt_addr as *mut u8).unwrap()
     }
 

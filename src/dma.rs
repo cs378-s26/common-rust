@@ -99,7 +99,7 @@ impl MmioRegion {
             None,
             aligned_size,
             Some(phys_addr),
-            PagingOptions::PRESENT | PagingOptions::WRITABLE, // deliberately no CACHEABLE
+            PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY, // deliberately no CACHEABLE
             false, // don't free physical frames on drop — they're hardware registers
         )
         .expect("failed to allocate virtual address range for MMIO");
