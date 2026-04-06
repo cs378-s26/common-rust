@@ -2,7 +2,6 @@ use core::arch::asm;
 
 use spin::Once;
 
-// use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
