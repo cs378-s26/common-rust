@@ -7,7 +7,7 @@ const PAGE_SIZE: usize = 4096;
 #[unsafe(link_section = ".limine_requests")]
 static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 
-pub trait Disk: Send {
+pub trait Disk {
     fn read_sector(&self, sector: usize, buffer: &mut [u8]);
     fn write_sector(&mut self, sector: usize, buffer: &[u8]);
     fn sector_size(&self) -> usize;

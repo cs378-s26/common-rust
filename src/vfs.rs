@@ -117,7 +117,6 @@ pub trait FileTrait: Send + Sync {
     // TODO is this just a block device?
     fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str>;
     fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
-    // TODO don't use physical pages here
 }
 pub struct File<F: FileTrait>(pub F); // rust type system moment
 
