@@ -250,7 +250,7 @@ impl VirtualMemory {
             return Ok(false);
         }
         let private_key = PageKey::Anonymous {
-            process_id: Arch::get_address_space() as usize,
+            process_id: self.page_table,
             virtual_address: vaddr,
         };
         let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
