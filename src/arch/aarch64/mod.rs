@@ -98,8 +98,16 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
-    fn get_address_space() -> u64 {
-        vmm::get_address_space()
+    fn get_kernel_address_space() -> u64 {
+        vmm::get_kernel_address_space()
+    }
+
+    fn get_user_address_space() -> u64 {
+        vmm::get_user_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
+        vmm::set_user_address_space(space)
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {

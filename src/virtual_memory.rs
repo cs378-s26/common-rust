@@ -104,7 +104,7 @@ pub fn init_virtual_memory_allocator() {
     for region in *REGIONS.get().unwrap() {
         // if you need to map over one of these, just change backing and options accordingly
         VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             Some(HHDM_OFFSET.get().unwrap() + region.base as usize),
             region.length as usize,
             None,
@@ -131,7 +131,7 @@ pub fn init_virtual_memory_allocator() {
         executable_start.virtual_base() + executable_length
     );
     VirtualMemoryAllocation::new(
-        Arch::get_address_space(),
+        Arch::get_kernel_address_space(),
         Some(executable_start.virtual_base() as usize),
         executable_length as usize,
         None,
@@ -151,7 +151,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
             drop(vmes);
             let frame = frame_alloc();
             Arch::virtual_map(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 address as u64 & !(Arch::PAGE_SIZE as u64 - 1),
                 frame as u64,
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
@@ -366,7 +366,7 @@ mod test {
 
         kprintln!("manually mapping vmem");
         Arch::virtual_map(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             vaddr as u64,
             paddr as u64,
             PagingOptions::PRESENT
@@ -383,7 +383,7 @@ mod test {
             assert!(unsafe { *((vaddr + i) as *mut u8) } == i as u8);
         }
         kprintln!("manually unmapping vmem");
-        Arch::virtual_unmap(Arch::get_address_space(), vaddr as u64);
+        Arch::virtual_unmap(Arch::get_kernel_address_space(), vaddr as u64);
         kprintln!("virtual memory mapping test complete");
     }
 
@@ -394,7 +394,7 @@ mod test {
         kprintln!("properly mapping vmem");
         let mmapped = (
             VirtualMemoryAllocation::new(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 None,
                 SIZE,
                 None,
@@ -405,7 +405,7 @@ mod test {
             )
             .unwrap(),
             VirtualMemoryAllocation::new(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 None,
                 SIZE,
                 None,
@@ -450,7 +450,7 @@ mod test {
         for _ in 0..ITERATIONS {
             if vmas.is_empty() || rand(&mut seed).is_multiple_of(2) {
                 let vma = VirtualMemoryAllocation::new(
-                    Arch::get_address_space(),
+                    Arch::get_kernel_address_space(),
                     None,
                     Arch::PAGE_SIZE * rand(&mut seed) as usize,
                     None,
@@ -499,7 +499,7 @@ mod test {
                 for i in 0..ITERATIONS {
                     let size = Arch::PAGE_SIZE * (i + 1);
                     let mmapped = VirtualMemoryAllocation::new(
-                        Arch::get_address_space(),
+                        Arch::get_kernel_address_space(),
                         None,
                         size,
                         None,

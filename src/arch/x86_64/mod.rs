@@ -121,11 +121,15 @@ impl ArchTrait for Arch {
 
     fn configure_vm() {}
 
-    fn get_address_space() -> u64 {
+    fn get_kernel_address_space() -> u64 {
         get_address_space()
     }
 
-    fn set_address_space(space: u64) {
+    fn get_user_address_space() -> u64 {
+        get_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
         set_address_space(space)
     }
 

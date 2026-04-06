@@ -14,7 +14,7 @@ const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
 static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 const USERSPACE_START: usize = 0x10000;
 const USERSPACE_END: usize = 0x8000_0000_0000_0000;
-static KERNEL_PAGE_TABLE: Once<usize> = Once::new();
+static LIMINE_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
     #[allow(unused)]
@@ -43,8 +43,9 @@ pub struct VirtualMemory {
 
 impl VirtualMemory {
     pub fn init() {
-        let kernel_page_table = KERNEL_PAGE_TABLE.call_once(|| Arch::get_address_space() as usize);
-        assert!(kernel_page_table.is_multiple_of(Arch::PAGE_SIZE));
+        let limine_page_table =
+            LIMINE_PAGE_TABLE.call_once(|| Arch::get_user_address_space() as usize);
+        assert!(limine_page_table.is_multiple_of(Arch::PAGE_SIZE));
     }
 
     pub fn mmap(
@@ -114,8 +115,8 @@ impl VirtualMemory {
         self.page_table
     }
 
-    pub fn get_kernel_page_table() -> usize {
-        *KERNEL_PAGE_TABLE.get().unwrap()
+    pub fn get_limine_page_table() -> usize {
+        *LIMINE_PAGE_TABLE.get().unwrap()
     }
 }
 
@@ -123,7 +124,7 @@ impl VirtualMemory {
     fn new_page_table() -> usize {
         let page_table = physical_memory::frame_alloc();
         unsafe {
-            physical_memory::copy(Self::get_kernel_page_table(), page_table, Arch::PAGE_SIZE)
+            physical_memory::copy(Self::get_limine_page_table(), page_table, Arch::PAGE_SIZE)
         };
         page_table
     }
