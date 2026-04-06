@@ -1,3 +1,4 @@
+use crate::kprintln;
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
