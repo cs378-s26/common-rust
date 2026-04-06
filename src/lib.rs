@@ -26,6 +26,7 @@ pub mod physical_memory;
 pub mod print;
 pub mod ramdisk;
 pub mod state;
+pub mod symbols;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
@@ -39,6 +40,7 @@ use crate::event::init_event_handler;
 use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
+use crate::symbols::init_symbols_from_modules;
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
@@ -106,6 +108,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     parse_kernel_cmdline();
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_tty();
+
+    init_symbols_from_modules();
 
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {

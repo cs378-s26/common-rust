@@ -14,6 +14,7 @@ use limine::request::FramebufferRequest;
 use spin::Once;
 
 use crate::arch::{self, UnwindContext, UnwindContextTrait};
+use crate::symbols::{self, lookup_symbol};
 use crate::sync::{IntMutex, MutexLike};
 
 #[derive(Clone, Copy)]
@@ -321,7 +322,17 @@ impl Display for StackTrace {
         let mut i = 0;
         while unsafe { context.valid() } {
             let addr = unsafe { context.return_address() };
-            writeln!(f, "#{}: {:#016x}", i, addr)?;
+
+            match lookup_symbol(addr) {
+                Some(symbol) => {
+                    let demangled = rustc_demangle::demangle(symbol.name);
+                    writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?;
+                }
+                None => {
+                    writeln!(f, "#{}: {:#016x}", i, addr)?;
+                }
+            }
+
             i += 1;
             context = unsafe { context.next() };
         }
