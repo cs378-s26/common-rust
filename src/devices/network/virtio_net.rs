@@ -74,7 +74,7 @@ unsafe impl Hal for VirtioNetHal {
     }
 
     // allocates a DMA bounce buffer and copies data into it if the direction is driver-to-device
-    // returns the physical address for the device to read from
+    // returns the physical address for the device to read from 
     // the bounce buffer is freed by unshare when the transfer is complete
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
         let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
