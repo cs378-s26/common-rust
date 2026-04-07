@@ -2,8 +2,9 @@
 #![allow(irrefutable_let_patterns)]
 
 use crate::arch::{Arch, ArchTrait};
-use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::virtio::virtio_blk::VirtIOBlkDiskDriver;
+use crate::devices::virtio::{KernelConfigurationAccess, VirtioBlkHal};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::vec;
@@ -11,6 +12,8 @@ use alloc::vec::Vec;
 use core::ptr::NonNull;
 use virtio_drivers::transport::Transport;
 use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
+use virtio_drivers::transport::pci::PciTransport;
+use virtio_drivers::transport::pci::bus::{DeviceFunction, PciRoot};
 
 pub struct VirtioDiscovery;
 
@@ -61,6 +64,19 @@ impl DeviceDiscovery for VirtioDiscovery {
                     return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
                 }
             }
+        } else if let DeviceNode::Pcie(pcie_fn) = node {
+            let mut pci_root = PciRoot::new(KernelConfigurationAccess {});
+            let transport = PciTransport::new::<VirtioBlkHal, KernelConfigurationAccess>(
+                &mut pci_root,
+                DeviceFunction {
+                    bus: pcie_fn.bus,
+                    device: pcie_fn.device,
+                    function: pcie_fn.function,
+                },
+            )
+            .ok()?;
+            let driver = VirtIOBlkDiskDriver::new(transport);
+            return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
         }
         None
     }

@@ -42,8 +42,8 @@ enum Commands {
         mem: u8,
         #[arg(short = 'r', long)]
         release: bool,
-        #[arg(short = 'd', long, default_value = "disk.img")]
-        disk_path: String,
+        #[arg(short = 'f', long, default_value = "fs_dir")]
+        filesystem_path: String,
     },
     QemuTest {
         test_cfg_path: String,
@@ -83,8 +83,8 @@ fn main() -> Result<()> {
             cores,
             mem,
             release,
-            disk_path,
-        } => qemu::run(kvm, cores, mem, release, target, disk_path)?,
+            filesystem_path,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
         Commands::Gdb {
             target,
             kvm,
