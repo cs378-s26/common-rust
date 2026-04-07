@@ -25,14 +25,12 @@ pub mod mp;
 pub mod panic;
 pub mod physical_memory;
 pub mod print;
-pub mod ramdisk;
-pub mod ramfs;
 pub mod state;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
-pub mod vfs;
 pub mod virtual_memory;
+pub mod fs;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
