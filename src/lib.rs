@@ -19,6 +19,7 @@ pub mod devices;
 pub mod dma;
 pub mod event;
 // pub mod ext2;
+pub mod fs;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -30,7 +31,6 @@ pub mod sync;
 pub mod syscall;
 pub mod thread;
 pub mod virtual_memory;
-pub mod fs;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait};

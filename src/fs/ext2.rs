@@ -725,8 +725,8 @@ impl<D: Disk> FNode<D> {
 mod test {
     use crate::alloc::string::ToString;
     use crate::fs::ext2::Ext2;
-    use crate::print::kprintln;
     use crate::fs::ramdisk::Ramdisk;
+    use crate::print::kprintln;
     use crate::sync::MutexLike;
     use alloc::sync::Arc;
 

@@ -1,10 +1,10 @@
 use crate::arch::Arch;
 use crate::arch::ArchTrait;
+use crate::fs::vfs::INode;
+use crate::fs::vfs::{DirectoryTrait, FileTrait, Filesystem};
 use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
-use crate::fs::vfs::INode;
-use crate::fs::vfs::{DirectoryTrait, FileTrait, Filesystem};
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
@@ -97,12 +97,12 @@ impl Filesystem for RAMFilesystem {
 #[cfg(test)]
 mod test {
     use crate::arch::{Arch, ArchTrait};
-    use crate::physical_memory;
-    use crate::physical_memory::HHDM_OFFSET;
     use crate::fs::ramfs::RAMFilesystem;
-    use crate::sync::IntMutex;
     use crate::fs::vfs::Filesystem;
     use crate::fs::vfs::{Directory, File};
+    use crate::physical_memory;
+    use crate::physical_memory::HHDM_OFFSET;
+    use crate::sync::IntMutex;
     use alloc::string::String;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
