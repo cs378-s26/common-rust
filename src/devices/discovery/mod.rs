@@ -1,5 +1,6 @@
 pub mod acpi;
 pub mod device_tree;
+pub mod pcie;
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
@@ -10,6 +11,7 @@ use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
 use fdt::node::FdtNode;
+use spin::lazy::Lazy;
 
 // lists of initialized devices in the system
 pub static BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =
@@ -24,15 +26,16 @@ pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn NetworkDevice + Send + Sync>>> 
 /// all implemented discovery drivers in the system.
 /// DTB discovery walks this list in order and lets the first matching driver
 /// claim a node; other walkers may define different stop semantics.
-pub static SYSTEM_DRIVERS: IntMutex<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
-    IntMutex::new(Vec::new());
+/// maybe make this a read write lock?
+pub static SYSTEM_DRIVERS: Lazy<Vec<Box<dyn DeviceDiscovery + Send + Sync>>> =
+    Lazy::new(create_drivers);
 
 // Each architecture provides its own variant of DeviceNode. Drivers only match the variant
 // for their architecture, so arch-specific types never leak into cross-arch compilation units.
 pub enum DeviceNode<'a, 'b> {
     DTB(FdtNode<'a, 'b>),
     MadtEntry(acpi::MadtEntry),
-    Mcfg(acpi::Mcfg),
+    Pcie(pcie::PcieFunction), // PCIE controller + function number
 }
 
 pub enum DeviceType {
@@ -49,11 +52,12 @@ pub trait DeviceDiscovery {
     fn name(&self) -> &'static str;
 }
 
-pub fn create_drivers() {
-    let mut drivers = SYSTEM_DRIVERS.lock();
+pub fn create_drivers() -> Vec<Box<dyn DeviceDiscovery + Send + Sync>> {
+    let mut drivers: Vec<Box<dyn DeviceDiscovery + Send + Sync>> = Vec::new();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
+    drivers
 }
 
 pub fn discover_devices() {
