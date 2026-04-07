@@ -1,6 +1,5 @@
 use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS};
 use crate::print::kprintln;
-use crate::sync::MutexLike;
 use alloc::vec::Vec;
 use core::option::Option;
 use fdt::{self};
@@ -21,7 +20,7 @@ pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
 
     // Walk nodes outermost so the first matching discovery driver claims each node.
     for node in fdt.all_nodes() {
-        for driver in SYSTEM_DRIVERS.lock().iter() {
+        for driver in SYSTEM_DRIVERS.iter() {
             let matched_device = driver.am_i_this(DeviceNode::DTB(node));
             if let Some(devices) = matched_device {
                 matched_devices.extend(devices);

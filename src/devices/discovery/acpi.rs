@@ -1,6 +1,8 @@
+use crate::devices::discovery::pcie::init_pcie;
 use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS};
+use crate::dma::MmioRegion;
 use crate::physical_memory::HHDM_OFFSET;
-use crate::sync::MutexLike;
+use crate::print::kprintln;
 use alloc::vec::Vec;
 use limine::request::RsdpRequest;
 // use virtio_drivers::read_config;
@@ -152,17 +154,29 @@ impl Madt {
     }
 }
 
-#[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Mcfg {
     header: SDTHeader,
-    reserved: u64,
-    entries: usize,
+    entries: Vec<McfgEntry>,
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+pub struct McfgEntry {
+    pub base_address: u64,
+    pub segment_group_number: u16,
+    pub start_bus_number: u8,
+    pub end_bus_number: u8,
+    pub reserved: [u8; 4],
 }
 
 impl Mcfg {
     fn from_addr(addr: usize) -> Option<Self> {
-        let mcfg = unsafe { *(addr as *mut Mcfg) };
+        let header = unsafe { *(addr as *const SDTHeader) };
+        let mut mcfg = Mcfg {
+            header,
+            entries: Vec::new(),
+        };
         // checksum validation
         let bytes =
             unsafe { core::slice::from_raw_parts(addr as *const u8, mcfg.header.length as usize) };
@@ -173,7 +187,25 @@ impl Mcfg {
         if checksum != 0 {
             return None;
         }
+        let mut current = addr + core::mem::size_of::<SDTHeader>() + 8; // header + reserved
+        let end = addr + mcfg.header.length as usize;
+        while current + core::mem::size_of::<McfgEntry>() <= end {
+            let mut entry = unsafe { *(current as *const McfgEntry) };
+            // map the physical address to virtual for later
+            kprintln!("Mapping MCFG entry: {:#x?}", entry);
+            let num_buses = (entry.end_bus_number - entry.start_bus_number) as usize + 1;
+            let mapping = MmioRegion::new(entry.base_address as usize, num_buses * 32 * 8 * 4096);
+            entry.base_address = mapping.virt_addr() as u64;
+            mcfg.entries.push(entry);
+            core::mem::forget(mapping); // We don't want to drop the mapping
+            current += core::mem::size_of::<McfgEntry>();
+        }
+        kprintln!("MCFG: {:#?}", mcfg);
         Some(mcfg)
+    }
+
+    pub fn iterate_entries(&self) -> impl Iterator<Item = &McfgEntry> {
+        self.entries.iter()
     }
 }
 
@@ -241,7 +273,7 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     let mcfg = xsdt.parse_mcfg()?;
     let mut matched_devices = Vec::new();
 
-    for driver in SYSTEM_DRIVERS.lock().iter() {
+    for driver in SYSTEM_DRIVERS.iter() {
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));
@@ -250,12 +282,8 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
                 break;
             }
         }
-        // Try to see if anyone wants to take the MCFG
-        let device = driver.am_i_this(DeviceNode::Mcfg(mcfg));
-        if let Some(d) = device {
-            matched_devices.extend(d);
-            break;
-        }
+        // Parse PCI-E w/ the MCFG
+        matched_devices.extend(init_pcie(mcfg.clone()));
     }
 
     Some(matched_devices)
