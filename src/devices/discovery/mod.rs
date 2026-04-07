@@ -4,7 +4,7 @@ pub mod pcie;
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::virtio_discovery::VirtioDiscovery;
+use crate::devices::virtio::discovery::VirtioDiscovery;
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;

@@ -2,7 +2,6 @@ use crate::devices::discovery::pcie::init_pcie;
 use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS};
 use crate::dma::MmioRegion;
 use crate::physical_memory::HHDM_OFFSET;
-use crate::print::kprintln;
 use alloc::vec::Vec;
 use limine::request::RsdpRequest;
 // use virtio_drivers::read_config;
@@ -192,7 +191,6 @@ impl Mcfg {
         while current + core::mem::size_of::<McfgEntry>() <= end {
             let mut entry = unsafe { *(current as *const McfgEntry) };
             // map the physical address to virtual for later
-            kprintln!("Mapping MCFG entry: {:#x?}", entry);
             let num_buses = (entry.end_bus_number - entry.start_bus_number) as usize + 1;
             let mapping = MmioRegion::new(entry.base_address as usize, num_buses * 32 * 8 * 4096);
             entry.base_address = mapping.virt_addr() as u64;
@@ -200,7 +198,6 @@ impl Mcfg {
             core::mem::forget(mapping); // We don't want to drop the mapping
             current += core::mem::size_of::<McfgEntry>();
         }
-        kprintln!("MCFG: {:#?}", mcfg);
         Some(mcfg)
     }
 
@@ -282,9 +279,9 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
                 break;
             }
         }
-        // Parse PCI-E w/ the MCFG
-        matched_devices.extend(init_pcie(mcfg.clone()));
     }
+    // Parse PCI-E w/ the MCFG
+    matched_devices.extend(init_pcie(mcfg.clone()));
 
     Some(matched_devices)
 }

@@ -1,14 +1,12 @@
 extern crate virtio_drivers;
 
-use super::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::dma::MmioRegion;
-use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
-use core::ptr::NonNull;
+use crate::devices::block::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
+use crate::devices::virtio::VirtioBlkHal;
+use virtio_drivers::Hal;
 use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
 use virtio_drivers::transport::Transport;
-use virtio_drivers::{BufferDirection, Hal, PhysAddr};
 
 // Wrapper around the virtio blk driver containing the necessary HAL
 // implementation for it to work with our system block device trait.
@@ -120,83 +118,4 @@ fn check_buffer_size(buffer: &[u8], block_size: usize) -> Result<(), BlockDevice
         return Err(BlockDeviceError::InvalidBufferSize);
     }
     Ok(())
-}
-
-pub struct VirtioBlkHal;
-
-unsafe impl Hal for VirtioBlkHal {
-    fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
-        let paddr = alloc_frames(pages) as u64;
-        let vaddr = paddr + hhdm as u64;
-
-        // DT virtio-blk is DMA-coherent, so the default HHDM alias is sufficient.
-        // Re-mapping it with different cacheability needs TLB shootdowns first.
-        unsafe {
-            core::ptr::write_bytes(vaddr as *mut u8, 0, pages * Arch::PAGE_SIZE);
-        }
-
-        (paddr, NonNull::new(vaddr as *mut u8).unwrap())
-    }
-
-    unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, pages: usize) -> i32 {
-        for page in 0..pages {
-            frame_dealloc(paddr as usize + page * Arch::PAGE_SIZE);
-        }
-        0
-    }
-
-    unsafe fn mmio_phys_to_virt(paddr: PhysAddr, size: usize) -> NonNull<u8> {
-        let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
-        let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
-        let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
-
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr();
-
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
-
-        NonNull::new(virt_addr as *mut u8).unwrap()
-    }
-
-    unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
-        let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
-        let (paddr, _) = Self::dma_alloc(pages, direction);
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
-
-        if matches!(
-            direction,
-            BufferDirection::DriverToDevice | BufferDirection::Both
-        ) {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    buffer.as_ptr() as *const u8,
-                    (paddr + hhdm) as *mut u8,
-                    buffer.len(),
-                );
-            }
-        }
-
-        paddr
-    }
-
-    unsafe fn unshare(paddr: PhysAddr, buffer: NonNull<[u8]>, direction: BufferDirection) {
-        let hhdm = HHDM_REQUEST.get_response().unwrap().offset();
-        let pages = buffer.len().div_ceil(Arch::PAGE_SIZE);
-        let vaddr = NonNull::new((paddr + hhdm) as *mut u8).unwrap();
-
-        unsafe {
-            if matches!(
-                direction,
-                BufferDirection::DeviceToDriver | BufferDirection::Both
-            ) {
-                core::ptr::copy_nonoverlapping(
-                    vaddr.as_ptr() as *const u8,
-                    buffer.as_ptr() as *mut u8,
-                    buffer.len(),
-                );
-            }
-            Self::dma_dealloc(paddr, vaddr, pages);
-        }
-    }
 }

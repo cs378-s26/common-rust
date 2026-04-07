@@ -2,7 +2,7 @@ use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mc
 use alloc::vec::Vec;
 use spin::once::Once;
 
-static PCIE: Once<Pcie> = Once::new();
+pub static PCIE: Once<Pcie> = Once::new();
 
 pub struct Pcie {
     mcfg: Mcfg,
