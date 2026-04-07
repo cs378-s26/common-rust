@@ -159,12 +159,12 @@ unsafe impl Hal for VirtioBlkHal {
         let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
         let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
         let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
+        let region = MmioRegion::new(phys_base, pages_covered);
+        let vaddr = region.virt_addr() + page_offset;
 
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr();
-
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
-        NonNull::new(virt_addr as *mut u8).unwrap()
+        // don't want the region to be deallocated on drop, but nowhere easy to put ownership
+        core::mem::forget(region);
+        NonNull::new(vaddr as *mut u8).unwrap()
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {

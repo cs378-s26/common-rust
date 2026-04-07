@@ -10,7 +10,6 @@ use crate::devices::device_discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-pub mod apic;
 mod asm;
 mod context;
 mod devices;
@@ -66,9 +65,9 @@ impl ArchTrait for Arch {
         asm::sleep_core();
     }
 
-    fn wake_other_cores() {
-        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
-    }
+    // TODO implement this
+    // doesn't really affect correctness just can give a performance boost
+    fn wake_other_cores() {}
 
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
@@ -114,9 +113,15 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
+    // no-op on aarch64
     fn virtual_invalidate(_vaddr: u64) {}
 
-    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {}
+    // TODO this needs to be made more flexible to allow different kinds of shootdowns, not just global
+    fn shootdown_tlbs(_space: u64, base: usize, length: usize) {
+        for page in (0..length).step_by(Self::PAGE_SIZE) {
+            vmm::tlb_shootdown((base + page) as u64);
+        }
+    }
 
     fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
         vmm::vunmap_no_dealloc(_space, _vaddr)

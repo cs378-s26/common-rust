@@ -1,11 +1,35 @@
 use super::context::GPRegisters;
 use super::interrupt::InterruptContext;
-use crate::thread::preempt_to_idle;
+use crate::event::{Event, push_event};
+use crate::thread::{block_to_idle, preempt_to_idle, this_thread};
+use crate::virtual_memory::PageFaultConditions;
 use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;
 
 global_asm!(include_str!("exception.s"));
+
+// docs for all this here:
+// https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
+const SVC: u64 = 0b010101; // SVC instruction from AArch64
+const INSTRUCTION_ABORT: u64 = 0b100001; // Instruction Abort from same EL
+const INSTRUCTION_ABORT_LOWER: u64 = 0b100000; // Instruction Abort from lower EL
+const DATA_ABORT: u64 = 0b100101; // Data Abort from same EL
+const DATA_ABORT_LOWER: u64 = 0b100100; // Data Abort from lower EL
+const ISS_MASK: u64 = 0x1FFFFFF; // Instruction Specific Syndrome mask
+
+// Data Abort ISS bits from ESR_EL1.
+const DATA_ABORT_DFSC_MASK: u64 = 0b11_1111;
+const DATA_ABORT_WNR: u64 = 1 << 6;
+const DATA_ABORT_S1PTW: u64 = 1 << 7;
+const DATA_ABORT_FNV: u64 = 1 << 10;
+
+const DFSC_TRANSLATION_FAULT_L0: u64 = 0b000100;
+const DFSC_TRANSLATION_FAULT_L3: u64 = 0b000111;
+const DFSC_ACCESS_FLAG_FAULT_L0: u64 = 0b001000;
+const DFSC_ACCESS_FLAG_FAULT_L3: u64 = 0b001011;
+const DFSC_PERMISSION_FAULT_L0: u64 = 0b001100;
+const DFSC_PERMISSION_FAULT_L3: u64 = 0b001111;
 
 /// The exception context as it is stored on the stack on exception entry.
 #[repr(C)]
@@ -22,8 +46,7 @@ struct ExceptionContext {
 fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
-    kprintln!("core {} exc class: {:x}", CORE_ID.get(), exception_class);
-    if exception_class == 0x15 {
+    if exception_class == SVC {
         kprintln!("SVC");
         exc.elr_el1 += 4;
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
@@ -31,7 +54,14 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         // system_call_handler(exc);
 
         return;
+    } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
+        kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+    } else if exception_class == DATA_ABORT || exception_class == DATA_ABORT_LOWER {
+        page_fault_handler(exc, exception_class);
+    } else {
+        kprintln!("Unhandled exception class: {:x}", exception_class);
     }
+
     panic!(
         "Exception on core {}!\n\n\
         {}",
@@ -46,8 +76,40 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
 
 #[unsafe(no_mangle)]
 extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
-    kprintln!("Current elx synchronous");
     default_exception_handler(e);
+}
+
+fn page_fault_handler(e: &mut ExceptionContext, exception_class: u64) {
+    let far_el1: u64;
+
+    unsafe {
+        asm!("mrs {}, FAR_EL1", out(reg) far_el1);
+    }
+    let iss = e.esr_el1 & ISS_MASK;
+
+    if let Some(cause) = page_fault_cause(exception_class, iss) {
+        push_event(
+            Event::PageFault {
+                cause,
+                address: far_el1 as usize,
+                thread: this_thread(),
+            },
+            CORE_ID.get(),
+        );
+
+        let interrupt_context = InterruptContext {
+            gpr: e.gpr,
+            sp: e.sp,
+            pc: e.elr_el1,
+            spsr: e.spsr_el1,
+        };
+
+        unsafe {
+            block_to_idle(&interrupt_context);
+        }
+    } else {
+        kprintln!("Data abort is not a page fault: ISS={:#010x}", iss);
+    }
 }
 
 #[allow(unused_variables)]
@@ -135,6 +197,7 @@ pub fn current_privilege_level() -> &'static str {
 }
 
 pub fn init_exceptions() {
+    // set up a stack per EL and move stack pointer to work with the EL1 stack
     unsafe {
         core::arch::asm!(
             "mov x0, sp",
@@ -196,6 +259,45 @@ pub fn dump_core_state(label: &str) {
     kprintln!("  cpacr_el1 = {:#018x}", cpacr_el1);
     kprintln!("  x0        = {:#018x}", x0);
     kprintln!("  x1        = {:#018x}", x1);
+}
+
+fn page_fault_cause(exception_class: u64, iss: u64) -> Option<PageFaultConditions> {
+    let dfsc = iss & DATA_ABORT_DFSC_MASK;
+
+    // if it's a translation fault, present bit should be set to zero, otherwise the page must have been present
+    let mut cause = if is_translation_fault(dfsc) {
+        PageFaultConditions::empty()
+    } else if is_access_or_permission_fault(dfsc) {
+        PageFaultConditions::PRESENT
+    } else {
+        return None;
+    };
+
+    if (iss & DATA_ABORT_WNR) != 0 {
+        cause.insert(PageFaultConditions::WRITE);
+    }
+    if exception_class == DATA_ABORT_LOWER {
+        cause.insert(PageFaultConditions::USER);
+    }
+
+    // this means walking page tables caused a fault (besides for causes above) or Far Not Valid,
+    // meaning we don't have an address for the fault
+    if (iss & (DATA_ABORT_S1PTW | DATA_ABORT_FNV)) != 0 {
+        cause.insert(PageFaultConditions::CORRUPT);
+    }
+
+    Some(cause)
+}
+
+// look into the dfsc code to find the cause of the data abort. There are different bit codes for
+// each level of page table, so we check if it's inbetween L0 and L3
+fn is_translation_fault(dfsc: u64) -> bool {
+    (DFSC_TRANSLATION_FAULT_L0..=DFSC_TRANSLATION_FAULT_L3).contains(&dfsc)
+}
+
+fn is_access_or_permission_fault(dfsc: u64) -> bool {
+    (DFSC_ACCESS_FLAG_FAULT_L0..=DFSC_ACCESS_FLAG_FAULT_L3).contains(&dfsc)
+        || (DFSC_PERMISSION_FAULT_L0..=DFSC_PERMISSION_FAULT_L3).contains(&dfsc)
 }
 
 impl fmt::Display for ExceptionContext {
