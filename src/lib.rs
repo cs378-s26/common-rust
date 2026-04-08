@@ -18,8 +18,10 @@ pub mod coroutine;
 pub mod devices;
 pub mod dma;
 pub mod event;
+pub mod ext2;
 pub mod heap;
 pub mod local_storage;
+pub mod modules;
 pub mod mp;
 pub mod panic;
 pub mod physical_memory;
@@ -39,8 +41,8 @@ use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use crate::event::init_event_handler;
 use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
+use crate::modules::load_modules_early;
 use crate::print::{StackTrace, init_tty, kprintln};
-use crate::symbols::init_symbols_from_modules;
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
@@ -109,7 +111,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_malloc(Span::from_slice(&raw mut THE_HEAP));
     init_tty();
 
-    init_symbols_from_modules();
+    load_modules_early();
 
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {

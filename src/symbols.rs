@@ -1,8 +1,4 @@
-use limine::request::ModuleRequest;
 use spin::Once;
-
-#[unsafe(link_section = ".limine_requests")]
-static SYMBOL_MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 
 static SYMBOL_TABLE: Once<SymbolTable> = Once::new();
 
@@ -11,7 +7,7 @@ pub struct FunctionSymbol {
     pub inline_parent: Option<usize>,
 }
 
-struct SymbolTable {
+pub struct SymbolTable {
     data: &'static [u8],
     strings_offset: usize,
     strings_len: usize,
@@ -21,8 +17,10 @@ struct SymbolTable {
     function_search_len: usize,
 }
 
+const FUNCTION_ENTRY_SIZE: usize = 32;
+
 impl SymbolTable {
-    fn parse(data: &'static [u8]) -> Option<Self> {
+    pub fn parse(data: &'static [u8]) -> Option<Self> {
         if data.len() < 8 {
             return None;
         }
@@ -34,8 +32,14 @@ impl SymbolTable {
         pos += strings_len;
 
         let functions_len = read_usize(data, &mut pos)?;
+        
+        // Validate functions_len is a multiple of entry size
+        if functions_len % FUNCTION_ENTRY_SIZE != 0 {
+            return None;
+        }
+        
         let functions_offset = pos;
-        let functions_count = functions_len / 32;
+        let functions_count = functions_len / FUNCTION_ENTRY_SIZE;
         pos += functions_len;
 
         let location_search_len = read_usize(data, &mut pos)?;
@@ -68,11 +72,17 @@ impl SymbolTable {
         core::str::from_utf8(&self.data[start..start + len]).ok()
     }
 
-    fn get_function(&self, idx: usize) -> Option<FunctionSymbol> {
+    pub fn get_function(&self, idx: usize) -> Option<FunctionSymbol> {
         if idx >= self.functions_count {
             return None;
         }
-        let base = self.functions_offset + idx * 32;
+        let base = self.functions_offset + idx * FUNCTION_ENTRY_SIZE;
+        
+        // Bounds check
+        if base + FUNCTION_ENTRY_SIZE > self.data.len() {
+            return None;
+        }
+        
         let inline_parent = usize::from_le_bytes(self.data[base..base + 8].try_into().ok()?);
         let name_offset = usize::from_le_bytes(self.data[base + 8..base + 16].try_into().ok()?);
         let name = self.get_string(name_offset)?;
@@ -82,12 +92,20 @@ impl SymbolTable {
         })
     }
 
-    fn lookup(&self, addr: u64) -> Option<FunctionSymbol> {
+    pub fn lookup(&self, addr: u64) -> Option<FunctionSymbol> {
         const KERNEL_BASE: u64 = 0xffffffff80000000;
         if addr < KERNEL_BASE {
             return None;
         }
-        let offset_addr = (addr - KERNEL_BASE) as u32;
+        
+        let offset = addr - KERNEL_BASE;
+        
+        // Check if offset fits in u32 (symbol table uses u32 offsets)
+        if offset > u32::MAX as u64 {
+            return None;
+        }
+        
+        let offset_addr = offset as u32;
 
         const ENTRY_SIZE: usize = 12; // u32 addr + u64 index
         let num_entries = self.function_search_len / ENTRY_SIZE;
@@ -99,6 +117,12 @@ impl SymbolTable {
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             let pos = self.function_search_offset + mid * ENTRY_SIZE;
+            
+            // Bounds check
+            if pos + ENTRY_SIZE > self.data.len() {
+                return None;
+            }
+            
             let entry_addr = u32::from_le_bytes(self.data[pos..pos + 4].try_into().ok()?);
 
             if entry_addr <= offset_addr {
@@ -122,26 +146,12 @@ fn read_usize(data: &[u8], pos: &mut usize) -> Option<usize> {
     Some(val)
 }
 
-pub fn init_symbols_from_modules() {
-    let response = match SYMBOL_MODULE_REQUEST.get_response() {
-        Some(r) => r,
-        None => return,
-    };
-
-    for module in response.modules() {
-        if module
-            .path()
-            .to_str()
-            .is_ok_and(|p| p.contains("kernel_symbols.mod"))
-        {
-            let data =
-                unsafe { core::slice::from_raw_parts(module.addr(), module.size() as usize) };
-            if let Some(table) = SymbolTable::parse(data) {
-                SYMBOL_TABLE.call_once(|| table);
-            }
-            return;
-        }
+pub fn try_init_table(table: SymbolTable) -> bool {
+    if SYMBOL_TABLE.get().is_some() {
+        return false;
     }
+    SYMBOL_TABLE.call_once(|| table);
+    true
 }
 
 pub fn lookup_symbol(addr: u64) -> Option<FunctionSymbol> {

@@ -14,7 +14,7 @@ use limine::request::FramebufferRequest;
 use spin::Once;
 
 use crate::arch::{self, UnwindContext, UnwindContextTrait};
-use crate::symbols::{self, lookup_symbol};
+use crate::symbols::lookup_symbol;
 use crate::sync::{IntMutex, MutexLike};
 
 #[derive(Clone, Copy)]
