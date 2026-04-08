@@ -1,23 +1,27 @@
 extern crate alloc;
 
+use crate::devices::block::BlockDevice;
 use crate::fs::ramdisk::Disk;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use alloc::string::String;
 
-pub struct Ext2<D: Disk> {
+pub struct Ext2 {
     block_size: usize,
-    disk: IntMutex<D>,
+    block_device: IntMutex<Box<dyn BlockDevice + Send + Sync>>,
     superblock: Superblock,
-    fnode_cache: IntMutex<BTreeMap<u32, Arc<FNode<D>>>>,
+    fnode_cache: IntMutex<BTreeMap<u32, Arc<FNode>>>,
     block_map_lock: IntMutex<()>,
     inode_map_lock: IntMutex<()>,
     group_lock: IntMutex<()>,
 }
 
-pub struct FNode<D: Disk> {
-    fs: Arc<Ext2<D>>,
+pub struct FNode {
+    fs: Arc<Ext2>,
     inode: IntMutex<INode>,
 }
 
@@ -73,6 +77,14 @@ struct Superblock {
     first_meta_bg: u32,
 }
 
+pub enum FsError {
+    NotFound,
+    WriteError,
+    ReadError,
+    InvalidInput,
+    Other(String)
+}
+
 #[repr(C, packed)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
 struct BlockGroupDescriptor {
@@ -114,7 +126,7 @@ struct INodeData {
     osd2: [u8; 12],
 }
 
-impl<D: Disk> Ext2<D> {
+impl Ext2 {
     fn alloc_block(
         self: &Arc<Self>,
         preferred_group: usize,
@@ -374,7 +386,7 @@ impl<D: Disk> Ext2<D> {
         )
     }
 
-    pub fn get_root(self: &Arc<Self>) -> Weak<FNode<D>>
+    pub fn get_root(self: &Arc<Self>) -> Weak<FNode>
     where
         Self: Sized,
     {
@@ -385,7 +397,7 @@ impl<D: Disk> Ext2<D> {
         self: &Arc<Self>,
         inumber: u32,
         scratch_buffer: Option<&mut [u8]>,
-    ) -> Weak<FNode<D>> {
+    ) -> Weak<FNode> {
         let mut fnode_cache = self.fnode_cache.lock();
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
@@ -403,67 +415,87 @@ impl<D: Disk> Ext2<D> {
         Arc::downgrade(&node)
     }
 
-    pub fn new(disk: D) -> Result<Self, &'static str> {
-        if disk.sector_size() < 512 {
-            return Err("sector size not big enough");
+    pub fn new_from_block_devices(
+        block_devices: &mut Vec<Box<dyn BlockDevice + Send + Sync>>,
+    ) -> Result<Self, FsError> {
+
+        // this stores the found superblock for initialization and index of the block device that contains 
+        // it for removal
+        let mut found = None;
+
+        for (i, block_device) in block_devices.iter_mut().enumerate() {
+            const SUPERBLOCK_START: usize = 1024;
+            const SUPERBLOCK_SIZE: usize = 1024;
+            let mut buf = [0u8; SUPERBLOCK_SIZE];
+            if block_device.read(SUPERBLOCK_START, &mut buf).is_err() {
+                continue;
+            }
+
+            if let Ok((superblock, _)) = Superblock::read_from_prefix(&buf)
+                && superblock.magic == 0xEF53
+                && superblock.log_block_size <= 2
+                && superblock.rev_level == 1
+            {
+                found = Some((superblock, i));
+                break;
+            }
         }
 
-        // get the superblock
-        const SUPERBLOCK_START: usize = 1024;
-        let superblock_sector = SUPERBLOCK_START / disk.sector_size();
-        let superblock_offset = SUPERBLOCK_START % disk.sector_size();
-        let mut buffer = alloc::vec![0u8; disk.sector_size()];
-        disk.read_sector(superblock_sector, &mut buffer);
-        let (superblock, _) = Superblock::read_from_prefix(&buffer[superblock_offset..])
-            .map_err(|_| "could not parse superblock")?;
-
-        // safety checks
-        if superblock.magic != 0xEF53 {
-            return Err("is not a valid ext2 file system");
-        }
-        if superblock.log_block_size > 2 {
-            return Err("invalid block size");
-        }
-        if superblock.rev_level != 1 {
-            return Err("this version of ext2 is too old");
-        }
-
-        // TODO: mark superblock as dirty
-        Ok(Self {
-            block_size: 1024 << superblock.log_block_size,
-            disk: IntMutex::new(disk),
-            superblock,
-            fnode_cache: IntMutex::new(BTreeMap::new()),
-            block_map_lock: IntMutex::new(()),
-            inode_map_lock: IntMutex::new(()),
-            group_lock: IntMutex::new(()),
-        })
-    }
-
-    fn read_block(self: &Arc<Self>, block_number: usize, buffer: &mut [u8]) {
-        let disk = self.disk.lock();
-        let sector_size = disk.sector_size();
-        let factor = self.block_size / sector_size;
-        for i in 0..factor {
-            let start = i * sector_size;
-            let end = start + sector_size;
-            disk.read_sector(block_number * factor + i, &mut buffer[start..end]);
+        if let Some((superblock, i)) = found {
+            return Ok(Self {
+                block_size: 1024 << superblock.log_block_size,
+                block_device: IntMutex::new(block_devices.swap_remove(i)),
+                superblock,
+                fnode_cache: IntMutex::new(BTreeMap::new()),
+                block_map_lock: IntMutex::new(()),
+                inode_map_lock: IntMutex::new(()),
+                group_lock: IntMutex::new(()),
+            });
+        } else {
+            return Err(FsError::NotFound);
         }
     }
 
-    fn write_block(self: &Arc<Self>, block_number: usize, buffer: &[u8]) {
-        let mut disk = self.disk.lock();
-        let sector_size = disk.sector_size();
-        let factor = self.block_size / sector_size;
-        for i in 0..factor {
-            let start = i * sector_size;
-            let end = start + sector_size;
-            disk.write_sector(block_number * factor + i, &buffer[start..end]);
+    fn read_block(self: &Arc<Self>, block_number: usize, buffer: &mut [u8]) -> Result<(), FsError> {
+        self.check_block_inputs(block_number, buffer.len())?;
+
+        let mut block_device = self.block_device.lock();
+
+        // read a block into the buffer, returning an error if the read fails or doesn't return a full block. Use read to not have 
+        // to deal with different block sizes
+        if let Ok(bytes_read) = block_device.read(block_number * self.block_size, &mut buffer[0..self.block_size]) 
+        && bytes_read == self.block_size {
+            return Ok(())        
         }
+        Err(FsError::ReadError);
+
+    }
+
+    fn write_block(self: &Arc<Self>, block_number: usize, buffer: &[u8]) -> Result<(), FsError> {
+        self.check_block_inputs(block_number, buffer.len())?;
+
+        let mut block_device = self.block_device.lock();
+        let block_size = self.block_size;
+
+        // same as above
+        if let Ok(bytes_written) = block_device.write(block_number * self.block_size, &buffer[0..self.block_size]) 
+        && bytes_written == self.block_size {
+            return Ok(())        
+        }
+        Err(FsError::WriteError);
+    }
+
+    fn check_block_inputs(self: &Arc<Self>, block_number: usize, buffer_len: usize) -> Result<(), FsError> {
+        if block_number >= self.superblock.blocks_count as usize {
+            return Err(FsError::NotFound);
+        } else if buffer_len < self.block_size {
+            return Err(FsError::InvalidInput);
+        }
+        Ok(())
     }
 }
 
-impl<D: Disk> FNode<D> {
+impl FNode {
     fn block_tree(
         self: &Arc<Self>,
         block_number: usize,
@@ -690,7 +722,7 @@ impl<D: Disk> FNode<D> {
     }
 
     // TODO: use indexing instead of linsearch
-    pub fn search(self: &Arc<Self>, next: &str) -> Option<Weak<FNode<D>>> {
+    pub fn search(self: &Arc<Self>, next: &str) -> Option<Weak<FNode>> {
         let inode = self.inode.lock();
         // TODO proper types
         assert!(inode.data.mode & 0xF000 == 0x4000);
