@@ -732,7 +732,9 @@ mod test {
 
     fn nul_terminated_utf8(buf: &[u8]) -> &str {
         let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        core::str::from_utf8(&buf[..len]).unwrap()
+        core::str::from_utf8(&buf[..len])
+            .unwrap()
+            .trim_end_matches('\n')
     }
 
     #[test_case]

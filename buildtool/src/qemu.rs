@@ -18,7 +18,7 @@ pub fn run(
 
     let machine = target.qemu_machine();
     let filesystem_source = resolve_path_from_repo_root(&filesystem_path)?;
-    let filesystem_image = build_ext2_filesystem_from_dir(&filesystem_source, "qemu-filesystem")?;
+    let filesystem_image = build_ext2_filesystem_from_dir(&filesystem_source, "fs_img")?;
 
     let mut args = vec![
         "-machine".into(),

@@ -245,9 +245,11 @@ pub fn path_to_string(path: &Path) -> Result<String> {
         .to_string())
 }
 
-pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Result<PathBuf> {
-    const EXT2_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
-
+fn build_ext2_filesystem_from_dir_with_size(
+    source_dir: &Path,
+    cache_tag: &str,
+    image_size: u64,
+) -> Result<PathBuf> {
     let source_dir = source_dir.canonicalize().with_context(|| {
         format!(
             "failed to resolve filesystem source directory: {}",
@@ -263,8 +265,9 @@ pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Res
 
     let cache_dir = cache_dir()?;
     let output_img = cache_dir.join(format!(
-        "{}-{}.ext2",
+        "{}-{}-{}.ext2",
         sanitize_cache_tag(cache_tag),
+        image_size,
         source_path_cache_key(&source_dir)
     ));
     let latest_source_modified = latest_modified_in_dir(&source_dir)?;
@@ -286,7 +289,7 @@ pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Res
     );
 
     let temp_img = NamedTempFile::new_in(&cache_dir)?;
-    temp_img.as_file().set_len(EXT2_IMAGE_SIZE)?;
+    temp_img.as_file().set_len(image_size)?;
 
     let status = Command::new("mkfs.ext2")
         .arg("-q")
@@ -315,6 +318,10 @@ pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Res
     })?;
 
     Ok(output_img)
+}
+
+pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Result<PathBuf> {
+    build_ext2_filesystem_from_dir_with_size(source_dir, cache_tag, 64 * 1024 * 1024)
 }
 
 fn source_path_cache_key(path: &Path) -> String {
@@ -389,6 +396,11 @@ pub fn build_image_with_tag(
     let (kernel_elf, package_data) = build_res;
 
     let cache_dir = cache_dir()?;
+    let ramdisk = build_ext2_filesystem_from_dir_with_size(
+        &current_dir()?.join("ramdisk"),
+        "ramdisk",
+        1024 * 1024,
+    )?;
     let profile = if release { "release" } else { "debug" };
     let tag_suffix = cache_tag
         .map(sanitize_cache_tag)
@@ -414,6 +426,7 @@ pub fn build_image_with_tag(
         || fs::metadata(kernel_elf)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_efi)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_cfg)?.modified()? > fs::metadata(&output_img)?.modified()?
+        || fs::metadata(&ramdisk)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&current_exe()?)?.modified()? > fs::metadata(&output_img)?.modified()?
     {
         eprintln!(
@@ -471,6 +484,10 @@ pub fn build_image_with_tag(
         io::copy(
             &mut File::open(limine_cfg)?,
             &mut fs.root_dir().create_file(LIMINE_CONF)?,
+        )?;
+        io::copy(
+            &mut File::open(&ramdisk)?,
+            &mut fs.root_dir().create_file("ramdisk")?,
         )?;
         let elf_data = split_debug_info(kernel_elf, target)?;
         let debug_data = gen_debug_module(fs::read(kernel_elf)?, package_data)?;
