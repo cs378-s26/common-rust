@@ -1,14 +1,13 @@
-// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
-// removing this warning for now
-#![allow(irrefutable_let_patterns)]
 use super::{CharDevice, CharDeviceError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::print::{CharSink, set_serial_backend};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 // TODO: this driver currently is just for outputting characters to uart, later it will need to be expanded most likely
 pub struct UartPl011Driver {
@@ -82,7 +81,7 @@ pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
     // this gives full ownership of the driver to the serial backend
-    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,pl011")
@@ -101,7 +100,7 @@ impl DeviceDiscovery for UartPl011Discovery {
                 panic!("Failed to initialize UART driver");
             }
 
-            return Some(DeviceType::Special);
+            return Some(vec![DeviceType::Special]);
         }
         None
     }

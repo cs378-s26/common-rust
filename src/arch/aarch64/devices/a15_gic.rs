@@ -1,6 +1,8 @@
 use crate::arch::ArchTrait;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use alloc::vec;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 
@@ -87,7 +89,7 @@ impl GicA15Driver {
 pub struct GicA15Discovery;
 
 impl DeviceDiscovery for GicA15Discovery {
-    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,cortex-a15-gic")
@@ -103,7 +105,7 @@ impl DeviceDiscovery for GicA15Discovery {
             };
             gic.init();
             GICD_INIT.call_once(|| gic);
-            return Some(DeviceType::Special);
+            return Some(vec![DeviceType::Special]);
         }
         None
     }

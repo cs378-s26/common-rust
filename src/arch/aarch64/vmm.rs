@@ -1,3 +1,4 @@
+use crate::kprintln;
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
@@ -24,6 +25,7 @@ pub fn configure_vm() {
             options(nostack, preserves_flags)
         );
     }
+    kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
 }
 
 // TODO allow for shared mappings and write-through caching
