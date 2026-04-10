@@ -1,8 +1,8 @@
 use crate::{
-    print::kprintln,
     arch::{Arch, ArchTrait},
-    virtual_memory::{PagingOptions, VirtualMemoryAllocation},
     fs::vfs::FileTrait,
+    print::kprintln,
+    virtual_memory::{PagingOptions, VirtualMemoryAllocation},
 };
 
 mod eh_constants {
@@ -202,13 +202,15 @@ impl Elf {
             None,
             Arch::PAGE_SIZE,
             None,
-            PagingOptions::PRESENT
-                | PagingOptions::WRITABLE,
+            PagingOptions::PRESENT | PagingOptions::WRITABLE,
             true,
-        ).unwrap();
-        file.read_page(first_page_vm.base as *mut u8, 0).map_err(|_| ElfError::EHFileReadError)?;
+        )
+        .unwrap();
+        file.read_page(first_page_vm.base as *mut u8, 0)
+            .map_err(|_| ElfError::EHFileReadError)?;
         // TODO: can you do this without unsafe?
-        let header_buffer = unsafe { core::slice::from_raw_parts(first_page_vm.base as *const u8, EHSIZE) };
+        let header_buffer =
+            unsafe { core::slice::from_raw_parts(first_page_vm.base as *const u8, EHSIZE) };
 
         let header = ElfHeader::parse(&header_buffer);
         Self::validate_elf_header(&header)?;
@@ -227,9 +229,11 @@ impl Elf {
                 // On different page.
                 // Round down to page boundary.
                 ph_page_offset = (phoff + i * PHENTSIZE) & !(Arch::PAGE_SIZE - 1);
-                file.read_page(ph_page.base as *mut u8, ph_page_offset).map_err(|_| ElfError::PHFileReadError)?;
+                file.read_page(ph_page.base as *mut u8, ph_page_offset)
+                    .map_err(|_| ElfError::PHFileReadError)?;
             }
-            let size_to_read = PHENTSIZE.min((ph_page_offset + Arch::PAGE_SIZE) - (phoff + i * PHENTSIZE));
+            let size_to_read =
+                PHENTSIZE.min((ph_page_offset + Arch::PAGE_SIZE) - (phoff + i * PHENTSIZE));
             let mut ph_buffer = [0u8; PHENTSIZE];
             ph_buffer[..size_to_read].copy_from_slice(unsafe {
                 core::slice::from_raw_parts(
@@ -240,7 +244,8 @@ impl Elf {
             if size_to_read < PHENTSIZE {
                 // Need to read next page.
                 ph_page_offset += Arch::PAGE_SIZE;
-                file.read_page(ph_page.base as *mut u8, ph_page_offset).map_err(|_| ElfError::PHFileReadError)?;
+                file.read_page(ph_page.base as *mut u8, ph_page_offset)
+                    .map_err(|_| ElfError::PHFileReadError)?;
                 ph_buffer[size_to_read..].copy_from_slice(unsafe {
                     core::slice::from_raw_parts(
                         (ph_page.base + (phoff + i * PHENTSIZE - ph_page_offset)) as *const u8,
@@ -275,14 +280,15 @@ impl Elf {
                         Some(vaddr),
                         memsz,
                         None,
-                        PagingOptions::PRESENT
-                            | PagingOptions::WRITABLE,
+                        PagingOptions::PRESENT | PagingOptions::WRITABLE,
                         false, // Don't unmap when out of scope.
-                    ).unwrap();
+                    )
+                    .unwrap();
                     for page in 0..((filesz + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE) {
                         let page_offset = offset + page * Arch::PAGE_SIZE;
                         let page_paddr = segment_vm.base + page * Arch::PAGE_SIZE;
-                        file.read_page(page_paddr as *mut u8, page_offset).map_err(|_| ElfError::PHFileReadError)?;
+                        file.read_page(page_paddr as *mut u8, page_offset)
+                            .map_err(|_| ElfError::PHFileReadError)?;
                     }
                     // Zero out rest of memory.
                     if memsz > filesz {
