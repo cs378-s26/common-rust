@@ -14,7 +14,6 @@ use crate::{
 };
 
 use alloc::boxed::Box;
-use limine::memory_map::{Entry, EntryType};
 const MAX_CPUS: usize = 256;
 // used for debugging 
 const ENABLE_PER_CPU_CACHE: bool = true;
@@ -329,41 +328,6 @@ impl HeapAllocator {
         self.buddy.add_range(self.hhdm_offset, start as u64, page_count);
 
     }
-
-    /*
-    fn init_from_memory_map(&mut self, hhdm_offset: u64, entries: &[&Entry]) {
-        self.hhdm_offset = hhdm_offset;
-        self.buddy.reset();
-
-        let mut pages_total = 0usize;
-
-        for entry in entries {
-            if entry.entry_type != EntryType::USABLE {
-                continue;
-            }
-
-            let start = align_up(entry.base as usize, Arch::page_size());
-            let end = align_down((entry.base + entry.length) as usize, Arch::page_size());
-            if end <= start {
-                continue;
-            }
-
-            let page_count = (end - start) / Arch::page_size();
-            if page_count == 0 {
-                continue;
-            }
-
-            self.buddy
-                .add_range(self.hhdm_offset, start as u64, page_count);
-            pages_total += page_count;
-        }
-
-        kprintln!(
-            "init_malloc():  allocator initialized, {} pages available",
-            pages_total
-        );
-    }
-    */
 
     fn allocate(&mut self, layout: Layout) -> *mut u8 {
         if let Some(class) = class_index_for_layout(layout) {
