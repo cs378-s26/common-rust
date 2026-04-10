@@ -42,6 +42,8 @@ enum Commands {
         mem: u8,
         #[arg(short = 'r', long)]
         release: bool,
+        #[arg(short = 'f', long, default_value = "fs_path")]
+        filesystem_path: String,
     },
     QemuTest {
         test_cfg_path: String,
@@ -81,7 +83,8 @@ fn main() -> Result<()> {
             cores,
             mem,
             release,
-        } => qemu::run(kvm, cores, mem, release, target)?,
+            filesystem_path,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
         Commands::Gdb {
             target,
             kvm,

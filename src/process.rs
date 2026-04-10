@@ -61,7 +61,6 @@ mod test {
                     assert!(*(VADDR as *const u8) == i);
                 }
                 Arch::virtual_unmap(process.virtual_memory.get_page_table() as u64, VADDR as u64);
-                frame_dealloc(paddr);
             });
         }
     }

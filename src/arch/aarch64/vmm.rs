@@ -1,3 +1,4 @@
+use crate::kprintln;
 use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
 use crate::virtual_memory::PagingOptions;
 use bitflags::bitflags;
@@ -24,6 +25,7 @@ pub fn configure_vm() {
             options(nostack, preserves_flags)
         );
     }
+    kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
 }
 
 // TODO allow for shared mappings and write-through caching
@@ -85,6 +87,7 @@ pub fn set_user_address_space(space: u64) {
 }
 
 // map a virtual address to a physical address in the given address space, with the given paging options
+// if calling this directly, make sure to call tlb shootdown to prevent any caching issues with overwriting
 pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
@@ -152,6 +155,28 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     attr
 }
 
+pub fn tlb_shootdown(vaddr: u64) {
+    // TODO right now this is assuming we are invalidating a global address, like hhdm or mmio, the
+    // pattern will look different for non-global addresses, like user pages
+    // pattern is documented here: https://developer.arm.com/documentation/ddi0487/maa/-Part-K-Appendixes/-Appendix-K11-Barrier-Litmus-Tests/-K11-5-Cache-and-TLB-maintenance-instructions-and-barriers/-K11-5-3-TLB-maintenance-instructions-and-barriers
+    // tlbi ops here: https://developer.arm.com/documentation/ddi0601/2025-12/AArch64-Instructions
+
+    let page_size_shift: u64 = 12; // log2 of page size
+
+    unsafe {
+        asm!(
+            // data synchronization barrier, inner shareable domain, st means store. This ensures
+            // the write to the page table will be seen before the TLB shootdown
+            "dsb ishst",
+            "tlbi vaae1is, {}", // invalidate the virtual address in the TLB for EL1 and the inner shareable domain, ensuring all cores see it
+            "dsb ish", // stronger synch, ensure tlb shootdown is done before any other memory accesses
+            "isb", // ensure next instructions see updates to page tables and tlb
+            in(reg) (vaddr >> page_size_shift), // pass in page number
+            options(nostack, preserves_flags)
+        )
+    }
+}
+
 // make sure a pt entry contains a valid next-level table, allocating one if necessary,
 // and return the physical address of the next-level table
 fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
@@ -173,7 +198,7 @@ fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
 }
 
 // unmap a virtual address in the given address space, returning the physical address that was mapped there if it was mapped
-pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
     let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
@@ -213,9 +238,19 @@ pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
         // Clear the page table entry to unmap it
         l3[index_3] = 0;
         free_unused_tables(vaddr, l0, l1, l2, l3);
-        frame_dealloc(paddr as usize);
+        if free_frame {
+            frame_dealloc(paddr as usize);
+        }
         Some(paddr)
     }
+}
+
+pub fn vunmap(space: u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, true)
+}
+
+pub fn vunmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+    vunmap_internal(space, vaddr, false)
 }
 
 fn free_unused_tables(vaddr: u64, l0: &mut [u64], l1: &mut [u64], l2: &mut [u64], l3: &mut [u64]) {

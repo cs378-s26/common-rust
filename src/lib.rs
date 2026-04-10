@@ -16,9 +16,11 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
+pub mod dma;
 pub mod event;
 // pub mod ext2;
 pub mod freeset;
+pub mod fs;
 pub mod heap;
 pub mod local_storage;
 pub mod mp;
@@ -26,8 +28,6 @@ pub mod panic;
 pub mod physical_memory;
 pub mod print;
 pub mod process;
-pub mod ramdisk;
-pub mod ramfs;
 pub mod state;
 pub mod sync;
 pub mod syscall;
@@ -58,7 +58,7 @@ use spin::{Barrier, Once};
 use talc::Span;
 use virtual_memory::init_virtual_memory_allocator;
 
-use crate::devices::device_discovery::create_drivers;
+use crate::devices::discovery::{create_drivers, discover_devices};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -110,7 +110,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     assert!(BASE_REVISION.is_valid());
 
     parse_kernel_cmdline();
-    init_malloc(Span::from_slice(&raw mut THE_HEAP));
+    init_malloc((&raw mut THE_HEAP) as usize, 256 * 1024 * 1024);
     init_tty();
 
     // print some system info
@@ -141,7 +141,9 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();
-    Arch::parse_devices();
+    kprintln!("Discovering devices...");
+    discover_devices();
+    kprintln!("Finished device discovery.");
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -210,7 +212,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
             Work::work();
         })
     });
-    one!({ Arch::set_irq_enabled(true) });
+    all!({ Arch::set_irq_enabled(true) });
     poll_tasks() // runs on all cores, never to return
 }
 
