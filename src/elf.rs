@@ -212,7 +212,7 @@ impl Elf {
         let header_buffer =
             unsafe { core::slice::from_raw_parts(first_page_vm.base as *const u8, EHSIZE) };
 
-        let header = ElfHeader::parse(&header_buffer);
+        let header = ElfHeader::parse(header_buffer);
         Self::validate_elf_header(&header)?;
 
         let phoff = header.e_phoff as usize;
@@ -284,7 +284,7 @@ impl Elf {
                         false, // Don't unmap when out of scope.
                     )
                     .unwrap();
-                    for page in 0..((filesz + Arch::PAGE_SIZE - 1) / Arch::PAGE_SIZE) {
+                    for page in 0..filesz.div_ceil(Arch::PAGE_SIZE) {
                         let page_offset = offset + page * Arch::PAGE_SIZE;
                         let page_paddr = segment_vm.base + page * Arch::PAGE_SIZE;
                         file.read_page(page_paddr as *mut u8, page_offset)
