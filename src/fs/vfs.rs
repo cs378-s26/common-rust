@@ -1,12 +1,12 @@
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::collections::btree_map::BTreeMap;
+use alloc::string::String;
 use alloc::sync::Arc;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
-use alloc::string::String;
 
-// TODO we probably don't want to cache on both the fs and the VFS level, 
+// TODO we probably don't want to cache on both the fs and the VFS level,
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +18,7 @@ pub enum FsError {
     ReadError,
     InvalidInput,
     InvalidOperation,
+    NotImplemented,
     Corrupted(String),
     Other(String),
 }
@@ -115,6 +116,7 @@ pub enum InodeType {
     File,
     Directory,
     // symlink or device, probably
+    Other,
 }
 
 // dyn inode works as a typical vnode
@@ -124,24 +126,28 @@ pub trait INode: Send + Sync {
 
     fn get_type(&self) -> INodeType;
 
-    // add default implementations for all these types so that filesystems don't need to 
+    // add default implementations for all these types so that filesystems don't need to
     // implement unnecessary functions, if they're a directory they just implement directory functions, etc
-    fn read(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
-        Err(FsError::InvalidOperation)
-    }
-    fn write(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
-        Err(FsError::InvalidOperation)
+    fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        Err(FsError::NotImplemented)
     }
 
-    fn size() -> usize;
+    fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        Err(FsError::NotImplemented)
+    }
 
     // Directory
     fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, FsError> {
-        Err(FsError::InvalidOperation)
+        Err(FsError::NotImplemented)
     }
 
     fn add_entry(&self, target: &str, inumber: usize) -> Result<(), FsError> {
-        Err(FsError::InvalidOperation)
+        Err(FsError::NotImplemented)
+    }
+
+    // file size, can be undefined
+    fn size(&self) -> usize {
+        0
     }
 
     // Symlink

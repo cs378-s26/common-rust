@@ -1,19 +1,20 @@
 extern crate alloc;
 
+use super::vfs::{Filesystem, FsError, INode, InodeType};
+use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::BlockDevice;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
+use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
-use super::vfs::FsError;
 
 pub struct Ext2 {
     block_size: usize,
     block_device: IntMutex<Box<dyn BlockDevice + Send + Sync>>,
     superblock: Superblock,
-    fnode_cache: IntMutex<BTreeMap<u32, Arc<FNode>>>,
     block_map_lock: IntMutex<()>,
     inode_map_lock: IntMutex<()>,
     group_lock: IntMutex<()>,
@@ -75,7 +76,6 @@ struct Superblock {
     default_mount_options: u32,
     first_meta_bg: u32,
 }
-
 
 #[repr(C, packed)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
@@ -396,7 +396,7 @@ impl Ext2 {
         ))
     }
 
-    pub fn get_root(self: &Arc<Self>) -> Result<Weak<FNode>, FsError>
+    pub fn get_root(self: &Arc<Self>) -> Result<Arc<FNode>, FsError>
     where
         Self: Sized,
     {
@@ -407,22 +407,20 @@ impl Ext2 {
         self: &Arc<Self>,
         inumber: u32,
         scratch_buffer: Option<&mut [u8]>,
-    ) -> Result<Weak<FNode>, FsError> {
-        let mut fnode_cache = self.fnode_cache.lock();
+    ) -> Result<Arc<FNode>, FsError> {
+
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.block_size])[..],
         };
-        if let Some(s) = fnode_cache.get(&inumber) {
-            return Ok(Arc::downgrade(s));
-        }
+
         let (inode, _) = self.get_inode(inumber, Some(scratch_buffer))?;
         let node = Arc::new(FNode {
             fs: self.clone(),
             inode: IntMutex::new(inode),
         });
-        fnode_cache.insert(inumber, node.clone());
-        Ok(Arc::downgrade(&node))
+
+        Ok(node)
     }
 
     pub fn new_from_block_devices(
@@ -455,7 +453,6 @@ impl Ext2 {
                 block_size: 1024 << superblock.log_block_size,
                 block_device: IntMutex::new(block_devices.swap_remove(i)),
                 superblock,
-                fnode_cache: IntMutex::new(BTreeMap::new()),
                 block_map_lock: IntMutex::new(()),
                 inode_map_lock: IntMutex::new(()),
                 group_lock: IntMutex::new(()),
@@ -672,12 +669,14 @@ impl FNode {
         if inode.data.mode & 0xF000 != 0x4000 {
             return Err(FsError::InvalidInput);
         }
+
         let mut pointer: usize = 0;
         let mut last_fetched_block: usize = 1;
         let mut buffer = alloc::vec![0u8; self.fs.block_size];
         let mut placement = None;
         let entry_space = |name: &str| (8 + name.len()).next_multiple_of(4);
         let needed = entry_space(entry_name);
+
         while pointer < (inode.data.size as usize) {
             assert!(pointer.is_multiple_of(4));
             let needed_block = pointer / self.fs.block_size;
@@ -749,7 +748,7 @@ impl FNode {
     }
 
     // TODO: use indexing instead of linsearch
-    pub fn search(self: &Arc<Self>, next: &str) -> Result<Weak<FNode>, FsError> {
+    pub fn search(self: &Arc<Self>, file_name: &str) -> Result<Weak<FNode>, FsError> {
         let inode = self.inode.lock();
         // TODO proper types
         if inode.data.mode & 0xF000 != 0x4000 {
@@ -772,13 +771,192 @@ impl FNode {
             if inumber != 0 {
                 let name = &buffer[offset + 8..offset + 8 + (name_len as usize)];
                 let name = core::str::from_utf8(name).unwrap();
-                if name == next {
+                if name == file_name {
                     return self.fs.get_fnode(inumber, Some(&mut buffer[..]));
                 }
             }
             pointer += rec_len as usize;
         }
         Err(FsError::NotFound)
+    }
+}
+
+impl INode for FNode {
+    // Files
+    fn get_inumber(&self) -> usize {
+        self.inode.lock().number
+    }
+
+    fn get_type(&self) -> INodeType {
+        let mut inode = self.inode.lock();
+        match inode.data.mode & 0xF000 {
+            0x4000 => INodeType::Directory,
+            0x8000 => INodeType::File,
+            _ => INodeType::Other,
+        }
+    }
+
+    // TODO implement some kind of check to make sure the physical address is valid
+    // TODO also we probably want to have some unified read/write over block functions to not have to handle this error prone code in multiple places
+    fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let allocation = VirtualMemoryAllocation::new(
+            Arch::get_address_space(),
+            None,
+            Arch::PAGE_SIZE,
+            Some(physical_address),
+            options,
+            true,
+        )?;
+        let virt_addr = allocation.base;
+
+        // Safety: we trust our virtual memory allocator and this won't be reused until after allocation is freed
+        let page_buf =
+            unsafe { core::slice::from_raw_parts_mut(virt_addr as *mut u8, Arch::PAGE_SIZE) };
+
+        let inode = self.inode.lock();
+        let file_size = inode.data.size as usize;
+        let block_size = self.fs.block_size;
+
+        // Zero-fill the whole page up front so anything past EOF or in sparse
+        // regions is already correct.
+        page_buf.fill(0);
+
+        if offset >= file_size {
+            return Ok(0);
+        }
+
+        let total_to_read = core::cmp::min(Arch::PAGE_SIZE, file_size - offset);
+        let mut read_so_far = 0;
+
+        // Scratch buffer only for edge partial-block reads.
+        let mut scratch = alloc::vec![0u8; block_size];
+
+        while read_so_far < total_to_read {
+            let file_pos = offset + read_so_far;
+            let block_number = file_pos / block_size;
+            let block_offset = file_pos % block_size;
+
+            // we can read at most the rest of the file, or the rest of the block, whichever is smaller.
+            let chunk_len = core::cmp::min(total_to_read - read_so_far, block_size - block_offset);
+            if block_offset == 0 && chunk_len == block_size {
+                // if the whole block is needed and we're block-aligned, we can read directly into the page buffer
+                self.read_block(
+                    block_number,
+                    &mut page_buf[read_so_far..read_so_far + block_size],
+                    &inode,
+                )?;
+            } else {
+                // any other case, we need to read into a scratch buffer and then copy the relevant portion to the page buffer
+                self.read_block(block_number, &mut scratch, &inode)?;
+                page_buf[read_so_far..read_so_far + chunk_len]
+                    .copy_from_slice(&scratch[block_offset..block_offset + chunk_len]);
+            }
+
+            read_so_far += chunk_len;
+        }
+
+        Ok(read_so_far)
+    }
+
+    fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let allocation = VirtualMemoryAllocation::new(
+            Arch::get_address_space(),
+            None,
+            Arch::PAGE_SIZE,
+            Some(physical_address),
+            options,
+            true,
+        )?;
+        let virt_addr = allocation.base;
+
+        // Safety: this mapping will stay alive for the duration of
+        // the function, and it is exactly one page long.
+        let page = unsafe { core::slice::from_raw_parts(virt_addr as *const u8, Arch::PAGE_SIZE) };
+
+        let mut inode = self.inode.lock();
+        let block_size = self.fs.block_size;
+
+        // place new blocks in the group of the file's inode
+        let preferred_group = (inode.number - 1) / (self.fs.superblock.inodes_per_group as usize);
+
+        let mut written = 0;
+        let mut scratch = alloc::vec![0u8; block_size];
+
+        // different from read_page, we can write past EOF
+        while written < Arch::PAGE_SIZE {
+            let file_pos = offset + written;
+            let block_number = file_pos / block_size;
+            let block_offset = file_pos % block_size;
+            let chunk_len = core::cmp::min(Arch::PAGE_SIZE - written, block_size - block_offset);
+
+            if block_offset == 0 && chunk_len == block_size {
+                // fast path: whole filesystem block can be written directly.
+                self.write_block(
+                    block_number,
+                    &page[written..written + block_size],
+                    &mut inode,
+                    None,
+                    None,
+                    preferred_group,
+                )?;
+            } else {
+                // partial block: preserve bytes outside the written subrange. read modify write cycle
+                self.read_block(block_number, &mut scratch, &inode)?;
+
+                scratch[block_offset..block_offset + chunk_len]
+                    .copy_from_slice(&page[written..written + chunk_len]);
+
+                self.write_block(
+                    block_number,
+                    &scratch,
+                    &mut inode,
+                    None,
+                    None,
+                    preferred_group,
+                )?;
+            }
+
+            written += chunk_len;
+        }
+
+        // update the inode size
+        let new_size = core::cmp::max(inode.data.size as usize, offset + Arch::PAGE_SIZE);
+        if new_size != inode.data.size as usize {
+            let new_inode = INode {
+                number: inode.number,
+                dirty: true,
+                data: INodeData {
+                    size: new_size as u32,
+                    ..inode.data
+                },
+            };
+            self.update_inode(&mut inode, new_inode, None)?;
+        }
+
+        Ok(written)
+    }
+
+    fn size(&self) -> usize {
+        let inode = self.inode.lock();
+        inode.data.size as usize
+    }
+
+    // Directory
+    fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, FsError> {
+        if self.get_type() != INodeType::Directory {
+            return Err(FsError::InvalidOperation);
+        }
+        let fnode = self.search(target)?;
+        Ok(fnode)
+    }
+
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), FsError> {
+        if self.get_type() != INodeType::Directory {
+            return Err(FsError::InvalidOperation);
+        }
+        self.create_entry(target, inumber as u32, 1)
     }
 }
 
