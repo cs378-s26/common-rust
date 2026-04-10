@@ -4,19 +4,36 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
+use alloc::string::String;
 
+// TODO we probably don't want to cache on both the fs and the VFS level, 
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FsError {
+    NotFound,
+    AlreadyExists,
+    NoSpace,
+    WriteError,
+    ReadError,
+    InvalidInput,
+    InvalidOperation,
+    Corrupted(String),
+    Other(String),
+}
 
 pub struct VFS {
     filesystems: IntMutex<BTreeMap<usize, Arc<dyn Filesystem>>>,
     inode_cache: IntMutex<INodeCache>,
     filesystem_id_counter: AtomicUsize,
+    root: IntMutex<Option<Arc<dyn INode>>>,
 }
 
 pub static VFS: VFS = VFS {
     filesystems: IntMutex::new(BTreeMap::new()),
     inode_cache: IntMutex::new(BTreeMap::new()),
     filesystem_id_counter: AtomicUsize::new(0),
+    root: IntMutex::new(None),
 };
 
 impl VFS {
@@ -50,6 +67,23 @@ impl VFS {
         map.insert(key.inumber, Arc::clone(&inode));
         Some(inode)
     }
+
+    pub fn get_root(&self) -> Option<Arc<dyn INode>> {
+        let root = self.root.lock();
+        if let Some(root) = &*root {
+            return Some(Arc::clone(root));
+        }
+        None
+    }
+
+    pub fn set_root(&self, inode: Arc<dyn INode>) -> Result<(), FsError> {
+        let mut root = self.root.lock();
+        if root.is_some() {
+            return Err(FsError::AlreadyExists);
+        }
+        *root = Some(inode);
+        Ok(())
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -74,63 +108,42 @@ impl INodeKey {
 pub trait Filesystem: Send + Sync {
     fn get_root(&self) -> Arc<dyn INode>;
     fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>>;
-    fn create_inode(&self, inode: Arc<dyn INode>) -> usize; // TODO mutable reference?
     // delete_inode(inode)
 }
 
+pub enum InodeType {
+    File,
+    Directory,
+    // symlink or device, probably
+}
+
+// dyn inode works as a typical vnode
 pub trait INode: Send + Sync {
     // Files
-    fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str>;
-    fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
+    fn get_inumber(&self) -> usize;
+
+    fn get_type(&self) -> INodeType;
+
+    // add default implementations for all these types so that filesystems don't need to 
+    // implement unnecessary functions, if they're a directory they just implement directory functions, etc
+    fn read(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+        Err(FsError::InvalidOperation)
+    }
+    fn write(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
+        Err(FsError::InvalidOperation)
+    }
+
+    fn size() -> usize;
 
     // Directory
-    fn lookup(&self, target: &str) -> Result<usize, &'static str>;
-    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str>;
+    fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, FsError> {
+        Err(FsError::InvalidOperation)
+    }
+
+    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), FsError> {
+        Err(FsError::InvalidOperation)
+    }
 
     // Symlink
     // fn traverse() -> str
-}
-
-pub trait DirectoryTrait: Send + Sync {
-    fn lookup(&self, target: &str) -> Result<usize, &'static str>;
-    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str>;
-    // fn get_fs(&self) -> dyn Filesystem;
-}
-pub struct Directory<D: DirectoryTrait>(pub D); // rust type system moment
-
-impl<D: DirectoryTrait> INode for Directory<D> {
-    fn read_page(&self, _: *mut u8, _: usize) -> Result<(), &'static str> {
-        Err("cannot read from directory")
-    }
-    fn write_page(&self, _: *const u8, _: usize) -> Result<(), &'static str> {
-        Err("cannot write to directory")
-    }
-    fn lookup(&self, target: &str) -> Result<usize, &'static str> {
-        self.0.lookup(target)
-    }
-    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), &'static str> {
-        self.0.add_entry(target, inumber)
-    }
-}
-
-pub trait FileTrait: Send + Sync {
-    // TODO is this just a block device?
-    fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str>;
-    fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str>;
-}
-pub struct File<F: FileTrait>(pub F); // rust type system moment
-
-impl<F: FileTrait> INode for File<F> {
-    fn read_page(&self, physical_address: *mut u8, offset: usize) -> Result<(), &'static str> {
-        self.0.read_page(physical_address, offset)
-    }
-    fn write_page(&self, physical_address: *const u8, offset: usize) -> Result<(), &'static str> {
-        self.0.write_page(physical_address, offset)
-    }
-    fn lookup(&self, _: &str) -> Result<usize, &'static str> {
-        Err("cannot perform lookup in file")
-    }
-    fn add_entry(&self, _: &str, _: usize) -> Result<(), &'static str> {
-        Err("cannot add child to file")
-    }
 }

@@ -4,10 +4,10 @@ use crate::devices::block::BlockDevice;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::boxed::Box;
-use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use super::vfs::FsError;
 
 pub struct Ext2 {
     block_size: usize,
@@ -76,17 +76,6 @@ struct Superblock {
     first_meta_bg: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FsError {
-    NotFound,
-    AlreadyExists,
-    NoSpace,
-    WriteError,
-    ReadError,
-    InvalidInput,
-    Corrupted(String),
-    Other(String),
-}
 
 #[repr(C, packed)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
