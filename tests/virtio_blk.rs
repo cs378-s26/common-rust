@@ -6,7 +6,7 @@
 kernel_common::integration_test!({
     extern crate alloc;
     use alloc::vec;
-    use kernel_common::devices::device_discovery::BLOCK_DEVICES;
+    use kernel_common::devices::discovery::BLOCK_DEVICES;
     use kernel_common::print::kprintln;
     use kernel_common::sync::MutexLike;
 

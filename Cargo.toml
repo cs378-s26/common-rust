@@ -40,9 +40,5 @@ zerocopy = { version = "0.8.40", features = ["derive"] }
 x86 = "0.52.0"
 x86_64 = "0.15.4"
 
-[features]
-default = ["sched_eevdf"]
-sched_eevdf = []
-
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]
