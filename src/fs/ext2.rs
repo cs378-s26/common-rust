@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use super::vfs::{Filesystem, FsError, INode, InodeType};
+use super::vfs::{Filesystem, FsError, INode, InodeKey, InodeType};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::BlockDevice;
 use crate::sync::IntMutex;
@@ -9,6 +9,7 @@ use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
+use sync::OnceCell;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub struct Ext2 {
@@ -19,9 +20,11 @@ pub struct Ext2 {
     inode_map_lock: IntMutex<()>,
     group_lock: IntMutex<()>,
     vfs_id: IntMutex<Option<usize>>, // To allow for identification in the vfs when it is mounted, perhaps there are better ways to do this
+    self_ref: OnceCell<Weak<Self>>, // to allow for getting Arc<Self> in functions that need it, this is set at the end of initialization
 }
 
 pub struct FNode {
+    // takes an Arc to the filesystem so fnode can call functions on it. Maybe should be a weak?
     fs: Arc<Ext2>,
     inode: IntMutex<INode>,
 }
@@ -402,15 +405,17 @@ impl Ext2 {
     }
 
     // for get root and get fnode, we need Arc<Self> so we can give the fnode a reference to the filesystem
-    pub fn get_ext2_root(self: &Arc<Self>) -> Result<Arc<FNode>, FsError>
+    pub fn get_ext2_root(&self) -> Result<Arc<FNode>, FsError>
     where
         Self: Sized,
     {
         self.get_fnode(2, None)
     }
 
+    // get an fnode from an inumber. Note that this used to take Arc<Self> for the filesystem to hand out references to itself, but
+    // this made it hard to call from the filesystem trait, so now it just upgrades a weak pointer to itself to hand out copies
     fn get_fnode(
-        self: &Arc<Self>,
+        &self,
         inumber: u32,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<Arc<FNode>, FsError> {
@@ -420,8 +425,16 @@ impl Ext2 {
         };
 
         let (inode, _) = self.get_ext2_inode(inumber, Some(scratch_buffer))?;
+
+        // we want each fnode to have an Arc to the filesystem so they can call functions on it, so we upgrade the weak pointer
+        // the fs has to itself to give it out
         let node = Arc::new(FNode {
-            fs: self.clone(),
+            fs: self
+                .self_ref
+                .get()
+                .ok_or(FsError::NotFound)?
+                .upgrade()
+                .ok_or(FsError::NotFound)?,
             inode: IntMutex::new(inode),
         });
 
@@ -430,7 +443,7 @@ impl Ext2 {
 
     pub fn new_from_block_devices(
         block_devices: &mut Vec<Box<dyn BlockDevice + Send + Sync>>,
-    ) -> Result<Self, FsError> {
+    ) -> Result<Arc<Self>, FsError> {
         // this stores the found superblock for initialization and index of the block device that contains
         // it for removal
         let mut found = None;
@@ -454,7 +467,7 @@ impl Ext2 {
         }
 
         if let Some((superblock, i)) = found {
-            return Ok(Self {
+            let ext2 = Arc::new(Self {
                 block_size: 1024 << superblock.log_block_size,
                 block_device: IntMutex::new(block_devices.swap_remove(i)),
                 superblock,
@@ -462,10 +475,13 @@ impl Ext2 {
                 inode_map_lock: IntMutex::new(()),
                 group_lock: IntMutex::new(()),
                 vfs_id: IntMutex::new(None),
+                self_ref: OnceCell::new(),
             });
+            ext2.self_ref.set(Arc::downgrade(&ext2)).unwrap();
         } else {
             return Err(FsError::NotFound);
         }
+        Ok(ext2)
     }
 
     fn read_block(&self, block_number: usize, buffer: &mut [u8]) -> Result<(), FsError> {
@@ -500,6 +516,7 @@ impl Ext2 {
         Err(FsError::WriteError)
     }
 
+    // small helper for read_block and write_block
     fn check_block_inputs(&self, block_number: usize, buffer_len: usize) -> Result<(), FsError> {
         if block_number >= self.superblock.blocks_count as usize {
             return Err(FsError::NotFound);
@@ -511,12 +528,12 @@ impl Ext2 {
 }
 
 impl Filesystem for Ext2 {
-    fn get_root(self: &Arc<Self>) -> Result<Arc<dyn INode>, FsError> {
+    fn get_root(&self) -> Result<Arc<dyn INode>, FsError> {
         let root = self.get_ext2_root()?;
         Ok(root)
     }
 
-    fn get_inode(self: &Arc<Self>, inumber: usize) -> Result<Arc<dyn INode>, FsError> {
+    fn get_inode(&self, inumber: usize) -> Result<Arc<dyn INode>, FsError> {
         let inode = self.get_fnode(inumber as u32, None)?;
         Ok(inode)
     }
@@ -985,8 +1002,11 @@ impl INode for FNode {
         self.create_entry(target, inumber as u32, 1)
     }
 
-    fn get_filesystem_id(&self) -> Result<usize, FsError> {
-        self.fs.get_filesystem_id()
+    fn get_inode_key(&self) -> Result<InodeKey, FsError> {
+        Ok(InodeKey {
+            fs_id: self.fs.get_filesystem_id()?,
+            inumber: self.inode.lock().number,
+        })
     }
 }
 

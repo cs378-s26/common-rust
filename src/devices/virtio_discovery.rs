@@ -1,6 +1,3 @@
-// TODO once acpi handling gets added this will need to be removed, used for device node enum that only has one enum rn
-#![allow(irrefutable_let_patterns)]
-
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::device_discovery;

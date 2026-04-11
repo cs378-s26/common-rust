@@ -111,17 +111,15 @@ impl INodeKey {
 }
 
 pub trait Filesystem: Send + Sync {
-    // these are Arc<Self> because each node needs a reference to their filesystem, and we need to be able to give this out
-    fn get_root(self: &Arc<Self>) -> Result<Arc<dyn INode>, FsError>;
-    fn get_inode(self: &Arc<Self>, inumber: usize) -> Result<Arc<dyn INode>, FsError>;
+    fn get_root(&self) -> Result<Arc<dyn INode>, FsError>;
+    fn get_inode(&self, inumber: usize) -> Result<Arc<dyn INode>, FsError>;
 
     // these are for the VFS to get id's from the filesystem, particularly so a vnode's fs id can be recovered easily
     fn set_filesystem_id(&self, id: Option<usize>);
     fn get_filesystem_id(&self) -> Result<usize, FsError>;
     // delete_inode(inode)
 }
-
-pub enum InodeType {
+pub enum INodeType {
     File,
     Directory,
     // symlink or device, probably
@@ -160,8 +158,8 @@ pub trait INode: Send + Sync {
     }
 
     // page cache needs to know filesystem id for InodeKey, this provides a way to get it. An Inode should store a reference to
-    // whatever fs it's on. Maybe this could be done differently. 
-    fn get_filesystem_id(&self) -> Result<usize, FsError> {
+    // whatever fs it's on. Maybe this could be done differently.
+    fn get_inode_key(&self) -> Result<INodeKey, FsError> {
         Err(FsError::NotImplemented)
     }
     // Symlink
