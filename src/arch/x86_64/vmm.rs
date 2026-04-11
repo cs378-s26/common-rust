@@ -1,8 +1,5 @@
-use crate::memory::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
-    virtual_memory::PagingOptions,
-};
 use core::arch::asm;
+
 use spin::Mutex;
 use x86_64::{
     PhysAddr, VirtAddr,
@@ -10,6 +7,11 @@ use x86_64::{
         FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags,
         PhysFrame, Size4KiB,
     },
+};
+
+use crate::memory::{
+    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+    virtual_memory::PagingOptions,
 }; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
 
 // ChatGPT told me how to do this trait impl'ing

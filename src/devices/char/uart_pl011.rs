@@ -1,13 +1,15 @@
+use alloc::{boxed::Box, string::ToString, vec, vec::Vec};
+
 use super::{CharDevice, CharDeviceError};
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::Device;
-use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::print::{CharSink, set_serial_backend};
-use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::boxed::Box;
-use alloc::string::ToString;
-use alloc::vec;
-use alloc::vec::Vec;
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        Device,
+        discovery::{DeviceDiscovery, DeviceNode, DeviceType},
+    },
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    print::{CharSink, set_serial_backend},
+};
 
 // TODO: this driver currently is just for outputting characters to uart, later it will need to be expanded most likely
 pub struct UartPl011Driver {

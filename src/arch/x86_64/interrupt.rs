@@ -1,14 +1,18 @@
-use crate::event::{Event::PageFault, push_event};
-use crate::mp::CORE_ID;
-use crate::thread::this_thread;
-use crate::memory::virtual_memory::PageFaultConditions;
-use core::arch::naked_asm;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    arch::naked_asm,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
 
 use super::apic;
+use crate::{
+    event::{Event::PageFault, push_event},
+    memory::virtual_memory::PageFaultConditions,
+    mp::CORE_ID,
+    thread::this_thread,
+};
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 

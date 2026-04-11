@@ -1,13 +1,11 @@
+use alloc::{boxed::Box, vec::Vec};
 use core::arch::asm;
 
 use spin::Once;
 
-use crate::print::CharSink;
-use crate::memory::virtual_memory::PagingOptions;
-
-use crate::devices::discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use crate::{
+    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, print::CharSink,
+};
 
 mod asm;
 mod context;
@@ -16,11 +14,10 @@ mod exceptions;
 pub mod gic;
 mod interrupt;
 mod mp;
-pub use exceptions::{dump_core_state, init_exceptions};
-
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
+pub use exceptions::{dump_core_state, init_exceptions};
 pub use gic::timer_ticks;
 pub use interrupt::*;
 use mp::{

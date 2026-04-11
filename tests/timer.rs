@@ -4,9 +4,8 @@
 #![test_runner(kernel_common::test_runner)]
 
 kernel_common::integration_test!({
-    use kernel_common::print::kprintln;
     // You'll need to find where timer_ticks is and how to access it
-    use kernel_common::arch::timer_ticks;
+    use kernel_common::{arch::timer_ticks, print::kprintln};
 
     kprintln!("Testing timer...");
     // kprintln!("Timer is ticking!");

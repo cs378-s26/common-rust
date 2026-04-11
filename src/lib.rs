@@ -19,8 +19,8 @@ pub mod devices;
 pub mod event;
 // pub mod ext2;
 pub mod fs;
-pub mod memory;
 pub mod local_storage;
+pub mod memory;
 pub mod mp;
 pub mod panic;
 pub mod print;
@@ -31,28 +31,35 @@ pub mod syscall;
 pub mod thread;
 
 extern crate alloc;
-use crate::arch::{Arch, ArchTrait};
-use crate::cmdline::parse_kernel_cmdline;
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
-use crate::event::init_event_handler;
-use crate::memory::heap::init_malloc;
-use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
-use crate::print::{StackTrace, init_tty, kprintln};
-use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
-use crate::memory::virtual_memory_2::VirtualMemory;
 use core::sync::atomic::Ordering;
-use limine::BaseRevision;
-use limine::firmware_type::FirmwareType;
-use limine::mp::Cpu;
-use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
+
+use limine::{
+    BaseRevision,
+    firmware_type::FirmwareType,
+    mp::Cpu,
+    request::{
+        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
+        RequestsStartMarker,
+    },
 };
-use memory::physical_memory::{THE_HEAP, init_physical_memory_allocator};
+use memory::{
+    physical_memory::{THE_HEAP, init_physical_memory_allocator},
+    virtual_memory::init_virtual_memory_allocator,
+};
 use spin::{Barrier, Once};
 use talc::Span;
-use memory::virtual_memory::init_virtual_memory_allocator;
 
-use crate::devices::discovery::{create_drivers, discover_devices};
+use crate::{
+    arch::{Arch, ArchTrait},
+    cmdline::parse_kernel_cmdline,
+    coroutine::{init_coroutine_executor, init_coroutine_queue},
+    devices::discovery::{create_drivers, discover_devices},
+    event::init_event_handler,
+    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    print::{StackTrace, init_tty, kprintln},
+    thread::{poll_tasks, set_up_idle, spawn_thread},
+};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -225,8 +232,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 pub macro integration_test($test:block) {
-    use kernel_common::KernelWorkTrait;
-    use kernel_common::system_init;
+    use kernel_common::{KernelWorkTrait, system_init};
 
     #[cfg(test)]
     pub struct KernelWork;

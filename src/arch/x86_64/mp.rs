@@ -1,24 +1,28 @@
-use core::arch::asm;
-
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use alloc::boxed::Box;
+use core::{
+    arch::asm,
+    sync::atomic::{AtomicU32, Ordering},
+};
+
 use limine::mp::Cpu;
 use spin::Once;
-use x86::msr::IA32_FS_BASE;
 use x86::{
     cpuid::CpuId,
-    msr::{IA32_GS_BASE, wrmsr},
+    msr::{IA32_FS_BASE, IA32_GS_BASE, wrmsr},
 };
 
-use crate::arch::x86_64::slice_stack_pointer;
-use crate::arch::x86_64::tables::{
-    GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
-};
-use crate::arch::{apic, irq_vector::TIMER_INTERRUPT, tsc};
-use crate::memory::heap::aligned_slice;
 use crate::{
-    arch::x86_64::cpuid::Features,
+    arch::{
+        apic,
+        irq_vector::TIMER_INTERRUPT,
+        tsc,
+        x86_64::{
+            cpuid::Features,
+            slice_stack_pointer,
+            tables::{GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable},
+        },
+    },
+    memory::heap::aligned_slice,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::{kprint, kprintln},
 };

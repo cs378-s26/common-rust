@@ -1,14 +1,15 @@
-use crate::{
-    arch::{Arch, ArchTrait},
-    memory::freeset::FreeSet,
-    memory::physical_memory,
-    sync::{IntMutex, MutexLike},
-    fs::vfs::INodeKey,
-};
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use intrusive_collections::{KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::Once;
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    fs::vfs::INodeKey,
+    memory::{freeset::FreeSet, physical_memory},
+    sync::{IntMutex, MutexLike},
+};
 
 const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
 static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);

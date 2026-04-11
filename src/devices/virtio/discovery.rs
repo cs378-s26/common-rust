@@ -1,19 +1,26 @@
 // TODO once acpi handling gets added this will need to be removed, used for device node enum that only has one enum rn
 #![allow(irrefutable_let_patterns)]
 
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
-use crate::devices::virtio::virtio_blk::VirtIOBlkDiskDriver;
-use crate::devices::virtio::{KernelConfigurationAccess, VirtioBlkHal};
-use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::boxed::Box;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::ptr::NonNull;
-use virtio_drivers::transport::Transport;
-use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
-use virtio_drivers::transport::pci::PciTransport;
-use virtio_drivers::transport::pci::bus::{DeviceFunction, PciRoot};
+
+use virtio_drivers::transport::{
+    Transport,
+    mmio::{MmioTransport, VirtIOHeader},
+    pci::{
+        PciTransport,
+        bus::{DeviceFunction, PciRoot},
+    },
+};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        discovery::{self, DeviceDiscovery, DeviceNode, DeviceType},
+        virtio::{KernelConfigurationAccess, VirtioBlkHal, virtio_blk::VirtIOBlkDiskDriver},
+    },
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+};
 
 pub struct VirtioDiscovery;
 

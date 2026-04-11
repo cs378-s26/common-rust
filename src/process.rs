@@ -2,8 +2,8 @@ use alloc::sync::Arc;
 
 use crate::{
     arch::{Arch, ArchTrait},
-    thread::{THIS_THREAD, spawn_thread},
     memory::virtual_memory_2::VirtualMemory,
+    thread::{THIS_THREAD, spawn_thread},
 };
 
 pub struct Process {
@@ -31,11 +31,12 @@ impl Process {
 mod test {
     use crate::{
         arch::{Arch, ArchTrait},
-        memory::physical_memory::frame_alloc,
+        memory::{
+            physical_memory::frame_alloc, virtual_memory::PagingOptions,
+            virtual_memory_2::VirtualMemory,
+        },
         process::Process,
         thread::yield_thread,
-        memory::virtual_memory::PagingOptions,
-        memory::virtual_memory_2::VirtualMemory,
     };
 
     #[test_case]

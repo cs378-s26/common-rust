@@ -1,6 +1,8 @@
-use crate::arch::{Arch, ArchTrait};
-use crate::print::kprintln;
-use crate::*;
+use crate::{
+    arch::{Arch, ArchTrait},
+    print::kprintln,
+    *,
+};
 
 #[inline(always)]
 #[allow(dead_code)]

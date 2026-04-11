@@ -1,5 +1,4 @@
-use core::arch::asm;
-use core::arch::naked_asm;
+use core::arch::{asm, naked_asm};
 
 use x86::irq;
 

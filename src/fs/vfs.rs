@@ -1,9 +1,7 @@
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-use alloc::collections::btree_map::BTreeMap;
-use alloc::sync::Arc;
-use core::sync::atomic::AtomicUsize;
-use core::sync::atomic::Ordering;
+use alloc::{collections::btree_map::BTreeMap, sync::Arc};
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::sync::{IntMutex, MutexLike};
 
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>;
 

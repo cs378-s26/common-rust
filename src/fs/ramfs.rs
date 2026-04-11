@@ -1,15 +1,13 @@
-use crate::arch::Arch;
-use crate::arch::ArchTrait;
-use crate::fs::vfs::INode;
-use crate::fs::vfs::{DirectoryTrait, FileTrait, Filesystem};
-use crate::memory::physical_memory::HHDM_OFFSET;
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-use alloc::string::String;
-use alloc::sync::Arc;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{string::String, sync::Arc, vec, vec::Vec};
+
 use spin::Once;
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    fs::vfs::{DirectoryTrait, FileTrait, Filesystem, INode},
+    memory::physical_memory::HHDM_OFFSET,
+    sync::{IntMutex, MutexLike},
+};
 
 pub struct RAMFilesystem {
     reference: Once<Arc<RAMFilesystem>>,
@@ -96,16 +94,17 @@ impl Filesystem for RAMFilesystem {
 
 #[cfg(test)]
 mod test {
-    use crate::arch::{Arch, ArchTrait};
-    use crate::fs::ramfs::RAMFilesystem;
-    use crate::fs::vfs::Filesystem;
-    use crate::fs::vfs::{Directory, File};
-    use crate::memory::physical_memory;
-    use crate::memory::physical_memory::HHDM_OFFSET;
-    use crate::sync::IntMutex;
-    use alloc::string::String;
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
+    use alloc::{string::String, sync::Arc, vec::Vec};
+
+    use crate::{
+        arch::{Arch, ArchTrait},
+        fs::{
+            ramfs::RAMFilesystem,
+            vfs::{Directory, File, Filesystem},
+        },
+        memory::{physical_memory, physical_memory::HHDM_OFFSET},
+        sync::IntMutex,
+    };
 
     fn init_test_ramfs(fs: Arc<RAMFilesystem>) {
         let empty = Arc::new(Directory(IntMutex::new(Vec::<(String, usize)>::new())));

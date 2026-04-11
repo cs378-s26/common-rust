@@ -1,10 +1,13 @@
-use crate::arch::ArchTrait;
-use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use spin::Once;
+
+use crate::{
+    arch::ArchTrait,
+    devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType},
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+};
 
 pub static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 pub static GICD_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);

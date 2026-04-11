@@ -1,14 +1,16 @@
+use alloc::{boxed::Box, sync::Arc};
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
+use spin::Once;
+
 use crate::{
     arch::{Arch, ArchTrait},
+    memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
     thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    memory::virtual_memory::{PageFaultConditions, handle_page_fault},
 };
-use alloc::{boxed::Box, sync::Arc};
-use core::sync::atomic::{AtomicUsize, Ordering};
-use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
-use spin::Once;
 
 pub enum Event {
     Shootdown {

@@ -1,22 +1,20 @@
+use alloc::boxed::Box;
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr::{null_mut, slice_from_raw_parts_mut},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::sync::MutexLike;
+use limine::memory_map::{Entry, EntryType};
 
 use crate::{
     arch::{Arch, ArchTrait},
     mp::{CORE_ID, MP_STAGE, MPStage},
     print::kprintln,
-    sync::IntMutex,
+    sync::{IntMutex, MutexLike},
 };
-
-use alloc::boxed::Box;
-use limine::memory_map::{Entry, EntryType};
 const MAX_CPUS: usize = 256;
-// used for debugging 
+// used for debugging
 const ENABLE_PER_CPU_CACHE: bool = true;
 
 const NUM_CLASSES: usize = 8;
@@ -314,7 +312,7 @@ impl HeapAllocator {
         }
     }
 
-    fn init_from_block(&mut self, offset : usize, len : usize) {
+    fn init_from_block(&mut self, offset: usize, len: usize) {
         let start = align_up(offset, Arch::page_size());
         let end = align_down(offset + len, Arch::page_size());
         if end <= start {
@@ -326,8 +324,8 @@ impl HeapAllocator {
             return;
         }
 
-        self.buddy.add_range(self.hhdm_offset, start as u64, page_count);
-
+        self.buddy
+            .add_range(self.hhdm_offset, start as u64, page_count);
     }
 
     /*
@@ -417,10 +415,7 @@ impl HeapAllocator {
 
         unsafe {
             if (*header).magic != SLAB_PAGE_MAGIC {
-                kprintln!(
-                    "mem::free_small(): invalid slab header for ptr={:p}",
-                    ptr,
-                );
+                kprintln!("mem::free_small(): invalid slab header for ptr={:p}", ptr,);
                 return;
             }
             let class = (*header).class_index as usize;
@@ -674,13 +669,10 @@ static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl {
     heap: IntMutex::new(HeapAllocator::new()),
 };
 
-pub fn init_malloc(heap : usize, len : usize) {
+pub fn init_malloc(heap: usize, len: usize) {
     kprintln!("init_malloc(): initializing  allocator");
 
-    GLOBAL_ALLOC
-        .heap
-        .lock()
-        .init_from_block(heap, len);
+    GLOBAL_ALLOC.heap.lock().init_from_block(heap, len);
 }
 
 pub fn aligned_slice(size: usize, align: usize) -> Box<[u8]> {
