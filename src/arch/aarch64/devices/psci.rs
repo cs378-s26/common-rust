@@ -1,4 +1,6 @@
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use alloc::vec;
+use alloc::vec::Vec;
 use spin::Once;
 
 pub static PSCI_DEVICE: Once<PSCIDevice> = Once::new();
@@ -54,7 +56,7 @@ impl PSCIDevice {
 pub struct PSCIDiscovery;
 
 impl DeviceDiscovery for PSCIDiscovery {
-    fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
             && c.all()
@@ -77,7 +79,7 @@ impl DeviceDiscovery for PSCIDiscovery {
             PSCI_DEVICE
                 .call_once(|| PSCIDevice::new(migrate, cpu_on, cpu_off, cpu_suspend, psci_method));
 
-            return Some(DeviceType::Special);
+            return Some(vec![DeviceType::Special]);
         }
         None
     }

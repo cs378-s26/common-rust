@@ -2,11 +2,10 @@ use core::arch::asm;
 
 use spin::Once;
 
-// use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -38,6 +37,10 @@ use devices::psci::PSCI_DEVICE;
 
 impl ArchTrait for Arch {
     type Context = Context;
+
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()
@@ -101,8 +104,16 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
-    fn get_address_space() -> u64 {
-        vmm::get_address_space()
+    fn get_kernel_address_space() -> u64 {
+        vmm::get_kernel_address_space()
+    }
+
+    fn get_user_address_space() -> u64 {
+        vmm::get_user_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
+        vmm::set_user_address_space(space)
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
@@ -140,10 +151,6 @@ impl ArchTrait for Arch {
 
     fn configure_vm() {
         vmm::configure_vm();
-    }
-
-    fn parse_devices() {
-        devices::parse_devices();
     }
 
     fn create_arch_specific_drivers(

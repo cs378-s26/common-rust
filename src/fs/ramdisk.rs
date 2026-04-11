@@ -23,7 +23,20 @@ impl<'a> Ramdisk<'a> {
         let response = MODULE_REQUEST
             .get_response()
             .expect("could not load modules (needed for fs)");
-        let module = response.modules()[1];
+        let modules = response.modules();
+        let module = modules
+            .iter()
+            .copied()
+            .find(|module| module.string().to_bytes() == b"ramdisk")
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not find ramdisk module; available modules: {:?}",
+                    modules
+                        .iter()
+                        .map(|module| module.string().to_bytes())
+                        .collect::<alloc::vec::Vec<_>>()
+                )
+            });
         let addr = module.addr();
         let size = module.size() as usize;
         assert!(addr.align_offset(sector_size) == 0);
