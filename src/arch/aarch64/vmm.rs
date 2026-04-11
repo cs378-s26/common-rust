@@ -80,6 +80,8 @@ pub fn set_user_address_space(space: u64) {
     unsafe {
         asm!(
             "msr ttbr0_el1, {}",
+            "tlbi vmalle1is",
+            "dsb ishst",
             in(reg) space,
             options(nomem, nostack, preserves_flags)
         );

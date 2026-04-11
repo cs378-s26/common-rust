@@ -31,7 +31,7 @@ impl Process {
 mod test {
     use crate::{
         arch::{Arch, ArchTrait},
-        physical_memory::{frame_alloc, frame_dealloc},
+        physical_memory::frame_alloc,
         process::Process,
         thread::yield_thread,
         virtual_memory::PagingOptions,
@@ -40,11 +40,15 @@ mod test {
 
     #[test_case]
     fn test_processes() {
-        const VADDR: usize = 0x10000;
+        const VADDR: usize = 0x80000000;
         for i in 0..128 {
             let process = Process::new();
             Process::run(process.clone(), move || {
                 let paddr = frame_alloc();
+                assert!(
+                    process.virtual_memory.get_page_table()
+                        == Arch::get_user_address_space() as usize
+                );
                 assert!(
                     process.virtual_memory.get_page_table()
                         != VirtualMemory::get_limine_page_table()
