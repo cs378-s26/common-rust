@@ -1,0 +1,5 @@
+Starting Testing Code...
+Mounted ext2 from testfs
+hello.txt: ext2 hello world
+nested slice: ing wo
+ext2 fs read tests passed

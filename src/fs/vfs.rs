@@ -7,7 +7,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
 // TODO we probably don't want to cache on both the fs and the VFS level,
-type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn INode>>>;
+type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsError {
@@ -27,7 +27,7 @@ pub struct VFS {
     filesystems: IntMutex<BTreeMap<usize, Arc<dyn Filesystem>>>,
     inode_cache: IntMutex<INodeCache>,
     filesystem_id_counter: AtomicUsize,
-    root: IntMutex<Option<Arc<dyn INode>>>,
+    root: IntMutex<Option<Arc<dyn VNode>>>,
 }
 
 pub static VFS: VFS = VFS {
@@ -43,9 +43,9 @@ impl VFS {
         let mut inode_cache = self.inode_cache.lock();
         let mut filesystems = self.filesystems.lock();
         let filesystem_id = self.filesystem_id_counter.fetch_add(1, Ordering::SeqCst);
+        filesystem.set_filesystem_id(Some(filesystem_id));
         filesystems.insert(filesystem_id, filesystem);
         inode_cache.insert(filesystem_id, BTreeMap::new());
-        filesystem.set_filesystem_id(Some(filesystem_id));
         filesystem_id
     }
 
@@ -58,22 +58,22 @@ impl VFS {
         inode_cache.remove(&filesystem_id);
     }
 
-    pub fn get_inode(&self, key: &INodeKey) -> Result<Arc<dyn INode>, FsError> {
+    pub fn get_inode(&self, key: &INodeKey) -> Result<Arc<dyn VNode>, FsError> {
         let mut inode_cache = self.inode_cache.lock();
-        let map = inode_cache.get_mut(&key.filesystem_id)?;
+        let map = inode_cache.get_mut(&key.filesystem_id).ok_or(FsError::NotFound)?;
         if let Some(inode) = map.get(&key.inumber) {
             return Ok(Arc::clone(inode));
         }
         let inode = self
             .filesystems
             .lock()
-            .get(&key.filesystem_id)?
+            .get(&key.filesystem_id).ok_or(FsError::NotFound)?
             .get_inode(key.inumber)?;
         map.insert(key.inumber, Arc::clone(&inode));
         Ok(inode)
     }
 
-    pub fn get_root(&self) -> Option<Arc<dyn INode>> {
+    pub fn get_root(&self) -> Option<Arc<dyn VNode>> {
         let root = self.root.lock();
         if let Some(root) = &*root {
             return Some(Arc::clone(root));
@@ -81,7 +81,7 @@ impl VFS {
         None
     }
 
-    pub fn set_root(&self, inode: Arc<dyn INode>) -> Result<(), FsError> {
+    pub fn set_root(&self, inode: Arc<dyn VNode>) -> Result<(), FsError> {
         let mut root = self.root.lock();
         if root.is_some() {
             return Err(FsError::AlreadyExists);
@@ -105,20 +105,21 @@ impl INodeKey {
         }
     }
 
-    pub fn get_inode(&self) -> Option<Arc<dyn INode>> {
-        VFS.get_inode(self).ok_or(None)
+    pub fn get_inode(&self) -> Result<Arc<dyn VNode>, FsError> {
+        VFS.get_inode(self)
     }
 }
 
 pub trait Filesystem: Send + Sync {
-    fn get_root(&self) -> Result<Arc<dyn INode>, FsError>;
-    fn get_inode(&self, inumber: usize) -> Result<Arc<dyn INode>, FsError>;
+    fn get_root(&self) -> Result<Arc<dyn VNode>, FsError>;
+    fn get_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError>;
 
     // these are for the VFS to get id's from the filesystem, particularly so a vnode's fs id can be recovered easily
     fn set_filesystem_id(&self, id: Option<usize>);
     fn get_filesystem_id(&self) -> Result<usize, FsError>;
-    // delete_inode(inode)
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum INodeType {
     File,
     Directory,
@@ -127,7 +128,7 @@ pub enum INodeType {
 }
 
 // dyn inode works as a typical vnode
-pub trait INode: Send + Sync {
+pub trait VNode: Send + Sync {
     // Files
     fn get_inumber(&self) -> usize;
 
@@ -144,17 +145,32 @@ pub trait INode: Send + Sync {
     }
 
     // Directory
-    fn lookup(&self, target: &str) -> Result<Arc<dyn INode>, FsError> {
+    fn lookup(&self, target: &str) -> Result<Arc<dyn VNode>, FsError> {
         Err(FsError::NotImplemented)
     }
 
-    fn add_entry(&self, target: &str, inumber: usize) -> Result<(), FsError> {
+    fn add_entry(&self, target: &str, inumber: usize, inode_type: INodeType) -> Result<(), FsError> {
+        Err(FsError::NotImplemented)
+    }
+
+    // should only be implemented for directories
+    fn create_child(&self, name: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
         Err(FsError::NotImplemented)
     }
 
     // file size, can be undefined
     fn size(&self) -> usize {
         0
+    }
+
+    // note: these really are not the main interface for vfs, reads and writes should be done through page cache,
+    // this is for non-caching and convenience. 
+    fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+        Err(FsError::NotImplemented)
+    }
+
+    fn write_unaligned(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
+        Err(FsError::NotImplemented)
     }
 
     // page cache needs to know filesystem id for InodeKey, this provides a way to get it. An Inode should store a reference to
