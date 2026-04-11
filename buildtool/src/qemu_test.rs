@@ -504,7 +504,9 @@ fn assert_output_match(
     expected_path: &Path,
     actual_path: &Path,
 ) -> Result<()> {
-    if normalize_output(expected) == normalize_output(actual) {
+    let expected = normalize_output(expected);
+    let actual = normalize_output(actual);
+    if expected == actual {
         return Ok(());
     }
 
