@@ -45,6 +45,15 @@ pub fn get_address_space() -> u64 {
     cr3
 }
 
+pub fn set_address_space(cr3: u64) {
+    unsafe {
+        asm!(
+            "mov cr3, {0}",
+            in(reg) cr3,
+        );
+    }
+}
+
 // TODO allocator wrapper is kinda dumb
 
 struct VMMProtector; // TODO make cr3-specific

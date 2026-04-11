@@ -95,7 +95,7 @@ impl MmioRegion {
         let aligned_size = (size + Arch::PAGE_SIZE - 1) & !(Arch::PAGE_SIZE - 1);
 
         let vma = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             None,
             aligned_size,
             Some(phys_addr),
