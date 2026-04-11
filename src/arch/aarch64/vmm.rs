@@ -77,6 +77,12 @@ pub fn get_user_address_space() -> u64 {
 }
 
 pub fn set_user_address_space(space: u64) {
+    // TODO: Currently, this is just a hack so that we don't flush the
+    // TLB too much. In the future, we should implement process ID
+    // tagging.
+    if space == get_user_address_space() {
+        return;
+    }
     unsafe {
         asm!(
             "msr ttbr0_el1, {}",
