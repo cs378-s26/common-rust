@@ -22,7 +22,7 @@ impl UartPl011Driver {
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
         let backing = Some(self.phys_address);
         let vm = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             None,
             Arch::PAGE_SIZE,
             backing,

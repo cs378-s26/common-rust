@@ -19,6 +19,7 @@ pub mod devices;
 pub mod dma;
 pub mod event;
 // pub mod ext2;
+pub mod freeset;
 pub mod fs;
 pub mod heap;
 pub mod local_storage;
@@ -26,11 +27,14 @@ pub mod mp;
 pub mod panic;
 pub mod physical_memory;
 pub mod print;
+pub mod process;
 pub mod state;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
+pub mod vfs;
 pub mod virtual_memory;
+pub mod virtual_memory_2;
 
 extern crate alloc;
 use crate::arch::{Arch, ArchTrait};
@@ -41,6 +45,7 @@ use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
+use crate::virtual_memory_2::VirtualMemory;
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -132,6 +137,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+    VirtualMemory::init();
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();

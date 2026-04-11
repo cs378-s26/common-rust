@@ -35,7 +35,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             // create temporary mapping for the MMIO region to read the device, this can later be overwritten
             // by the vm allocator, mapping made permanent below for any finalized match
             Arch::virtual_map(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 virt_base,
                 phys_base,
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
@@ -53,7 +53,7 @@ impl DeviceDiscovery for VirtioDiscovery {
                         | PagingOptions::SHADOW;
                     // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
                     VirtualMemoryAllocation::new(
-                        Arch::get_address_space(),
+                        Arch::get_kernel_address_space(),
                         Some(virt_base as usize),
                         size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
                         Some(phys_base as usize),

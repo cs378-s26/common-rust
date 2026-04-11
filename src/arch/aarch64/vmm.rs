@@ -50,8 +50,8 @@ bitflags! {
     }
 }
 
-pub fn get_address_space() -> u64 {
-    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e above hhdm_offset
+pub fn get_kernel_address_space() -> u64 {
+    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e starting at 0xffff_0000_...
 
     unsafe {
         asm!(
@@ -61,6 +61,37 @@ pub fn get_address_space() -> u64 {
         );
     }
     ttbr1
+}
+
+pub fn get_user_address_space() -> u64 {
+    let mut ttbr0: u64; // translation table base register 0, used for user space mappings, i.e below 0xffff_0000_...
+
+    unsafe {
+        asm!(
+            "mrs {}, ttbr0_el1",
+            out(reg) ttbr0,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ttbr0
+}
+
+pub fn set_user_address_space(space: u64) {
+    // TODO: Currently, this is just a hack so that we don't flush the
+    // TLB too much. In the future, we should implement process ID
+    // tagging.
+    if space == get_user_address_space() {
+        return;
+    }
+    unsafe {
+        asm!(
+            "msr ttbr0_el1, {}",
+            "tlbi vmalle1is",
+            "dsb ishst",
+            in(reg) space,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
 }
 
 // map a virtual address to a physical address in the given address space, with the given paging options

@@ -27,7 +27,7 @@ impl GicA15Driver {
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
         let gicd_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicd_phys_address),
@@ -36,7 +36,7 @@ impl GicA15Driver {
         );
 
         let gicc_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicc_phys_address),
