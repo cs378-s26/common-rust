@@ -1,5 +1,11 @@
 Starting Testing Code...
 Mounted ext2 from testfs
-hello.txt: ext2 hello world
-nested slice: ing wo
-ext2 fs read tests passed
+vfs root set
+found hello.txt
+found dir
+found nested.txt
+got inode by key
+created file
+wrote created file
+lookup created file
+vfs/ext2 integration checks passed

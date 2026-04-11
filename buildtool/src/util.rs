@@ -296,6 +296,8 @@ fn build_ext2_filesystem_from_dir_with_size(
         .arg("-F")
         .arg("-m")
         .arg("0")
+        .arg("-b")
+        .arg("4096")
         .arg("-d")
         .arg(&source_dir)
         .arg(temp_img.path())

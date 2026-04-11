@@ -1,7 +1,7 @@
 extern crate alloc;
 use alloc::string::String;
 
-use super::vfs::{VNode, Filesystem, FsError, INodeKey, INodeType};
+use super::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::BlockDevice;
 use crate::sync::IntMutex;
@@ -97,7 +97,7 @@ pub struct INode {
     number: usize,
     data: INodeData,
     #[allow(unused)]
-    dirty: bool, 
+    dirty: bool,
 }
 
 #[repr(C, packed)]
@@ -885,7 +885,11 @@ impl VNode for FNode {
                 mtime: 0,
                 dtime: 0,
                 gid: 0,
-                links_count: if inode_type == INodeType::Directory { 2 } else { 1 },
+                links_count: if inode_type == INodeType::Directory {
+                    2
+                } else {
+                    1
+                },
                 blocks: 0,
                 flags: 0,
                 osd1: 0,
@@ -895,10 +899,9 @@ impl VNode for FNode {
                 dir_acl: 0,
                 faddr: 0,
                 osd2: [0; 12],
-        },
+            },
             dirty: false,
         };
-
 
         if let Err(fs_error) = self.fs.write_inode_data(&inode) {
             // if we fail to write the inode data, we need to deallocate the inode we just allocated to avoid leaks
@@ -921,9 +924,11 @@ impl VNode for FNode {
                 // if we fail to create the "." entry, we need to clean up both the inode and the directory entry we just created
                 // TODO implement directory entry deletion to avoid dangling directory entry
                 let _ = self.fs.dealloc_inode(inumber as usize, None);
-                return Err(fs_error);         
+                return Err(fs_error);
             }
-            if let Err(fs_error) = fnode.create_entry("..", self.inode.lock().number as u32, file_type) {
+            if let Err(fs_error) =
+                fnode.create_entry("..", self.inode.lock().number as u32, file_type)
+            {
                 // if we fail to create the ".." entry, we need to clean up the inode and the entries we just created
                 let _ = self.fs.dealloc_inode(inumber as usize, None);
                 return Err(fs_error);
@@ -944,7 +949,8 @@ impl VNode for FNode {
             Some(physical_address),
             options,
             true,
-        ).ok_or(FsError::Other((String::from("vm allocation failed"))))?;
+        )
+        .ok_or(FsError::Other((String::from("vm allocation failed"))))?;
         let virt_addr = allocation.base;
 
         // Safety: we trust our virtual memory allocator and this won't be reused until after allocation is freed
@@ -1007,7 +1013,8 @@ impl VNode for FNode {
             Some(physical_address),
             options,
             true,
-        ).ok_or(FsError::Other((String::from("vm allocation failed"))))?;
+        )
+        .ok_or(FsError::Other((String::from("vm allocation failed"))))?;
         let virt_addr = allocation.base;
 
         // Safety: this mapping will stay alive for the duration of
@@ -1091,7 +1098,12 @@ impl VNode for FNode {
         Ok(fnode)
     }
 
-    fn add_entry(&self, target: &str, inumber: usize, inode_type: INodeType) -> Result<(), FsError> {
+    fn add_entry(
+        &self,
+        target: &str,
+        inumber: usize,
+        inode_type: INodeType,
+    ) -> Result<(), FsError> {
         if self.get_type() != INodeType::Directory {
             return Err(FsError::InvalidOperation);
         }
@@ -1103,19 +1115,28 @@ impl VNode for FNode {
         self.create_entry(target, inumber as u32, file_type)
     }
 
-    // read across blocks starting at offset. 
+    // read across blocks starting at offset.
     fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
         let mut total_read = 0;
         let mut scratch = alloc::vec![0u8; self.fs.block_size];
         let inode = self.inode.lock();
-        while total_read < buffer.len() {
-            let block_number = offset + total_read / self.fs.block_size;
-            let block_offset = (offset + total_read) % self.fs.block_size;
+        let file_size = inode.data.size as usize;
+        if offset >= file_size {
+            return Ok(0);
+        }
+        while total_read < buffer.len() && offset + total_read < file_size {
+            let file_pos = offset + total_read;
+            let block_number = file_pos / self.fs.block_size;
+            let block_offset = file_pos % self.fs.block_size;
             self.read_block(block_number, &mut scratch, &inode)?;
 
-            // read the read of the block or the rest of the buffer
-            let to_copy = core::cmp::min(buffer.len() - total_read, self.fs.block_size - block_offset);
-            buffer[total_read..total_read + to_copy].copy_from_slice(&scratch[block_offset..block_offset + to_copy]);
+            // copy at most the rest of the block, the caller buffer, and remaining file.
+            let to_copy = core::cmp::min(
+                core::cmp::min(buffer.len() - total_read, self.fs.block_size - block_offset),
+                file_size - file_pos,
+            );
+            buffer[total_read..total_read + to_copy]
+                .copy_from_slice(&scratch[block_offset..block_offset + to_copy]);
             total_read += to_copy;
         }
         Ok(total_read)
@@ -1128,12 +1149,17 @@ impl VNode for FNode {
         let mut inode = self.inode.lock();
 
         while total_written < buffer.len() {
-            let block_number = offset + total_written / self.fs.block_size;
-            let block_offset = (offset + total_written) % self.fs.block_size;
+            let file_pos = offset + total_written;
+            let block_number = file_pos / self.fs.block_size;
+            let block_offset = file_pos % self.fs.block_size;
             self.read_block(block_number, &mut scratch, &inode)?;
-            let to_copy = core::cmp::min(buffer.len() - total_written, self.fs.block_size - block_offset);
-            scratch[block_offset..block_offset + to_copy].copy_from_slice(&buffer[total_written..total_written + to_copy]);
-            self.write_block(block_number, &scratch, &mut self.inode.lock(), None, None, 0)?;
+            let to_copy = core::cmp::min(
+                buffer.len() - total_written,
+                self.fs.block_size - block_offset,
+            );
+            scratch[block_offset..block_offset + to_copy]
+                .copy_from_slice(&buffer[total_written..total_written + to_copy]);
+            self.write_block(block_number, &scratch, &mut inode, None, None, 0)?;
             total_written += to_copy;
         }
 

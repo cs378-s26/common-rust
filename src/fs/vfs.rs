@@ -60,14 +60,17 @@ impl VFS {
 
     pub fn get_inode(&self, key: &INodeKey) -> Result<Arc<dyn VNode>, FsError> {
         let mut inode_cache = self.inode_cache.lock();
-        let map = inode_cache.get_mut(&key.filesystem_id).ok_or(FsError::NotFound)?;
+        let map = inode_cache
+            .get_mut(&key.filesystem_id)
+            .ok_or(FsError::NotFound)?;
         if let Some(inode) = map.get(&key.inumber) {
             return Ok(Arc::clone(inode));
         }
         let inode = self
             .filesystems
             .lock()
-            .get(&key.filesystem_id).ok_or(FsError::NotFound)?
+            .get(&key.filesystem_id)
+            .ok_or(FsError::NotFound)?
             .get_inode(key.inumber)?;
         map.insert(key.inumber, Arc::clone(&inode));
         Ok(inode)
@@ -149,7 +152,12 @@ pub trait VNode: Send + Sync {
         Err(FsError::NotImplemented)
     }
 
-    fn add_entry(&self, target: &str, inumber: usize, inode_type: INodeType) -> Result<(), FsError> {
+    fn add_entry(
+        &self,
+        target: &str,
+        inumber: usize,
+        inode_type: INodeType,
+    ) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 
@@ -164,7 +172,7 @@ pub trait VNode: Send + Sync {
     }
 
     // note: these really are not the main interface for vfs, reads and writes should be done through page cache,
-    // this is for non-caching and convenience. 
+    // this is for non-caching and convenience.
     fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
     }

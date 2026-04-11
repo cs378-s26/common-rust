@@ -1,5 +1,5 @@
 use crate::arch::{Arch, ArchTrait};
-use crate::fs::vfs::{Filesystem, FsError, INodeKey, VNode, INodeType};
+use crate::fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
 use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::{IntMutex, MutexLike};
 use alloc::collections::btree_map::BTreeMap;
@@ -16,8 +16,12 @@ pub struct RamFilesystem {
 }
 
 enum RamInodeKind {
-    File { data: IntMutex<Vec<u8>> },
-    Dir { entries: IntMutex<BTreeMap<String, usize>> },
+    File {
+        data: IntMutex<Vec<u8>>,
+    },
+    Dir {
+        entries: IntMutex<BTreeMap<String, usize>>,
+    },
 }
 
 pub struct RamInode {
@@ -89,7 +93,10 @@ impl RamInode {
     }
 
     fn hhdm(&self) -> Result<usize, FsError> {
-        HHDM_OFFSET.get().copied().ok_or(FsError::Other("no HHDM".into()))
+        HHDM_OFFSET
+            .get()
+            .copied()
+            .ok_or(FsError::Other("no HHDM".into()))
     }
 
     fn as_dir(&self) -> Result<&IntMutex<BTreeMap<String, usize>>, FsError> {
@@ -128,11 +135,7 @@ impl VNode for RamInode {
         let hhdm = self.hhdm()?;
         let virt = physical_address + hhdm;
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                data.as_ptr().add(offset),
-                virt as *mut u8,
-                len,
-            );
+            core::ptr::copy_nonoverlapping(data.as_ptr().add(offset), virt as *mut u8, len);
         }
         Ok(len)
     }
@@ -163,7 +166,12 @@ impl VNode for RamInode {
         fs.get_inode(*inumber)
     }
 
-    fn add_entry(&self, target: &str, inumber: usize, _inode_type: INodeType) -> Result<(), FsError> {
+    fn add_entry(
+        &self,
+        target: &str,
+        inumber: usize,
+        _inode_type: INodeType,
+    ) -> Result<(), FsError> {
         let entries = self.as_dir()?;
         let mut guard = entries.lock();
         if guard.contains_key(target) {
