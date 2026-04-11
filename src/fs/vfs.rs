@@ -38,27 +38,31 @@ pub static VFS: VFS = VFS {
 };
 
 impl VFS {
+    // not a great mount yet, but this can be improved later for proper traversal.
     pub fn mount(&self, filesystem: Arc<dyn Filesystem>) -> usize {
         let mut inode_cache = self.inode_cache.lock();
         let mut filesystems = self.filesystems.lock();
         let filesystem_id = self.filesystem_id_counter.fetch_add(1, Ordering::SeqCst);
         filesystems.insert(filesystem_id, filesystem);
         inode_cache.insert(filesystem_id, BTreeMap::new());
+        filesystem.set_filesystem_id(Some(filesystem_id));
         filesystem_id
     }
 
     pub fn unmount(&self, filesystem_id: usize) {
         let mut inode_cache = self.inode_cache.lock();
         let mut filesystems = self.filesystems.lock();
-        filesystems.remove(&filesystem_id);
+        if let Some(fs) = filesystems.remove(&filesystem_id) {
+            fs.set_filesystem_id(None);
+        }
         inode_cache.remove(&filesystem_id);
     }
 
-    pub fn get_inode(&self, key: &INodeKey) -> Option<Arc<dyn INode>> {
+    pub fn get_inode(&self, key: &INodeKey) -> Result<Arc<dyn INode>, FsError> {
         let mut inode_cache = self.inode_cache.lock();
         let map = inode_cache.get_mut(&key.filesystem_id)?;
         if let Some(inode) = map.get(&key.inumber) {
-            return Some(Arc::clone(inode));
+            return Ok(Arc::clone(inode));
         }
         let inode = self
             .filesystems
@@ -66,7 +70,7 @@ impl VFS {
             .get(&key.filesystem_id)?
             .get_inode(key.inumber)?;
         map.insert(key.inumber, Arc::clone(&inode));
-        Some(inode)
+        Ok(inode)
     }
 
     pub fn get_root(&self) -> Option<Arc<dyn INode>> {
@@ -102,13 +106,18 @@ impl INodeKey {
     }
 
     pub fn get_inode(&self) -> Option<Arc<dyn INode>> {
-        VFS.get_inode(self)
+        VFS.get_inode(self).ok_or(None)
     }
 }
 
 pub trait Filesystem: Send + Sync {
-    fn get_root(&self) -> Arc<dyn INode>;
-    fn get_inode(&self, inumber: usize) -> Option<Arc<dyn INode>>;
+    // these are Arc<Self> because each node needs a reference to their filesystem, and we need to be able to give this out
+    fn get_root(self: &Arc<Self>) -> Result<Arc<dyn INode>, FsError>;
+    fn get_inode(self: &Arc<Self>, inumber: usize) -> Result<Arc<dyn INode>, FsError>;
+
+    // these are for the VFS to get id's from the filesystem, particularly so a vnode's fs id can be recovered easily
+    fn set_filesystem_id(&self, id: Option<usize>);
+    fn get_filesystem_id(&self) -> Result<usize, FsError>;
     // delete_inode(inode)
 }
 
@@ -150,6 +159,11 @@ pub trait INode: Send + Sync {
         0
     }
 
+    // page cache needs to know filesystem id for InodeKey, this provides a way to get it. An Inode should store a reference to
+    // whatever fs it's on. Maybe this could be done differently. 
+    fn get_filesystem_id(&self) -> Result<usize, FsError> {
+        Err(FsError::NotImplemented)
+    }
     // Symlink
     // fn traverse() -> str
 }

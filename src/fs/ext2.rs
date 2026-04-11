@@ -18,6 +18,7 @@ pub struct Ext2 {
     block_map_lock: IntMutex<()>,
     inode_map_lock: IntMutex<()>,
     group_lock: IntMutex<()>,
+    vfs_id: IntMutex<Option<usize>>, // To allow for identification in the vfs when it is mounted, perhaps there are better ways to do this
 }
 
 pub struct FNode {
@@ -120,7 +121,7 @@ struct INodeData {
 
 impl Ext2 {
     fn alloc_block(
-        self: &Arc<Self>,
+        &self,
         preferred_group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<usize, FsError> {
@@ -147,7 +148,7 @@ impl Ext2 {
     }
 
     fn alloc_block_given_group(
-        self: &Arc<Self>,
+        &self,
         group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<Option<usize>, FsError> {
@@ -187,7 +188,7 @@ impl Ext2 {
     }
 
     pub fn alloc_inode(
-        self: &Arc<Self>,
+        &self,
         preferred_group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<usize, FsError> {
@@ -214,7 +215,7 @@ impl Ext2 {
     }
 
     fn alloc_inode_given_group(
-        self: &Arc<Self>,
+        &self,
         group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<Option<usize>, FsError> {
@@ -252,7 +253,7 @@ impl Ext2 {
     }
 
     pub fn dealloc_block(
-        self: &Arc<Self>,
+        &self,
         block_number: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<(), FsError> {
@@ -285,7 +286,7 @@ impl Ext2 {
     }
 
     pub fn dealloc_inode(
-        self: &Arc<Self>,
+        &self,
         inumber: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<(), FsError> {
@@ -317,7 +318,7 @@ impl Ext2 {
         Ok(())
     }
 
-    fn first_zero_in_bitmap(self: &Arc<Self>, bitmap: &[u8]) -> Option<usize> {
+    fn first_zero_in_bitmap(&self, bitmap: &[u8]) -> Option<usize> {
         for i in 0..self.block_size / 8 {
             let (chunk, _) = u64::read_from_prefix(&bitmap[i * 8..]).unwrap();
             if chunk == u64::MAX {
@@ -340,7 +341,7 @@ impl Ext2 {
     }
 
     fn get_block_group_descriptor(
-        self: &Arc<Self>,
+        &self,
         block_group: usize,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<(BlockGroupDescriptor, (usize, usize)), FsError> {
@@ -360,8 +361,9 @@ impl Ext2 {
         Ok((bgd, (bgd_offset, bgd_block)))
     }
 
-    fn get_inode(
-        self: &Arc<Self>,
+    // from an inumber get an inode
+    fn get_ext2_inode(
+        &self,
         inumber: u32,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<(INode, (usize, usize)), FsError>
@@ -371,10 +373,12 @@ impl Ext2 {
         if inumber == 0 {
             return Err(FsError::InvalidInput);
         }
+
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.block_size])[..],
         };
+
         let block_group = (inumber - 1) / self.superblock.inodes_per_group;
         let _guard = self.group_lock.lock();
         let (bgd, _) =
@@ -382,6 +386,7 @@ impl Ext2 {
         let inodes_per_block = self.block_size / (self.superblock.inode_size as usize);
         let inode_index = ((inumber - 1) % self.superblock.inodes_per_group) as usize;
         let inode_block = (bgd.inode_table as usize) + inode_index / inodes_per_block;
+
         self.read_block(inode_block, scratch_buffer)?;
         let inode_index = inode_index % inodes_per_block;
         let inode_offset = inode_index * (self.superblock.inode_size as usize);
@@ -396,7 +401,8 @@ impl Ext2 {
         ))
     }
 
-    pub fn get_root(self: &Arc<Self>) -> Result<Arc<FNode>, FsError>
+    // for get root and get fnode, we need Arc<Self> so we can give the fnode a reference to the filesystem
+    pub fn get_ext2_root(self: &Arc<Self>) -> Result<Arc<FNode>, FsError>
     where
         Self: Sized,
     {
@@ -408,13 +414,12 @@ impl Ext2 {
         inumber: u32,
         scratch_buffer: Option<&mut [u8]>,
     ) -> Result<Arc<FNode>, FsError> {
-
         let scratch_buffer = match scratch_buffer {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.block_size])[..],
         };
 
-        let (inode, _) = self.get_inode(inumber, Some(scratch_buffer))?;
+        let (inode, _) = self.get_ext2_inode(inumber, Some(scratch_buffer))?;
         let node = Arc::new(FNode {
             fs: self.clone(),
             inode: IntMutex::new(inode),
@@ -456,13 +461,14 @@ impl Ext2 {
                 block_map_lock: IntMutex::new(()),
                 inode_map_lock: IntMutex::new(()),
                 group_lock: IntMutex::new(()),
+                vfs_id: IntMutex::new(None),
             });
         } else {
             return Err(FsError::NotFound);
         }
     }
 
-    fn read_block(self: &Arc<Self>, block_number: usize, buffer: &mut [u8]) -> Result<(), FsError> {
+    fn read_block(&self, block_number: usize, buffer: &mut [u8]) -> Result<(), FsError> {
         self.check_block_inputs(block_number, buffer.len())?;
 
         let mut block_device = self.block_device.lock();
@@ -479,7 +485,7 @@ impl Ext2 {
         Err(FsError::ReadError)
     }
 
-    fn write_block(self: &Arc<Self>, block_number: usize, buffer: &[u8]) -> Result<(), FsError> {
+    fn write_block(&self, block_number: usize, buffer: &[u8]) -> Result<(), FsError> {
         self.check_block_inputs(block_number, buffer.len())?;
 
         let mut block_device = self.block_device.lock();
@@ -494,11 +500,7 @@ impl Ext2 {
         Err(FsError::WriteError)
     }
 
-    fn check_block_inputs(
-        self: &Arc<Self>,
-        block_number: usize,
-        buffer_len: usize,
-    ) -> Result<(), FsError> {
+    fn check_block_inputs(&self, block_number: usize, buffer_len: usize) -> Result<(), FsError> {
         if block_number >= self.superblock.blocks_count as usize {
             return Err(FsError::NotFound);
         } else if buffer_len < self.block_size {
@@ -508,9 +510,30 @@ impl Ext2 {
     }
 }
 
+impl Filesystem for Ext2 {
+    fn get_root(self: &Arc<Self>) -> Result<Arc<dyn INode>, FsError> {
+        let root = self.get_ext2_root()?;
+        Ok(root)
+    }
+
+    fn get_inode(self: &Arc<Self>, inumber: usize) -> Result<Arc<dyn INode>, FsError> {
+        let inode = self.get_fnode(inumber as u32, None)?;
+        Ok(inode)
+    }
+
+    fn get_filesystem_id(&self) -> Result<usize, FsError> {
+        self.vfs_id.lock().ok_or(FsError::NotFound)
+    }
+
+    fn set_filesystem_id(&self, id: Option<usize>) {
+        let mut vfs_id = self.vfs_id.lock();
+        *vfs_id = id;
+    }
+}
+
 impl FNode {
     fn block_tree(
-        self: &Arc<Self>,
+        &self,
         block_number: usize,
         scratch_buffer: Option<&mut [u8]>,
         inode: &INode,
@@ -537,7 +560,7 @@ impl FNode {
         Ok((list, indices, depth))
     }
 
-    fn block_tree_indices(self: &Arc<Self>, block_number: usize) -> ([usize; 4], usize) {
+    fn block_tree_indices(&self, block_number: usize) -> ([usize; 4], usize) {
         if block_number < 12 {
             return ([block_number, 0, 0, 0], 1);
         }
@@ -570,7 +593,7 @@ impl FNode {
     }
 
     pub fn read_block(
-        self: &Arc<Self>,
+        &self,
         block_number: usize,
         buffer: &mut [u8],
         inode: &INode,
@@ -586,7 +609,7 @@ impl FNode {
     }
 
     pub fn write_block(
-        self: &Arc<Self>,
+        &self,
         block_number: usize,
         buffer: &[u8],
         inode: &mut INode,
@@ -635,7 +658,7 @@ impl FNode {
     }
 
     fn update_inode(
-        self: &Arc<Self>,
+        &self,
         old: &mut INode,
         new: INode,
         scratch_buffer: Option<&mut [u8]>,
@@ -644,8 +667,9 @@ impl FNode {
             Some(s) => s,
             None => &mut (alloc::vec![0u8; self.fs.block_size])[..],
         };
-        let (_, (inode_block, inode_offset)) =
-            self.fs.get_inode(old.number as u32, Some(scratch_buffer))?;
+        let (_, (inode_block, inode_offset)) = self
+            .fs
+            .get_ext2_inode(old.number as u32, Some(scratch_buffer))?;
         new.data
             .write_to_prefix(&mut scratch_buffer[inode_offset..])
             .unwrap();
@@ -656,7 +680,7 @@ impl FNode {
 
     // use indexing
     pub fn create_entry(
-        self: &Arc<Self>,
+        &self,
         entry_name: &str,
         inumber: u32,
         file_type: u8,
@@ -748,7 +772,7 @@ impl FNode {
     }
 
     // TODO: use indexing instead of linsearch
-    pub fn search(self: &Arc<Self>, file_name: &str) -> Result<Weak<FNode>, FsError> {
+    pub fn search(&self, file_name: &str) -> Result<Arc<FNode>, FsError> {
         let inode = self.inode.lock();
         // TODO proper types
         if inode.data.mode & 0xF000 != 0x4000 {
@@ -788,7 +812,7 @@ impl INode for FNode {
     }
 
     fn get_type(&self) -> INodeType {
-        let mut inode = self.inode.lock();
+        let inode = self.inode.lock();
         match inode.data.mode & 0xF000 {
             0x4000 => INodeType::Directory,
             0x8000 => INodeType::File,
@@ -797,7 +821,8 @@ impl INode for FNode {
     }
 
     // TODO implement some kind of check to make sure the physical address is valid
-    // TODO also we probably want to have some unified read/write over block functions to not have to handle this error prone code in multiple places
+    // TODO also we probably want to have some unified read/write over block functions to not have to handle this error prone code in multiple places,
+    // this if unfortunately still a pretty ugly function.
     fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
         let allocation = VirtualMemoryAllocation::new(
@@ -859,6 +884,7 @@ impl INode for FNode {
         Ok(read_so_far)
     }
 
+    // this can hopefully be cleaned up as well with some unified block read/write functions like block_device has
     fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
         let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
         let allocation = VirtualMemoryAllocation::new(
@@ -957,6 +983,10 @@ impl INode for FNode {
             return Err(FsError::InvalidOperation);
         }
         self.create_entry(target, inumber as u32, 1)
+    }
+
+    fn get_filesystem_id(&self) -> Result<usize, FsError> {
+        self.fs.get_filesystem_id()
     }
 }
 

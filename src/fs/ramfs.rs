@@ -87,11 +87,6 @@ impl Filesystem for RAMFilesystem {
     fn get_root(&self) -> Arc<dyn INode> {
         self.get_inode(0).unwrap()
     }
-    fn create_inode(&self, inode: Arc<dyn INode>) -> usize {
-        let mut files = self.files.lock();
-        files.push(inode);
-        files.len() - 1
-    }
 }
 
 #[cfg(test)]
