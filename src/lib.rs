@@ -32,7 +32,6 @@ pub mod state;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
-pub mod vfs;
 pub mod virtual_memory;
 pub mod virtual_memory_2;
 

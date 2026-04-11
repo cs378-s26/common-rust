@@ -3,7 +3,7 @@ use crate::{
     freeset::FreeSet,
     physical_memory,
     sync::{IntMutex, MutexLike},
-    vfs::INodeKey,
+    fs::vfs::INodeKey,
 };
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicUsize, Ordering};
