@@ -47,7 +47,6 @@ use memory::{
     virtual_memory::init_virtual_memory_allocator,
 };
 use spin::{Barrier, Once};
-use talc::Span;
 
 use crate::{
     arch::{Arch, ArchTrait},

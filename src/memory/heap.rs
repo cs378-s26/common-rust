@@ -5,8 +5,6 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use limine::memory_map::{Entry, EntryType};
-
 use crate::{
     arch::{Arch, ArchTrait},
     mp::{CORE_ID, MP_STAGE, MPStage},
@@ -77,11 +75,11 @@ impl BuddyPageAllocator {
         }
     }
 
-    fn reset(&mut self) {
-        self.free_heads = [BUDDY_NONE; MAX_ORDER + 1];
-        self.regions = [EMPTY_REGION; MAX_REGIONS];
-        self.region_count = 0;
-    }
+    // fn reset(&mut self) {
+    //     self.free_heads = [BUDDY_NONE; MAX_ORDER + 1];
+    //     self.regions = [EMPTY_REGION; MAX_REGIONS];
+    //     self.region_count = 0;
+    // }
 
     fn add_region(&mut self, base: u64, end: u64) {
         if self.region_count >= MAX_REGIONS {
@@ -208,7 +206,7 @@ impl BuddyPageAllocator {
                 let block_pages = 1usize << order;
                 let block_bytes = (block_pages as u64) * (Arch::page_size() as u64);
 
-                if block_pages <= pages && (base % block_bytes) == 0 {
+                if block_pages <= pages && base.is_multiple_of(block_bytes) {
                     break;
                 }
 
@@ -243,7 +241,7 @@ impl BuddyPageAllocator {
             return None;
         }
 
-        let mut block = self.pop_free(hhdm_offset, cur_order)?;
+        let block = self.pop_free(hhdm_offset, cur_order)?;
 
         // Split down to requested order.
         while cur_order > order {
@@ -580,10 +578,7 @@ fn try_put_into_cpu_cache(class: usize, ptr: *mut u8) -> Option<*mut u8> {
         return None;
     }
 
-    let Some(cpu) = try_current_cpu() else {
-        return None;
-    };
-
+    let cpu = try_current_cpu()?;
     let slot = &PER_CPU_CACHE[cpu][class];
     let replaced = slot.swap(ptr as usize, Ordering::AcqRel);
     Some(replaced as *mut u8)
