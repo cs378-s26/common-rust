@@ -16,7 +16,7 @@ use crate::arch::x86_64::tables::{
     GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
 };
 use crate::arch::{apic, irq_vector::TIMER_INTERRUPT, tsc};
-use crate::heap::aligned_slice;
+use crate::memory::heap::aligned_slice;
 use crate::{
     arch::x86_64::cpuid::Features,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},

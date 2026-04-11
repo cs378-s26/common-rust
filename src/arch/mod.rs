@@ -15,7 +15,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::mp::CoreId;
-use crate::virtual_memory::PagingOptions;
+use crate::memory::virtual_memory::PagingOptions;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
 

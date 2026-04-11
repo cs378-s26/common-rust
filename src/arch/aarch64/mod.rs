@@ -3,7 +3,7 @@ use core::arch::asm;
 use spin::Once;
 
 use crate::print::CharSink;
-use crate::virtual_memory::PagingOptions;
+use crate::memory::virtual_memory::PagingOptions;
 
 use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;

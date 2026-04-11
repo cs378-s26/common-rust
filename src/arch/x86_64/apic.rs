@@ -1,4 +1,4 @@
-use crate::dma::MmioRegion;
+use crate::memory::dma::MmioRegion;
 use crate::mp::CORE_ID;
 use crate::mp::core_local;
 use spin::Once;

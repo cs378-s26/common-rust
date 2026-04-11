@@ -1,6 +1,6 @@
 use crate::arch::ArchTrait;
 use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};

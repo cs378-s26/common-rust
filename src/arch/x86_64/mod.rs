@@ -49,7 +49,7 @@ use crate::{
     mp::{CORE_ID, CoreId},
     print::CharSink,
     thread::yield_thread,
-    virtual_memory::PagingOptions,
+    memory::virtual_memory::PagingOptions,
 };
 pub struct Arch;
 

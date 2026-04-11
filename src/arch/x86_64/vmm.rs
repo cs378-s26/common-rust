@@ -1,4 +1,4 @@
-use crate::{
+use crate::memory::{
     physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
     virtual_memory::PagingOptions,
 };

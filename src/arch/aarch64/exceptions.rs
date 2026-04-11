@@ -2,7 +2,7 @@ use super::context::GPRegisters;
 use super::interrupt::InterruptContext;
 use crate::event::{Event, push_event};
 use crate::thread::{block_to_idle, preempt_to_idle, this_thread};
-use crate::virtual_memory::PageFaultConditions;
+use crate::memory::virtual_memory::PageFaultConditions;
 use crate::{arch::aarch64::gic, mp::CORE_ID, print::kprintln};
 use core::arch::{asm, global_asm};
 use core::fmt;

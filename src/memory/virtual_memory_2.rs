@@ -1,7 +1,7 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    freeset::FreeSet,
-    physical_memory,
+    memory::freeset::FreeSet,
+    memory::physical_memory,
     sync::{IntMutex, MutexLike},
     fs::vfs::INodeKey,
 };

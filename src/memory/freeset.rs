@@ -173,7 +173,7 @@ unsafe impl Sync for FreeSet {}
 
 #[cfg(test)]
 mod test {
-    use crate::freeset::FreeSet;
+    use crate::memory::freeset::FreeSet;
 
     #[test_case]
     fn test_coalesce() {

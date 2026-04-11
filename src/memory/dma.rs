@@ -1,7 +1,7 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, alloc_frames, frame_dealloc},
-    virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    memory::physical_memory::{HHDM_OFFSET, alloc_frames, frame_dealloc},
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
 };
 use core::ptr;
 
@@ -141,8 +141,8 @@ impl MmioRegion {
 
 #[cfg(test)]
 mod test {
-    use crate::dma::DmaRegion;
-    use crate::physical_memory::HHDM_OFFSET;
+    use crate::memory::dma::DmaRegion;
+    use crate::memory::physical_memory::HHDM_OFFSET;
     use crate::print::kprintln;
     use crate::thread::{spawn_thread, yield_thread};
     use alloc::sync::Arc;

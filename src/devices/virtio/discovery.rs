@@ -5,7 +5,7 @@ use crate::arch::{Arch, ArchTrait};
 use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
 use crate::devices::virtio::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::virtio::{KernelConfigurationAccess, VirtioBlkHal};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -27,7 +27,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             let base_addr = reg.starting_address; // physical address of the MMIO region
             let size = reg.size.unwrap(); // virtio mmio device tree node should always give size of mmio header region, 512 bytes
 
-            let hhdm_offset = crate::physical_memory::HHDM_OFFSET.get().unwrap();
+            let hhdm_offset = crate::memory::physical_memory::HHDM_OFFSET.get().unwrap();
             let virt_addr = base_addr as u64 + *hhdm_offset as u64;
             let virt_base = virt_addr & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
             let phys_base = base_addr as u64 & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary

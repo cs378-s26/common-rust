@@ -28,7 +28,7 @@ use crate::{
     process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
-    virtual_memory_2::VirtualMemory,
+    memory::virtual_memory_2::VirtualMemory,
 };
 
 pub struct Thread {

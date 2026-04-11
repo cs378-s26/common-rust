@@ -1,6 +1,6 @@
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+    memory::physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
     print::kprintln,
     state::{CorePin, StateGuard},
 };
@@ -359,10 +359,10 @@ mod test {
 
     use super::kprintln;
     use crate::arch::{Arch, ArchTrait};
-    use crate::physical_memory::HHDM_OFFSET;
-    use crate::physical_memory::{frame_alloc, frame_dealloc};
+    use crate::memory::physical_memory::HHDM_OFFSET;
+    use crate::memory::physical_memory::{frame_alloc, frame_dealloc};
     use crate::thread::spawn_thread;
-    use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+    use crate::memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
     use alloc::sync::Arc;
     use alloc::vec::Vec;
     use spin::Mutex;

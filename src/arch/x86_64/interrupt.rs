@@ -1,7 +1,7 @@
 use crate::event::{Event::PageFault, push_event};
 use crate::mp::CORE_ID;
 use crate::thread::this_thread;
-use crate::virtual_memory::PageFaultConditions;
+use crate::memory::virtual_memory::PageFaultConditions;
 use core::arch::naked_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
