@@ -148,7 +148,8 @@ kernel_common::integration_test!({
     } else {
         cats = root.lookup("cats").unwrap();
     }
-    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes()).unwrap();
+    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes())
+        .unwrap();
 
     VFS.set_root(root).unwrap();
     VFS.mount(fs);
