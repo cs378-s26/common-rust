@@ -7,6 +7,8 @@
     "filesystem_path": "test_cfgs/ext2/files",
     "target": "x86_64",
     "qemu_args": [
+        "-machine",
+        "q35,smm=off",
         "-bios",
         "{PATH_TO_EFI}",
         "-drive",
@@ -14,8 +16,6 @@
         "-no-reboot",
         "-D",
         "qemu.log",
-        "-M",
-        "smm=off",
         "-m",
         "4G",
         "-smp",
