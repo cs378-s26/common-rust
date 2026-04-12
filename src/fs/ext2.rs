@@ -1,7 +1,6 @@
 extern crate alloc;
 use alloc::{
     boxed::Box,
-    string::String,
     sync::{Arc, Weak},
     vec::Vec,
 };
@@ -13,7 +12,7 @@ use super::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
 use crate::{
     arch::{Arch, ArchTrait},
     devices::block::BlockDevice,
-    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    memory::physical_memory::HHDM_OFFSET,
     sync::{IntMutex, MutexLike},
 };
 
@@ -945,19 +944,9 @@ impl VNode for FNode {
     // TODO implement some kind of check to make sure the physical address is valid
     // this if unfortunately still a pretty ugly function.
     fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
-        let allocation = VirtualMemoryAllocation::new(
-            Arch::get_kernel_address_space(),
-            None,
-            Arch::PAGE_SIZE,
-            Some(physical_address),
-            options,
-            true,
-        )
-        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
-        let virt_addr = allocation.base;
+        let virt_addr = physical_address + HHDM_OFFSET.get().expect("HHDM_OFFSET not set");
 
-        // Safety: we trust our virtual memory allocator and this won't be reused until after allocation is freed
+        // Safety: limine provides us with hhdm mappings of all physical memory
         let page_buf =
             unsafe { core::slice::from_raw_parts_mut(virt_addr as *mut u8, Arch::PAGE_SIZE) };
 
@@ -1009,20 +998,9 @@ impl VNode for FNode {
     // write page across multiple blocks. We want this to be done all at once over multiple blocks, but fs still doesn't have
     // a clean way to do this
     fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
-        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
-        let allocation = VirtualMemoryAllocation::new(
-            Arch::get_kernel_address_space(),
-            None,
-            Arch::PAGE_SIZE,
-            Some(physical_address),
-            options,
-            true,
-        )
-        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
-        let virt_addr = allocation.base;
+        let virt_addr = physical_address + HHDM_OFFSET.get().expect("HHDM_OFFSET not set");
 
-        // Safety: this mapping will stay alive for the duration of
-        // the function, and it is exactly one page long.
+        // Safety: limine provides us with hhdm mappings of all physical memory
         let page = unsafe { core::slice::from_raw_parts(virt_addr as *const u8, Arch::PAGE_SIZE) };
 
         let mut inode = self.inode.lock();
