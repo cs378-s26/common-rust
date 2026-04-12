@@ -1,25 +1,24 @@
 use crate::{
     arch::{Arch, ArchTrait},
     freeset::FreeSet,
-    fs::vfs::INodeKey,
+    fs::{fake::create_fake_file, vfs::INodeKey},
     page_cache::{PAGE_CACHE, PageKey},
     physical_memory,
     sync::{IntMutex, MutexLike},
     virtual_memory::{PageFaultConditions, PagingOptions},
 };
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicUsize, Ordering};
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::Once;
 
-pub const SHARED_ANONYMOUS_FILESYSTEM: usize = usize::MAX;
-static SHARED_ANONYMOUS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 const USERSPACE_START: usize = 0x10000;
 const USERSPACE_END: usize = 0x8000_0000_0000_0000;
 static LIMINE_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
-    file: Option<(INodeKey, usize, Option<usize>)>,
+    inode_key: INodeKey,
+    offset: usize,
+    file_length: Option<usize>,
     length: usize,
     shared: bool,
     base: usize,
@@ -73,13 +72,6 @@ impl VirtualMemory {
                 return Err("file length is bigger than length of map");
             }
         }
-        if file.is_none() && shared {
-            let inode_key = INodeKey::new(
-                SHARED_ANONYMOUS_FILESYSTEM,
-                SHARED_ANONYMOUS_COUNTER.fetch_add(1, Ordering::SeqCst),
-            );
-            file = Some((inode_key, 0, None));
-        }
         let base: usize;
         let mut free_set = self.free_set.lock();
         if let Some(preferred_base) = preferred_base {
@@ -88,9 +80,15 @@ impl VirtualMemory {
         } else {
             base = free_set.remove_range_by_length(length)?;
         }
+        if file.is_none() {
+            file = Some((create_fake_file()?, 0, None));
+        }
+        let file = file.unwrap();
         let mut active_set = self.active_set.lock();
         active_set.insert(Box::new(Mapping {
-            file,
+            inode_key: file.0,
+            offset: file.1,
+            file_length: file.2,
             length,
             shared,
             base,
@@ -164,40 +162,18 @@ impl VirtualMemory {
         if cause.contains(PageFaultConditions::PRESENT) {
             self.invlpg(vaddr);
         }
-        if let Some((inode_key, offset, file_length)) = mapping.file.as_ref() {
-            if mapping.shared {
-                self.handle_file_shared(vaddr, mapping, inode_key, offset)
-            } else {
-                self.handle_file_private(cause, vaddr, mapping, inode_key, offset, file_length)
-            }
+        if mapping.shared {
+            self.handle_file_shared(vaddr, mapping)
         } else {
-            assert!(!mapping.shared);
-            self.handle_anon_private(vaddr)
+            self.handle_file_private(cause, vaddr, mapping)
         }
     }
 
-    fn handle_file_shared(
-        &self,
-        vaddr: usize,
-        mapping: &Mapping,
-        inode_key: &INodeKey,
-        offset: &usize,
-    ) -> Result<(), &'static str> {
+    fn handle_file_shared(&self, vaddr: usize, mapping: &Mapping) -> Result<(), &'static str> {
         assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
-        let key = PageKey::File {
-            inode_key: inode_key.clone(),
-            offset: vaddr - mapping.base + offset,
-        };
-        let paddr = PAGE_CACHE.lock().get_page(&key)?;
-        self.vmap_write(vaddr, paddr);
-        Ok(())
-    }
-
-    fn handle_anon_private(&self, vaddr: usize) -> Result<(), &'static str> {
-        assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
-        let key = PageKey::Anonymous {
-            process_id: self.page_table,
-            virtual_address: vaddr,
+        let key = PageKey {
+            inode_key: mapping.inode_key.clone(),
+            offset: vaddr - mapping.base + mapping.offset,
         };
         let paddr = PAGE_CACHE.lock().get_page(&key)?;
         self.vmap_write(vaddr, paddr);
@@ -209,28 +185,25 @@ impl VirtualMemory {
         cause: PageFaultConditions,
         vaddr: usize,
         mapping: &Mapping,
-        inode_key: &INodeKey,
-        offset: &usize,
-        file_length: &Option<usize>,
     ) -> Result<(), &'static str> {
         assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
-        if let Some(file_length) = file_length
-            && self.handle_file_private_partial(vaddr, mapping, inode_key, offset, file_length)?
+        if let Some(file_length) = mapping.file_length
+            && self.handle_file_private_partial(vaddr, mapping, file_length)?
         {
             return Ok(());
         }
-        let shared_key = PageKey::File {
-            inode_key: inode_key.clone(),
-            offset: *offset,
+        let shared_key = PageKey {
+            inode_key: mapping.inode_key.clone(),
+            offset: mapping.offset,
         };
         let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
         if !cause.contains(PageFaultConditions::WRITE) {
             self.vmap_read(vaddr, shared_paddr);
             return Ok(());
         }
-        let private_key = PageKey::Anonymous {
-            process_id: self.page_table,
-            virtual_address: vaddr,
+        let private_key = PageKey {
+            inode_key: create_fake_file()?,
+            offset: 0,
         };
         let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
         unsafe { physical_memory::copy(shared_paddr, private_paddr, Arch::PAGE_SIZE) };
@@ -242,22 +215,20 @@ impl VirtualMemory {
         &self,
         vaddr: usize,
         mapping: &Mapping,
-        inode_key: &INodeKey,
-        offset: &usize,
-        file_length: &usize,
+        file_length: usize,
     ) -> Result<bool, &'static str> {
-        if vaddr - mapping.base + Arch::PAGE_SIZE <= *file_length {
+        if vaddr - mapping.base + Arch::PAGE_SIZE <= file_length {
             return Ok(false);
         }
-        let private_key = PageKey::Anonymous {
-            process_id: self.page_table,
-            virtual_address: vaddr,
+        let private_key = PageKey {
+            inode_key: create_fake_file()?,
+            offset: 0,
         };
         let private_paddr = PAGE_CACHE.lock().get_page(&private_key)?;
-        if vaddr - mapping.base < *file_length {
-            let shared_key = PageKey::File {
-                inode_key: inode_key.clone(),
-                offset: vaddr - mapping.base + offset,
+        if vaddr - mapping.base < file_length {
+            let shared_key = PageKey {
+                inode_key: mapping.inode_key.clone(),
+                offset: vaddr - mapping.base + mapping.offset,
             };
             let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
             unsafe {

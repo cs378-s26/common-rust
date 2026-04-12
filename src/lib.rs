@@ -41,11 +41,14 @@ use crate::arch::{Arch, ArchTrait};
 use crate::cmdline::parse_kernel_cmdline;
 use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
 use crate::event::init_event_handler;
+use crate::fs::fake::{FAKE, Fake};
+use crate::fs::vfs::{Filesystem, VFS};
 use crate::heap::init_malloc;
 use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
 use crate::print::{StackTrace, init_tty, kprintln};
 use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
 use crate::virtual_memory_2::VirtualMemory;
+use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 use limine::BaseRevision;
 use limine::firmware_type::FirmwareType;
@@ -138,6 +141,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
     VirtualMemory::init();
+    let fake = Arc::clone(FAKE.call_once(|| Fake::new()));
+    VFS.mount(fake);
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();

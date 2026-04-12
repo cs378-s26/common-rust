@@ -19,7 +19,7 @@ kernel_common::integration_test!({
             let x = process
                 .virtual_memory
                 .mmap(
-                    Some((INodeKey::new(0, 1), 0, None)),
+                    Some((INodeKey::new(1, 1), 0, None)),
                     Arch::PAGE_SIZE,
                     true,
                     None,
@@ -28,7 +28,7 @@ kernel_common::integration_test!({
             let y = process
                 .virtual_memory
                 .mmap(
-                    Some((INodeKey::new(0, 1), 0, None)),
+                    Some((INodeKey::new(1, 1), 0, None)),
                     Arch::PAGE_SIZE,
                     true,
                     None,
@@ -55,7 +55,7 @@ kernel_common::integration_test!({
             let x = process
                 .virtual_memory
                 .mmap(
-                    Some((INodeKey::new(0, 2), 0, None)),
+                    Some((INodeKey::new(1, 2), 0, None)),
                     Arch::PAGE_SIZE,
                     true,
                     None,
@@ -64,7 +64,7 @@ kernel_common::integration_test!({
             let y = process
                 .virtual_memory
                 .mmap(
-                    Some((INodeKey::new(0, 2), 0, Some(Arch::PAGE_SIZE + 2))),
+                    Some((INodeKey::new(1, 2), 0, Some(Arch::PAGE_SIZE + 2))),
                     Arch::PAGE_SIZE * 3,
                     false,
                     None,
@@ -131,7 +131,8 @@ kernel_common::integration_test!({
     let cat = root.create_child("cat", INodeType::File).unwrap();
     cat.write_unaligned(0, "cat".as_bytes()).unwrap();
     let cats = root.create_child("cats", INodeType::File).unwrap();
-    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes()).unwrap();
+    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes())
+        .unwrap();
     VFS.mount(fs);
     test01();
     test02();

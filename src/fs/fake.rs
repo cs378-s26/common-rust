@@ -10,7 +10,10 @@ use crate::arch::Arch;
 use crate::arch::ArchTrait;
 use crate::fs::vfs::INodeKey;
 use crate::fs::vfs::{Filesystem, FsError, INodeType, VNode};
+use crate::physical_memory::HHDM_OFFSET;
 use crate::sync::{IntMutex, MutexLike};
+
+pub static FAKE: Once<Arc<Fake>> = Once::new();
 
 pub struct Fake {
     self_ref: Once<Weak<Self>>,
@@ -90,7 +93,8 @@ impl VNode for FakeINode {
     }
 
     fn read_page(&self, physical_address: usize, _offset: usize) -> Result<usize, FsError> {
-        unsafe { ptr::write_bytes(physical_address as *mut u8, 0, Arch::PAGE_SIZE) };
+        let hhdm = HHDM_OFFSET.get().unwrap();
+        unsafe { ptr::write_bytes((physical_address + hhdm) as *mut u8, 0, Arch::PAGE_SIZE) };
         Ok(Arch::PAGE_SIZE)
     }
 
@@ -111,4 +115,15 @@ impl VNode for FakeINode {
         };
         Ok(result)
     }
+}
+
+pub fn create_fake_file() -> Result<INodeKey, &'static str> {
+    FAKE.get()
+        .ok_or("could not get fake filesystem")?
+        .get_root()
+        .map_err(|_| "could not get root of fake filesystem")?
+        .create_child("", INodeType::File)
+        .map_err(|_| "could not create child of fake filesystem")?
+        .get_inode_key()
+        .map_err(|_| "could not get inode key of fake filesystem")
 }
