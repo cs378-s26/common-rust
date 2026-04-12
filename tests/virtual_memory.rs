@@ -6,9 +6,9 @@
 kernel_common::integration_test!({
     use core::sync::atomic::{AtomicU64, Ordering};
     use kernel_common::arch::{Arch, ArchTrait};
+    use kernel_common::fs::ramfs::RamFilesystem;
+    use kernel_common::fs::vfs::{Filesystem, INodeKey, INodeType, VFS};
     use kernel_common::process::Process;
-    use kernel_common::ramfs::{RAMFilesystem, init_test_ramfs};
-    use kernel_common::vfs::{INodeKey, VFS};
 
     static LATCH: AtomicU64 = AtomicU64::new(0);
 
@@ -126,8 +126,12 @@ kernel_common::integration_test!({
         while LATCH.load(Ordering::SeqCst) > 0 {}
     }
 
-    let fs = RAMFilesystem::new();
-    init_test_ramfs(fs.clone());
+    let fs = RamFilesystem::new();
+    let root = fs.get_root().unwrap();
+    let cat = root.create_child("cat", INodeType::File).unwrap();
+    cat.write_unaligned(0, "cat".as_bytes()).unwrap();
+    let cats = root.create_child("cats", INodeType::File).unwrap();
+    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes()).unwrap();
     VFS.mount(fs);
     test01();
     test02();

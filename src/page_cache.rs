@@ -1,8 +1,8 @@
 use crate::{
     arch::{Arch, ArchTrait},
+    fs::vfs::{INodeKey, INodeType},
     physical_memory::{self, HHDM_OFFSET},
     sync::IntMutex,
-    vfs::INodeKey,
     virtual_memory_2::SHARED_ANONYMOUS_FILESYSTEM,
 };
 use alloc::collections::btree_map::BTreeMap;
@@ -32,8 +32,13 @@ impl PageCache {
     ) -> Result<usize, &'static str> {
         let paddr = physical_memory::frame_alloc();
         if inode_key.filesystem_id != SHARED_ANONYMOUS_FILESYSTEM {
-            let inode = inode_key.get_inode().ok_or("file doesn't exist anymore")?;
-            inode.read_page(paddr as *mut u8, *offset)?;
+            let inode = inode_key.get_inode().map_err(|_| "could not get inode")?;
+            if INodeType::File != inode.get_type() {
+                return Err("reading from not file");
+            }
+            inode
+                .read_page(paddr, *offset)
+                .map_err(|_| "could not read from file")?;
         }
         self.map.insert(key.clone(), paddr);
         Ok(paddr)

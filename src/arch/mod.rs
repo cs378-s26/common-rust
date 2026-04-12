@@ -10,7 +10,7 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -61,6 +61,7 @@ pub trait ContextTrait {
 
 pub trait ArchTrait {
     type Context: ContextTrait<Arch = Self>;
+    fn page_size() -> usize;
     /// returns true if this cpu is the bootstrap processor
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool;
 
@@ -105,11 +106,12 @@ pub trait ArchTrait {
     fn configure_vm();
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
+    /// Unmaps a page without freeing the physical frame (for MMIO / externally-owned backing).
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64>;
     fn virtual_invalidate(vaddr: u64);
     fn shootdown_tlbs(space: u64, base: usize, length: usize);
     fn shutdown(err_code: u16);
     fn halt() -> !;
-    fn parse_devices(); // this must be called after all system drivers have been set up in SYSTEM_DRIVERS
     fn create_arch_specific_drivers(
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );

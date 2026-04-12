@@ -1,10 +1,10 @@
 use crate::{
     arch::{Arch, ArchTrait},
     freeset::FreeSet,
+    fs::vfs::INodeKey,
     page_cache::{PAGE_CACHE, PageKey},
     physical_memory,
     sync::{IntMutex, MutexLike},
-    vfs::INodeKey,
     virtual_memory::{PageFaultConditions, PagingOptions},
 };
 use alloc::boxed::Box;
@@ -274,7 +274,7 @@ impl VirtualMemory {
     // TODO: MJ said there might be a better way to changing mappings
     // in the future.
     fn invlpg(&self, vaddr: usize) {
-        Arch::virtual_unmap(self.page_table as u64, vaddr as u64);
+        Arch::virtual_unmap_no_dealloc(self.page_table as u64, vaddr as u64);
         Arch::shootdown_tlbs(self.page_table as u64, vaddr, Arch::PAGE_SIZE);
     }
 

@@ -110,6 +110,7 @@ pub fn init_virtual_memory_allocator() {
             region.length as usize,
             None,
             PagingOptions::SHADOW,
+            true,
         );
         if region.entry_type == EntryType::EXECUTABLE_AND_MODULES
             && (region.base) <= executable_start.physical_base()
@@ -137,6 +138,7 @@ pub fn init_virtual_memory_allocator() {
         executable_length as usize,
         None,
         PagingOptions::SHADOW,
+        true,
     );
 }
 
@@ -186,6 +188,9 @@ pub struct VirtualMemoryAllocation {
     pub space: u64,
     pub base: usize,
     pub length: usize,
+    /// When false, Drop unmaps pages but does not free the physical frames.
+    /// Used for MMIO where physical addresses belong to hardware, not RAM.
+    pub owns_backing: bool,
 }
 
 // brainstormed with ChatGPT for the complementary-tree design, but the code is mine
@@ -196,6 +201,7 @@ impl VirtualMemoryAllocation {
         length: usize,          // requested size in bytes
         backing: Option<usize>, // physical frames used
         options: PagingOptions, // similar to mmap flags
+        owns_backing: bool,     // if false, Drop won't free physical frames
     ) -> Option<VirtualMemoryAllocation> {
         assert!(length.is_multiple_of(Arch::PAGE_SIZE));
         let mut vmes = VMES
@@ -274,6 +280,7 @@ impl VirtualMemoryAllocation {
             Some(VirtualMemoryAllocation {
                 space,
                 base,
+                owns_backing,
                 length,
             })
         }
@@ -287,7 +294,11 @@ impl Drop for VirtualMemoryAllocation {
         let guard = StateGuard::<CorePin>::guard();
         while length > 0 {
             length -= Arch::PAGE_SIZE;
-            Arch::virtual_unmap(self.space, (self.base + length) as u64);
+            if self.owns_backing {
+                Arch::virtual_unmap(self.space, (self.base + length) as u64);
+            } else {
+                Arch::virtual_unmap_no_dealloc(self.space, (self.base + length) as u64);
+            }
         }
 
         // invalidate all cores' TLBs
@@ -356,6 +367,7 @@ mod test {
 
     use super::kprintln;
     use crate::arch::{Arch, ArchTrait};
+    use crate::physical_memory::HHDM_OFFSET;
     use crate::physical_memory::{frame_alloc, frame_dealloc};
     use crate::thread::spawn_thread;
     use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -369,7 +381,13 @@ mod test {
         kprintln!("virtual memory mapping test started");
         frame_dealloc(frame_alloc()); // quick check that frame allocator works
         kprintln!("frame allocator sanity-checked");
-        let vaddr: usize = 0x10000000; // unsafe!
+        let hhdm = HHDM_OFFSET.get().unwrap();
+
+        // bit of a clunky edit to the test, but for aarch64 currently only higher half mappings are available
+        // because of the different page tables for higher and lower half, but on x86 we can't map something that's
+        // already mapped, so we just unmap first and make sure remapping works
+        let vaddr: usize = 0x1000 + hhdm; // unsafe!
+        Arch::virtual_unmap_no_dealloc(Arch::get_kernel_address_space(), vaddr as u64);
         let paddr: usize = frame_alloc();
 
         kprintln!("manually mapping vmem");
@@ -410,6 +428,7 @@ mod test {
                     | PagingOptions::WRITABLE
                     | PagingOptions::CACHEABLE
                     | PagingOptions::GLOBAL,
+                true,
             )
             .unwrap(),
             VirtualMemoryAllocation::new(
@@ -421,6 +440,7 @@ mod test {
                     | PagingOptions::WRITABLE
                     | PagingOptions::CACHEABLE
                     | PagingOptions::GLOBAL,
+                true,
             )
             .unwrap(),
         );
@@ -466,6 +486,7 @@ mod test {
                         | PagingOptions::WRITABLE
                         | PagingOptions::CACHEABLE
                         | PagingOptions::GLOBAL,
+                    true,
                 )
                 .unwrap();
                 for j in (0..vma.length).step_by(Arch::PAGE_SIZE) {
@@ -515,6 +536,7 @@ mod test {
                             | PagingOptions::WRITABLE
                             | PagingOptions::CACHEABLE
                             | PagingOptions::GLOBAL,
+                        true,
                     )
                     .unwrap(); // allocations of increasing sizes
                     for j in (0..size).step_by(Arch::PAGE_SIZE) {

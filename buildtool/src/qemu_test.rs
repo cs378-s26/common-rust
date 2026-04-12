@@ -10,7 +10,10 @@ use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
+use crate::util::{
+    Target, build_ext2_filesystem_from_dir, build_image_with_tag, cache_dir, download_ovmf,
+    path_to_string,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -19,6 +22,7 @@ pub struct TestConfig {
     pub timeout_ms: u64,
     pub test_name: Option<String>,
     pub expected_output_path: String,
+    pub filesystem_path: Option<String>,
     pub target: TestTarget,
     pub qemu_args: Vec<String>,
 }
@@ -147,7 +151,6 @@ fn run_with_config(
             config_path.display()
         ));
     }
-
     let target = test_cfg.target.to_target();
     let display_name = test_display_name(config_path, test_cfg);
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
@@ -158,8 +161,20 @@ fn run_with_config(
         target,
         Some(&display_name),
     )?;
+
+    let filesystem_image = if let Some(filesystem_path) = test_cfg.filesystem_path.as_deref() {
+        let source_path = resolve_repo_root_path(Path::new(filesystem_path))?;
+        Some(build_ext2_filesystem_from_dir(
+            &source_path,
+            &format!("{}-filesystem", display_name),
+        )?)
+    } else {
+        None
+    };
+
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
+
     let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
     let expected_output = fs::read_to_string(&expected_output_path).with_context(|| {
         format!(
@@ -168,12 +183,15 @@ fn run_with_config(
         )
     })?;
 
-    let deps = [
+    let mut deps = vec![
         config_path,
         expected_output_path.as_path(),
         kernel_path.as_path(),
         img_path.as_path(),
     ];
+    if let Some(filesystem_image) = filesystem_image.as_deref() {
+        deps.push(filesystem_image);
+    }
     if !stream_serial_stdout
         && !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
         && let Some(cached_report) = load_cached_report(&cache_paths.report)
@@ -203,6 +221,15 @@ fn run_with_config(
                     .replace("{PATH_TO_IMG}", &path_to_img)
             })
             .collect();
+        if let Some(filesystem_image) = filesystem_image.as_deref() {
+            let filesystem_image = path_to_string(filesystem_image)?;
+            qemu_args.push("-drive".into());
+            qemu_args.push(format!(
+                "if=none,id=testfs0,file={filesystem_image},format=raw"
+            ));
+            qemu_args.push("-device".into());
+            qemu_args.push(format!("{},drive=testfs0", target.qemu_virtio_blk_device()));
+        }
         if stream_serial_stdout {
             qemu_args.push("-chardev".into());
             qemu_args.push(format!(

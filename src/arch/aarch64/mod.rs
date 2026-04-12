@@ -5,21 +5,23 @@ use spin::Once;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-pub mod apic;
 mod asm;
 mod context;
 mod devices;
+mod exceptions;
+pub mod gic;
 mod interrupt;
 mod mp;
+pub use exceptions::{dump_core_state, init_exceptions};
 
-pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
+pub use gic::timer_ticks;
 pub use interrupt::*;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
@@ -35,6 +37,10 @@ use devices::psci::PSCI_DEVICE;
 
 impl ArchTrait for Arch {
     type Context = Context;
+
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
     fn is_bsp(req: &limine::request::MpRequest, cpu: &limine::mp::Cpu) -> bool {
         let resp = req
             .get_response()
@@ -62,9 +68,9 @@ impl ArchTrait for Arch {
         asm::sleep_core();
     }
 
-    fn wake_other_cores() {
-        apic::send_ipi_all_except_self(IPI_WAKE_VECTOR);
-    }
+    // TODO implement this
+    // doesn't really affect correctness just can give a performance boost
+    fn wake_other_cores() {}
 
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
@@ -118,12 +124,18 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
-    fn virtual_invalidate(_vaddr: u64) {
-        panic!("TLB invalidation not implemented for aarch64");
+    // no-op on aarch64
+    fn virtual_invalidate(_vaddr: u64) {}
+
+    // TODO this needs to be made more flexible to allow different kinds of shootdowns, not just global
+    fn shootdown_tlbs(_space: u64, base: usize, length: usize) {
+        for page in (0..length).step_by(Self::PAGE_SIZE) {
+            vmm::tlb_shootdown((base + page) as u64);
+        }
     }
 
-    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
-        panic!("TLB shootdown not implemented for aarch64");
+    fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
+        vmm::vunmap_no_dealloc(_space, _vaddr)
     }
 
     fn shutdown(_err_code: u16) {
@@ -141,15 +153,11 @@ impl ArchTrait for Arch {
         vmm::configure_vm();
     }
 
-    fn parse_devices() {
-        devices::parse_devices();
-    }
-
     fn create_arch_specific_drivers(
-        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
         // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        devices::create_arch_specific_drivers(_system_drivers);
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 
