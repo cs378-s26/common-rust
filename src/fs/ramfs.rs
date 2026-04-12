@@ -134,7 +134,7 @@ impl VNode for RamInode {
             options,
             false,
         )
-            .ok_or(FsError::Other(String::from("vm allocation failed")))?;
+        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
         let virt_addr = allocation.base;
 
         // Safety: this temporary mapping stays alive for the duration of the function

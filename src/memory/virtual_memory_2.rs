@@ -4,12 +4,15 @@ use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_ada
 use spin::Once;
 
 use crate::{
-    arch::{Arch, ArchTrait}, fs::{fake::create_fake_file, vfs::INodeKey}, memory::{
+    arch::{Arch, ArchTrait},
+    fs::{fake::create_fake_file, vfs::INodeKey},
+    memory::{
         freeset::FreeSet,
         page_cache::{PAGE_CACHE, PageKey},
         physical_memory,
         virtual_memory::{PageFaultConditions, PagingOptions},
-    }, sync::{IntMutex, MutexLike}
+    },
+    sync::{IntMutex, MutexLike},
 };
 const USERSPACE_START: usize = 0x10000;
 const USERSPACE_END: usize = 0x8000_0000_0000_0000;

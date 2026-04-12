@@ -142,4 +142,5 @@ kernel_common::integration_test!({
     test01();
     test02();
     test03();
+    kernel_common::print::kprintln!("Virtual memory done!");
 });
