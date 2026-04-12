@@ -14,8 +14,8 @@ use crate::{
     },
     sync::{IntMutex, MutexLike},
 };
-const USERSPACE_START: usize = 0x10000;
-const USERSPACE_END: usize = 0x8000_0000_0000_0000;
+pub const USERSPACE_START: usize = 0x10000;
+pub const USERSPACE_END: usize = 0x8000_0000_0000_0000;
 static LIMINE_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
