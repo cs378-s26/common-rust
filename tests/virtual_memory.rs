@@ -140,7 +140,7 @@ kernel_common::integration_test!({
     } else {
         cat = root.lookup("cat").unwrap();
     }
-    cat.write_unaligned(0, "cat".as_bytes());
+    cat.write_unaligned(0, "cat".as_bytes()).unwrap();
 
     let cats;
     if let Ok(node) = root.create_child("cats", INodeType::File) {
@@ -148,9 +148,9 @@ kernel_common::integration_test!({
     } else {
         cats = root.lookup("cats").unwrap();
     }
-    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes());
+    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes()).unwrap();
 
-    VFS.set_root(root);
+    VFS.set_root(root).unwrap();
     VFS.mount(fs);
     test01();
     test02();
