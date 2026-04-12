@@ -1,5 +1,6 @@
-use crate::devices::Device;
 use alloc::string::String;
+
+use crate::devices::Device;
 
 #[derive(Debug)]
 pub enum NetworkError {

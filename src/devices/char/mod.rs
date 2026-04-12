@@ -1,5 +1,6 @@
-use crate::devices::Device;
 use alloc::string::String;
+
+use crate::devices::Device;
 pub mod uart_pl011;
 
 #[derive(Debug)]

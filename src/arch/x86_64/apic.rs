@@ -1,12 +1,15 @@
-use crate::dma::MmioRegion;
-use crate::mp::CORE_ID;
-use crate::mp::core_local;
 use spin::Once;
-use x86::cpuid::CpuId;
-use x86::io::outb;
-use x86::msr::{rdmsr, wrmsr};
+use x86::{
+    cpuid::CpuId,
+    io::outb,
+    msr::{rdmsr, wrmsr},
+};
 
 use super::tsc::read_tsc;
+use crate::{
+    memory::dma::MmioRegion,
+    mp::{CORE_ID, core_local},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ApicState {

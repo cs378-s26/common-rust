@@ -1,22 +1,18 @@
+use alloc::boxed::Box;
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr::{null_mut, slice_from_raw_parts_mut},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::sync::MutexLike;
-
 use crate::{
     arch::{Arch, ArchTrait},
     mp::{CORE_ID, MP_STAGE, MPStage},
     print::kprintln,
-    sync::IntMutex,
+    sync::{IntMutex, MutexLike},
 };
-
-use alloc::boxed::Box;
-use limine::memory_map::{Entry, EntryType};
 const MAX_CPUS: usize = 256;
-// used for debugging 
+// used for debugging
 const ENABLE_PER_CPU_CACHE: bool = true;
 
 const NUM_CLASSES: usize = 8;
@@ -79,11 +75,11 @@ impl BuddyPageAllocator {
         }
     }
 
-    fn reset(&mut self) {
-        self.free_heads = [BUDDY_NONE; MAX_ORDER + 1];
-        self.regions = [EMPTY_REGION; MAX_REGIONS];
-        self.region_count = 0;
-    }
+    // fn reset(&mut self) {
+    //     self.free_heads = [BUDDY_NONE; MAX_ORDER + 1];
+    //     self.regions = [EMPTY_REGION; MAX_REGIONS];
+    //     self.region_count = 0;
+    // }
 
     fn add_region(&mut self, base: u64, end: u64) {
         if self.region_count >= MAX_REGIONS {
@@ -210,7 +206,7 @@ impl BuddyPageAllocator {
                 let block_pages = 1usize << order;
                 let block_bytes = (block_pages as u64) * (Arch::page_size() as u64);
 
-                if block_pages <= pages && (base % block_bytes) == 0 {
+                if block_pages <= pages && base.is_multiple_of(block_bytes) {
                     break;
                 }
 
@@ -245,7 +241,7 @@ impl BuddyPageAllocator {
             return None;
         }
 
-        let mut block = self.pop_free(hhdm_offset, cur_order)?;
+        let block = self.pop_free(hhdm_offset, cur_order)?;
 
         // Split down to requested order.
         while cur_order > order {
@@ -314,7 +310,7 @@ impl HeapAllocator {
         }
     }
 
-    fn init_from_block(&mut self, offset : usize, len : usize) {
+    fn init_from_block(&mut self, offset: usize, len: usize) {
         let start = align_up(offset, Arch::page_size());
         let end = align_down(offset + len, Arch::page_size());
         if end <= start {
@@ -326,8 +322,8 @@ impl HeapAllocator {
             return;
         }
 
-        self.buddy.add_range(self.hhdm_offset, start as u64, page_count);
-
+        self.buddy
+            .add_range(self.hhdm_offset, start as u64, page_count);
     }
 
     /*
@@ -417,10 +413,7 @@ impl HeapAllocator {
 
         unsafe {
             if (*header).magic != SLAB_PAGE_MAGIC {
-                kprintln!(
-                    "mem::free_small(): invalid slab header for ptr={:p}",
-                    ptr,
-                );
+                kprintln!("mem::free_small(): invalid slab header for ptr={:p}", ptr,);
                 return;
             }
             let class = (*header).class_index as usize;
@@ -585,10 +578,7 @@ fn try_put_into_cpu_cache(class: usize, ptr: *mut u8) -> Option<*mut u8> {
         return None;
     }
 
-    let Some(cpu) = try_current_cpu() else {
-        return None;
-    };
-
+    let cpu = try_current_cpu()?;
     let slot = &PER_CPU_CACHE[cpu][class];
     let replaced = slot.swap(ptr as usize, Ordering::AcqRel);
     Some(replaced as *mut u8)
@@ -674,13 +664,10 @@ static GLOBAL_ALLOC: GlobalAllocImpl = GlobalAllocImpl {
     heap: IntMutex::new(HeapAllocator::new()),
 };
 
-pub fn init_malloc(heap : usize, len : usize) {
+pub fn init_malloc(heap: usize, len: usize) {
     kprintln!("init_malloc(): initializing  allocator");
 
-    GLOBAL_ALLOC
-        .heap
-        .lock()
-        .init_from_block(heap, len);
+    GLOBAL_ALLOC.heap.lock().init_from_block(heap, len);
 }
 
 pub fn aligned_slice(size: usize, align: usize) -> Box<[u8]> {

@@ -1,10 +1,16 @@
 extern crate alloc;
 
-use crate::fs::ramdisk::Disk;
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
+use alloc::{
+    collections::btree_map::BTreeMap,
+    sync::{Arc, Weak},
+};
+
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+use crate::{
+    fs::ramdisk::Disk,
+    sync::{IntMutex, MutexLike},
+};
 
 pub struct Ext2<D: Disk> {
     block_size: usize,
@@ -723,12 +729,14 @@ impl<D: Disk> FNode<D> {
 
 #[cfg(test)]
 mod test {
-    use crate::alloc::string::ToString;
-    use crate::fs::ext2::Ext2;
-    use crate::fs::ramdisk::Ramdisk;
-    use crate::print::kprintln;
-    use crate::sync::MutexLike;
     use alloc::sync::Arc;
+
+    use crate::{
+        alloc::string::ToString,
+        fs::{ext2::Ext2, ramdisk::Ramdisk},
+        print::kprintln,
+        sync::MutexLike,
+    };
 
     fn nul_terminated_utf8(buf: &[u8]) -> &str {
         let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());

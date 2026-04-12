@@ -1,9 +1,15 @@
-use crate::kprintln;
-use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
-use crate::virtual_memory::PagingOptions;
-use bitflags::bitflags;
 use core::arch::asm;
+
+use bitflags::bitflags;
 use spin::Mutex;
+
+use crate::{
+    kprintln,
+    memory::{
+        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        virtual_memory::PagingOptions,
+    },
+};
 
 const PTE_ADDR_MASK: u64 = 0x0000FFFFFFFFF000; // bits [47:12] contain the physical address for a page table entry, the rest are flags
 const PTE_PER_PAGE: usize = 512; // each page table has 512 entries, since each entry is 8 bytes and page size is 4096 bytes

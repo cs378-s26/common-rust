@@ -1,4 +1,5 @@
 use alloc::rc::Rc;
+
 use intrusive_collections::{Bound::Included, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 
 struct Free {
@@ -173,7 +174,7 @@ unsafe impl Sync for FreeSet {}
 
 #[cfg(test)]
 mod test {
-    use crate::freeset::FreeSet;
+    use crate::memory::freeset::FreeSet;
 
     #[test_case]
     fn test_coalesce() {

@@ -2,15 +2,19 @@
 // TODO: use virtual memory herez
 pub static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
 
+use alloc::string::{String, ToString};
+use core::{mem::drop, ptr};
+
+use limine::{
+    memory_map::{Entry, EntryType},
+    request::{HhdmRequest, MemoryMapRequest},
+};
+use spin::{Mutex, Once};
+
 use crate::{
     arch::{Arch, ArchTrait},
     kprintln,
-};
-use alloc::string::{String, ToString};
-use core::{mem::drop, ptr};
-use limine::memory_map::{Entry, EntryType};
-use limine::request::{HhdmRequest, MemoryMapRequest};
-use spin::{Mutex, Once}; // operations are quite short
+}; // operations are quite short
 
 // the below Limine-related code is partially from ChatGPT
 

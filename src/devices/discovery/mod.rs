@@ -2,16 +2,22 @@ pub mod acpi;
 pub mod device_tree;
 pub mod pcie;
 
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::virtio::discovery::VirtioDiscovery;
-use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::{Send, Sync};
+
 use fdt::node::FdtNode;
 use spin::lazy::Lazy;
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        block::BlockDevice,
+        char::{CharDevice, uart_pl011::UartPl011Discovery},
+        network::NetworkDevice,
+        virtio::discovery::VirtioDiscovery,
+    },
+    sync::{IntMutex, MutexLike},
+};
 
 // lists of initialized devices in the system
 pub static BLOCK_DEVICES: IntMutex<Vec<Box<dyn BlockDevice + Send + Sync>>> =

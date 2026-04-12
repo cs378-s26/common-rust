@@ -1,7 +1,6 @@
+use alloc::{string::String, vec, vec::Vec};
+
 use crate::devices::Device;
-use alloc::string::String;
-use alloc::vec;
-use alloc::vec::Vec;
 
 #[derive(Debug)]
 pub enum BlockDeviceError {

@@ -1,13 +1,13 @@
+use std::{mem, path::PathBuf};
+
 use anyhow::{Error, Result};
 use gimli::{
     Abbreviation, Attribute, AttributeValue, ColumnType, DW_AT_MIPS_linkage_name,
     DW_AT_abstract_origin, DW_AT_call_column, DW_AT_call_file, DW_AT_call_line, DW_AT_high_pc,
     DW_AT_linkage_name, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_specification,
-    DW_TAG_inlined_subroutine, DW_TAG_subprogram, EntriesRaw, FileEntry, LineProgramHeader,
-    RangeListsOffset, Reader, UnitOffset, UnitRef,
+    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DebugInfoOffset, Dwarf, EntriesRaw, FileEntry,
+    LineProgramHeader, RangeListsOffset, Reader, Unit, UnitOffset, UnitRef,
 };
-use gimli::{DebugInfoOffset, Dwarf, Unit};
-use std::{mem, path::PathBuf};
 
 type Range = std::ops::Range<u64>;
 
