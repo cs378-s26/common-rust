@@ -8,14 +8,25 @@ kernel_common::integration_test!({
 
     use kernel_common::{
         arch::{Arch, ArchTrait},
+        devices::discovery::BLOCK_DEVICES,
         fs::{
-            ramfs::RamFilesystem,
+            ext2::Ext2,
             vfs::{Filesystem, INodeKey, INodeType, VFS},
         },
         process::Process,
+        sync::MutexLike,
     };
 
     static LATCH: AtomicU64 = AtomicU64::new(0);
+
+    fn file(name: &str) -> INodeKey {
+        VFS.get_root()
+            .unwrap()
+            .lookup(name)
+            .unwrap()
+            .get_inode_key()
+            .unwrap()
+    }
 
     fn test01() {
         LATCH.fetch_add(1, Ordering::SeqCst);
@@ -23,21 +34,11 @@ kernel_common::integration_test!({
         Process::run(process.clone(), move || {
             let x = process
                 .virtual_memory
-                .mmap(
-                    Some((INodeKey::new(1, 1), 0, None)),
-                    Arch::PAGE_SIZE,
-                    true,
-                    None,
-                )
+                .mmap(Some((file("cat"), 0, None)), Arch::PAGE_SIZE, true, None)
                 .unwrap();
             let y = process
                 .virtual_memory
-                .mmap(
-                    Some((INodeKey::new(1, 1), 0, None)),
-                    Arch::PAGE_SIZE,
-                    true,
-                    None,
-                )
+                .mmap(Some((file("cat"), 0, None)), Arch::PAGE_SIZE, true, None)
                 .unwrap();
             assert!(x != y);
             unsafe {
@@ -59,17 +60,12 @@ kernel_common::integration_test!({
         Process::run(process.clone(), move || {
             let x = process
                 .virtual_memory
-                .mmap(
-                    Some((INodeKey::new(1, 2), 0, None)),
-                    Arch::PAGE_SIZE,
-                    true,
-                    None,
-                )
+                .mmap(Some((file("cats"), 0, None)), Arch::PAGE_SIZE, true, None)
                 .unwrap();
             let y = process
                 .virtual_memory
                 .mmap(
-                    Some((INodeKey::new(1, 2), 0, Some(Arch::PAGE_SIZE + 2))),
+                    Some((file("cats"), 0, Some(Arch::PAGE_SIZE + 2))),
                     Arch::PAGE_SIZE * 3,
                     false,
                     None,
@@ -131,13 +127,30 @@ kernel_common::integration_test!({
         while LATCH.load(Ordering::SeqCst) > 0 {}
     }
 
-    let fs = RamFilesystem::new();
+    let mut block_devices = BLOCK_DEVICES.lock();
+    let fs = Ext2::new_from_block_devices(&mut block_devices)
+        .expect("ext2 filesystem not found on attached block devices");
+    drop(block_devices);
+
     let root = fs.get_root().unwrap();
-    let cat = root.create_child("cat", INodeType::File).unwrap();
-    cat.write_unaligned(0, "cat".as_bytes()).unwrap();
-    let cats = root.create_child("cats", INodeType::File).unwrap();
-    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes())
-        .unwrap();
+
+    let cat;
+    if let Ok(node) = root.create_child("cat", INodeType::File) {
+        cat = node;
+    } else {
+        cat = root.lookup("cat").unwrap();
+    }
+    cat.write_unaligned(0, "cat".as_bytes());
+
+    let cats;
+    if let Ok(node) = root.create_child("cats", INodeType::File) {
+        cats = node;
+    } else {
+        cats = root.lookup("cats").unwrap();
+    }
+    cats.write_unaligned(0, "cats".repeat(Arch::PAGE_SIZE).as_bytes());
+
+    VFS.set_root(root);
     VFS.mount(fs);
     test01();
     test02();
