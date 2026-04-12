@@ -1,9 +1,12 @@
+use core::ptr;
+
 use crate::{
     arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, alloc_frames, frame_dealloc},
-    virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    memory::{
+        physical_memory::{HHDM_OFFSET, alloc_frames, frame_dealloc},
+        virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    },
 };
-use core::ptr;
 
 pub struct DmaRegion {
     phys_addr: usize,
@@ -141,12 +144,14 @@ impl MmioRegion {
 
 #[cfg(test)]
 mod test {
-    use crate::dma::DmaRegion;
-    use crate::physical_memory::HHDM_OFFSET;
-    use crate::print::kprintln;
-    use crate::thread::{spawn_thread, yield_thread};
     use alloc::sync::Arc;
     use core::sync::atomic::{AtomicI64, Ordering};
+
+    use crate::{
+        memory::{dma::DmaRegion, physical_memory::HHDM_OFFSET},
+        print::kprintln,
+        thread::{spawn_thread, yield_thread},
+    };
 
     #[test_case]
     fn test_dma_region() {

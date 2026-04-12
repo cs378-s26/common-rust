@@ -7,9 +7,12 @@ kernel_common::integration_test!({
     extern crate alloc;
     use alloc::sync::Arc;
     use core::sync::atomic::{AtomicUsize, Ordering};
-    use kernel_common::print::kprintln;
-    use kernel_common::sync::{BoundedBuffer, Promise, RwLock, Semaphore};
-    use kernel_common::thread::{spawn_thread, yield_thread};
+
+    use kernel_common::{
+        print::kprintln,
+        sync::{BoundedBuffer, Promise, RwLock, Semaphore},
+        thread::{spawn_thread, yield_thread},
+    };
 
     // // ── constants ────────────────────────────────────────────────────────────────
 

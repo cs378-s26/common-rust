@@ -1,12 +1,19 @@
 extern crate virtio_drivers;
 
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::Device;
-use crate::devices::block::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
-use crate::devices::virtio::VirtioBlkHal;
-use virtio_drivers::Hal;
-use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
-use virtio_drivers::transport::Transport;
+use virtio_drivers::{
+    Hal,
+    device::blk::{SECTOR_SIZE, VirtIOBlk},
+    transport::Transport,
+};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        Device,
+        block::{BlockDevice, BlockDeviceError, PhysicalAddressSize},
+        virtio::VirtioBlkHal,
+    },
+};
 
 // Wrapper around the virtio blk driver containing the necessary HAL
 // implementation for it to work with our system block device trait.

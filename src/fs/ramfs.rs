@@ -1,14 +1,19 @@
-use crate::arch::{Arch, ArchTrait};
-use crate::fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
-use crate::physical_memory::HHDM_OFFSET;
-use crate::sync::{IntMutex, MutexLike};
-use alloc::collections::btree_map::BTreeMap;
-use alloc::string::String;
-use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
+use alloc::{
+    collections::btree_map::BTreeMap,
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
+
 use spin::Once;
 
-/// Extremely small in-memory filesystem suitable only for tests.
+use crate::{
+    arch::{Arch, ArchTrait},
+    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode},
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    sync::{IntMutex, MutexLike},
+};
+
 pub struct RamFilesystem {
     self_ref: Once<Weak<Self>>,
     inodes: IntMutex<Vec<Arc<RamInode>>>,
@@ -92,13 +97,6 @@ impl RamInode {
             .get_filesystem_id()
     }
 
-    fn hhdm(&self) -> Result<usize, FsError> {
-        HHDM_OFFSET
-            .get()
-            .copied()
-            .ok_or(FsError::Other("no HHDM".into()))
-    }
-
     fn as_dir(&self) -> Result<&IntMutex<BTreeMap<String, usize>>, FsError> {
         match &self.kind {
             RamInodeKind::Dir { entries } => Ok(entries),
@@ -127,34 +125,59 @@ impl VNode for RamInode {
     }
 
     fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let allocation = VirtualMemoryAllocation::new(
+            Arch::get_kernel_address_space(),
+            None,
+            Arch::PAGE_SIZE,
+            Some(physical_address),
+            options,
+            true,
+        )
+        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
+        let virt_addr = allocation.base;
+
+        // Safety: this temporary mapping stays alive for the duration of the function
+        // and is exactly one page long.
+        let page_buf =
+            unsafe { core::slice::from_raw_parts_mut(virt_addr as *mut u8, Arch::PAGE_SIZE) };
+
         let data = self.as_file()?.lock();
+        page_buf.fill(0);
+
         if offset >= data.len() {
             return Ok(0);
         }
+
         let len = core::cmp::min(Arch::PAGE_SIZE, data.len() - offset);
-        let hhdm = self.hhdm()?;
-        let virt = physical_address + hhdm;
-        unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr().add(offset), virt as *mut u8, len);
-        }
+        page_buf[..len].copy_from_slice(&data[offset..offset + len]);
         Ok(len)
     }
 
     fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+        let options = PagingOptions::PRESENT | PagingOptions::WRITABLE;
+        let allocation = VirtualMemoryAllocation::new(
+            Arch::get_kernel_address_space(),
+            None,
+            Arch::PAGE_SIZE,
+            Some(physical_address),
+            options,
+            true,
+        )
+        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
+        let virt_addr = allocation.base;
+
+        // Safety: this temporary mapping stays alive for the duration of the function
+        // and is exactly one page long.
+        let page = unsafe { core::slice::from_raw_parts(virt_addr as *const u8, Arch::PAGE_SIZE) };
+
         let mut data = self.as_file()?.lock();
-        let hhdm = self.hhdm()?;
-        let virt = physical_address + hhdm;
         let end = offset.saturating_add(Arch::PAGE_SIZE);
         if end > data.len() {
             data.resize(end, 0);
         }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                virt as *const u8,
-                data.as_mut_ptr().add(offset),
-                Arch::PAGE_SIZE,
-            );
-        }
+
+        data[offset..end].copy_from_slice(page);
         Ok(Arch::PAGE_SIZE)
     }
 

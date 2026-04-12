@@ -5,13 +5,12 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use super::{MutexLike, int_spinlock::IntSpinLock};
 use crate::{
     arch::{Arch, ArchTrait},
     state::{Irq, State},
     thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
 };
-
-use super::{MutexLike, int_spinlock::IntSpinLock};
 
 pub struct IntMutexGuard<'a, T> {
     mutex: &'a IntMutex<T>,

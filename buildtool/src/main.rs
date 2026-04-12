@@ -2,9 +2,10 @@
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 #![feature(gen_blocks)]
 
+use std::fs;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::fs;
 
 mod debug;
 mod gdb;

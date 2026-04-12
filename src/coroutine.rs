@@ -1,17 +1,14 @@
+use alloc::{boxed::Box, sync::Arc, task::Wake};
 use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
 };
 
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::task::Wake;
-
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::{Once, RwLock};
-// TODO: use a blocking RwLock.
 
+// TODO: use a blocking RwLock.
 use crate::{
     sync::{IntMutex, MutexLike},
     thread::{spawn_thread, yield_thread},
@@ -158,13 +155,16 @@ pub fn init_coroutine_executor() {
 
 #[cfg(test)]
 mod test {
+    use alloc::sync::Arc;
+    use core::{
+        future::Future,
+        pin::Pin,
+        sync::atomic::{AtomicU64, Ordering},
+        task::{Context, Poll},
+    };
+
     use super::spawn_coroutine;
     use crate::{print::kprintln, thread::yield_thread};
-    use alloc::sync::Arc;
-    use core::future::Future;
-    use core::pin::Pin;
-    use core::sync::atomic::{AtomicU64, Ordering};
-    use core::task::{Context, Poll};
 
     #[test_case]
     fn test_coroutine_counter() {
