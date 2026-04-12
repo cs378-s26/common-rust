@@ -9,4 +9,5 @@
        "qemu-test"
        "test_cfgs/virtual_memory/virtual_memory_aarch64_test.json"
        "--stdout")
-     " ")))))
+     " "))))
+ [j] :project (vterm))
