@@ -5,9 +5,12 @@
 
 kernel_common::integration_test!({
     use core::sync::atomic::{AtomicUsize, Ordering};
-    use kernel_common::print::kprintln;
-    use kernel_common::sync::{IntMutex, MutexLike};
-    use kernel_common::thread::{spawn_thread, yield_thread};
+
+    use kernel_common::{
+        print::kprintln,
+        sync::{IntMutex, MutexLike},
+        thread::{spawn_thread, yield_thread},
+    };
 
     fn work(i: u64) -> u64 {
         let mut sum = 0;

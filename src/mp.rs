@@ -1,13 +1,11 @@
 extern crate alloc;
 
+use alloc::{boxed::Box, vec::Vec};
 use core::{cell::Cell, ffi::c_void};
 
-use alloc::vec::Vec;
 use atomic_enum::atomic_enum;
 use derive_more::{Debug, Display};
 use spin::Once;
-
-use alloc::boxed::Box;
 
 use crate::{
     arch::{Arch, ArchTrait},

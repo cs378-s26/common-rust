@@ -5,13 +5,11 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::state::Irq;
+use super::MutexLike;
 use crate::{
     arch::{Arch, ArchTrait},
-    state::State,
+    state::{Irq, State},
 };
-
-use super::MutexLike;
 
 pub struct IntSpinLockGuard<'a, T> {
     mutex: &'a IntSpinLock<T>,

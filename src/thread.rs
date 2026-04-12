@@ -1,5 +1,11 @@
 extern crate alloc;
 
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
@@ -9,13 +15,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
-#[cfg(target_arch = "x86_64")]
-use core::arch::naked_asm;
-
-use alloc::{
-    boxed::Box,
-    sync::{Arc, Weak},
-};
 use intrusive_collections::{
     LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
 };
@@ -24,11 +23,11 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
+    memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
-    virtual_memory_2::VirtualMemory,
 };
 
 pub struct Thread {

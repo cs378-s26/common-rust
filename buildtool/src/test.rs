@@ -1,8 +1,8 @@
-use crate::util::Target;
-use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 
-use crate::qemu_test;
+use anyhow::{Context, Result, anyhow};
+
+use crate::{qemu_test, util::Target};
 
 fn load_test_config_paths(target: Target) -> Result<Vec<PathBuf>> {
     let mut config_paths = glob::glob("test_cfgs/**/*_test.json")

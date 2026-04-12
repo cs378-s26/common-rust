@@ -1,20 +1,23 @@
 use alloc::boxed::Box;
-use core::fmt::{
-    self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
-    UpperHex, Write,
-};
-use core::ptr;
-use flanterm::{
-    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+use core::{
+    fmt::{
+        self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result,
+        UpperExp, UpperHex, Write,
+    },
+    ptr,
 };
 
 use bitflags::bitflags;
-use limine::framebuffer::Framebuffer;
-use limine::request::FramebufferRequest;
+use flanterm::{
+    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+};
+use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
 use spin::Once;
 
-use crate::arch::{self, UnwindContext, UnwindContextTrait};
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    arch::{self, UnwindContext, UnwindContextTrait},
+    sync::{IntMutex, MutexLike},
+};
 
 #[derive(Clone, Copy)]
 pub struct Color(pub u8, pub u8, pub u8);

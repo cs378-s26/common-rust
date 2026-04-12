@@ -1,13 +1,17 @@
 pub mod discovery;
 pub mod virtio_blk;
-use crate::arch::{Arch, ArchTrait};
-use crate::dma::MmioRegion;
-use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use core::ptr::NonNull;
-use virtio_drivers::transport::pci::bus::ConfigurationAccess;
-use virtio_drivers::{BufferDirection, Hal, PhysAddr};
 
-use crate::devices::discovery::pcie::PCIE;
+use virtio_drivers::{BufferDirection, Hal, PhysAddr, transport::pci::bus::ConfigurationAccess};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::discovery::pcie::PCIE,
+    memory::{
+        dma::MmioRegion,
+        physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc},
+    },
+};
 
 pub struct VirtioBlkHal;
 

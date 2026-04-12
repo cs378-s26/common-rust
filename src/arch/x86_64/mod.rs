@@ -1,16 +1,16 @@
-use crate::devices::discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{
     cell::SyncUnsafeCell,
     hint,
     sync::atomic::{AtomicUsize, Ordering},
 };
+
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
+
+use crate::devices::discovery::DeviceDiscovery;
 
 pub mod apic;
 mod asm;
@@ -46,10 +46,10 @@ use crate::{
         ArchTrait, UnwindContextTrait, apic::send_ipi_all_except_self, irq_vector::TLB_SHOOTDOWN,
     },
     event::{Event::Shootdown, push_event},
+    memory::virtual_memory::PagingOptions,
     mp::{CORE_ID, CoreId},
     print::CharSink,
     thread::yield_thread,
-    virtual_memory::PagingOptions,
 };
 pub struct Arch;
 
