@@ -1,9 +1,13 @@
-use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS};
-use crate::print::kprintln;
 use alloc::vec::Vec;
 use core::option::Option;
+
 use fdt::{self};
 use limine::request::DeviceTreeBlobRequest;
+
+use crate::{
+    devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS},
+    print::kprintln,
+};
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]

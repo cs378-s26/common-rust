@@ -1,21 +1,25 @@
-use crate::debug::gen_debug_module;
+use std::{
+    collections::hash_map::DefaultHasher,
+    env::{current_dir, current_exe},
+    fs::{self, File},
+    hash::{Hash, Hasher},
+    io::{self, BufReader, Write},
+    os::unix::process::CommandExt,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    str,
+    time::SystemTime,
+};
+
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Message, MetadataCommand};
 use fatfs::{FatType, FileSystem, FormatVolumeOptions, FsOptions, format_volume};
 use fscommon::StreamSlice;
 use gptman::{GPT, GPTPartitionEntry};
-use std::collections::hash_map::DefaultHasher;
-use std::env::{current_dir, current_exe};
-use std::fs::{self, File};
-use std::hash::{Hash, Hasher};
-use std::io::{self, BufReader, Write};
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::str;
-use std::time::SystemTime;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
+
+use crate::debug::gen_debug_module;
 
 const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";

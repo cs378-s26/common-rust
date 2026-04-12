@@ -1,16 +1,16 @@
-use crate::{
-    arch::{Arch, ArchTrait},
-    freeset::FreeSet,
-    fs::{fake::create_fake_file, vfs::INodeKey},
-    page_cache::{PAGE_CACHE, PageKey},
-    physical_memory,
-    sync::{IntMutex, MutexLike},
-    virtual_memory::{PageFaultConditions, PagingOptions},
-};
 use alloc::boxed::Box;
+
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use spin::Once;
 
+use crate::{
+    arch::{Arch, ArchTrait}, fs::{fake::create_fake_file, vfs::INodeKey}, memory::{
+        freeset::FreeSet,
+        page_cache::{PAGE_CACHE, PageKey},
+        physical_memory,
+        virtual_memory::{PageFaultConditions, PagingOptions},
+    }, sync::{IntMutex, MutexLike}
+};
 const USERSPACE_START: usize = 0x10000;
 const USERSPACE_END: usize = 0x8000_0000_0000_0000;
 static LIMINE_PAGE_TABLE: Once<usize> = Once::new();

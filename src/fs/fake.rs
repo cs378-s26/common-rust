@@ -1,17 +1,20 @@
-use core::ptr;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::{
+    collections::btree_map::BTreeMap,
+    sync::{Arc, Weak},
+};
+use core::{
+    ptr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
-use alloc::collections::btree_map::BTreeMap;
-use alloc::sync::Arc;
-use alloc::sync::Weak;
 use spin::Once;
 
-use crate::arch::Arch;
-use crate::arch::ArchTrait;
-use crate::fs::vfs::INodeKey;
-use crate::fs::vfs::{Filesystem, FsError, INodeType, VNode};
-use crate::physical_memory::HHDM_OFFSET;
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    arch::{Arch, ArchTrait},
+    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode},
+    memory::physical_memory::HHDM_OFFSET,
+    sync::{IntMutex, MutexLike},
+};
 
 pub static FAKE: Once<Arc<Fake>> = Once::new();
 

@@ -5,10 +5,15 @@
 
 kernel_common::integration_test!({
     use core::sync::atomic::{AtomicU64, Ordering};
-    use kernel_common::arch::{Arch, ArchTrait};
-    use kernel_common::fs::ramfs::RamFilesystem;
-    use kernel_common::fs::vfs::{Filesystem, INodeKey, INodeType, VFS};
-    use kernel_common::process::Process;
+
+    use kernel_common::{
+        arch::{Arch, ArchTrait},
+        fs::{
+            ramfs::RamFilesystem,
+            vfs::{Filesystem, INodeKey, INodeType, VFS},
+        },
+        process::Process,
+    };
 
     static LATCH: AtomicU64 = AtomicU64::new(0);
 

@@ -1,15 +1,17 @@
-use crate::{
-    arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
-    print::kprintln,
-    state::{CorePin, StateGuard},
-    thread::Thread,
-};
 use alloc::{boxed::Box, sync::Arc};
+
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
 use spin::{Mutex, Once};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    memory::physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+    print::kprintln,
+    state::{CorePin, StateGuard},
+    thread::Thread,
+};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -365,16 +367,19 @@ impl Drop for VirtualMemoryAllocation {
 #[cfg(test)]
 mod test {
 
+    use alloc::{sync::Arc, vec::Vec};
+
+    use spin::{Mutex, barrier::Barrier};
+
     use super::kprintln;
-    use crate::arch::{Arch, ArchTrait};
-    use crate::physical_memory::HHDM_OFFSET;
-    use crate::physical_memory::{frame_alloc, frame_dealloc};
-    use crate::thread::spawn_thread;
-    use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
-    use spin::Mutex;
-    use spin::barrier::Barrier;
+    use crate::{
+        arch::{Arch, ArchTrait},
+        memory::{
+            physical_memory::{HHDM_OFFSET, frame_alloc, frame_dealloc},
+            virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+        },
+        thread::spawn_thread,
+    };
 
     #[test_case]
     fn test_manual_page_mapping() {

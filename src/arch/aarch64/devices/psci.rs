@@ -1,7 +1,8 @@
-use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
+
 use spin::Once;
+
+use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
 
 pub static PSCI_DEVICE: Once<PSCIDevice> = Once::new();
 

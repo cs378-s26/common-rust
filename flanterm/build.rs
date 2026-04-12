@@ -1,6 +1,4 @@
-use std::env;
-use std::path::PathBuf;
-use std::process::Command;
+use std::{env, path::PathBuf, process::Command};
 
 fn build_flanterm() {
     let target = env::var("TARGET").expect("TARGET not set");

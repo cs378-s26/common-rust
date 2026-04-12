@@ -1,9 +1,6 @@
-use crate::{
-    fs::vfs::INodeKey,
-    physical_memory::{self},
-    sync::IntMutex,
-};
 use alloc::collections::btree_map::BTreeMap;
+
+use crate::{fs::vfs::INodeKey, memory::physical_memory, sync::IntMutex};
 pub struct PageCache {
     map: BTreeMap<PageKey, usize>,
 }
@@ -17,11 +14,9 @@ pub struct PageKey {
 impl PageCache {
     fn get_file_page(&mut self, key: &PageKey) -> Result<usize, &'static str> {
         let paddr = physical_memory::frame_alloc();
-        let inode = key
-            .inode_key
+        key.inode_key
             .get_inode()
-            .map_err(|_| "could not get inode")?;
-        inode
+            .map_err(|_| "could not get inode")?
             .read_page(paddr, key.offset)
             .map_err(|_| "could not read from file")?;
         self.map.insert(key.clone(), paddr);

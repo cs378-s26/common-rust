@@ -7,17 +7,16 @@ pub use self::x86_64::*;
 #[cfg(target_arch = "aarch64")]
 mod aarch64;
 
-#[cfg(target_arch = "aarch64")]
-pub use self::aarch64::*;
+use alloc::{boxed::Box, vec::Vec};
 
-use crate::devices::discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-
-use crate::mp::CoreId;
-use crate::virtual_memory::PagingOptions;
 use limine::{mp::Cpu, request::MpRequest};
 use spin::MutexGuard;
+
+#[cfg(target_arch = "aarch64")]
+pub use self::aarch64::*;
+use crate::{
+    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+};
 
 pub trait UnwindContextTrait: Sized {
     /// Returns the current stack frame as an unwind context

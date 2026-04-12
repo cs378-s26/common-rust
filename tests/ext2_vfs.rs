@@ -7,13 +7,16 @@ kernel_common::integration_test!({
     extern crate alloc;
 
     use alloc::sync::Arc;
-    use kernel_common::devices::discovery::BLOCK_DEVICES;
-    use kernel_common::fs::{
-        ext2::Ext2,
-        vfs::{Filesystem, INodeType, VFS, VNode},
+
+    use kernel_common::{
+        devices::discovery::BLOCK_DEVICES,
+        fs::{
+            ext2::Ext2,
+            vfs::{Filesystem, INodeType, VFS, VNode},
+        },
+        print::kprintln,
+        sync::MutexLike,
     };
-    use kernel_common::print::kprintln;
-    use kernel_common::sync::MutexLike;
 
     fn read_text(node: &Arc<dyn VNode>, len: usize) -> alloc::vec::Vec<u8> {
         let mut buf = alloc::vec![0u8; len];
@@ -24,14 +27,16 @@ kernel_common::integration_test!({
         buf
     }
 
+    // from the buildtool, we know the disk with virtio-blk on it should be present and have an ext2 fs on it,
+    // the directory structure can be seen in test_cfgs/exts/files
     let mut block_devices = BLOCK_DEVICES.lock();
     let ext2 = Ext2::new_from_block_devices(&mut block_devices)
         .expect("ext2 filesystem not found on attached block devices");
+    drop(block_devices);
 
     let root = ext2.get_root().expect("failed to get ext2 root");
     let _fs_id = VFS.mount(ext2.clone());
     VFS.set_root(root.clone()).ok();
-    drop(block_devices);
 
     kprintln!("Mounted ext2 from testfs");
 
@@ -72,6 +77,8 @@ kernel_common::integration_test!({
 
     // 4) Creating a new inode through the directory vnode works, and the new file
     // can be looked up, written, and read back.
+    // the reason for this match is when running this test multiple times in a row the file
+    // will persist on disk
     let created = match root.lookup("vfs-created.txt") {
         Ok(node) => node,
         Err(_) => root

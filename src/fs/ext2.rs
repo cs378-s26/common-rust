@@ -1,17 +1,21 @@
 extern crate alloc;
-use alloc::string::String;
+use alloc::{
+    boxed::Box,
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 
-use super::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::block::BlockDevice;
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
 use spin::Once;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+use super::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode};
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::block::BlockDevice,
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    sync::{IntMutex, MutexLike},
+};
 
 pub struct Ext2 {
     block_size: usize,
@@ -494,9 +498,9 @@ impl Ext2 {
                 self_ref: Once::new(),
             });
             ext2.self_ref.call_once(|| Arc::downgrade(&ext2));
-            return Ok(ext2);
+            Ok(ext2)
         } else {
-            return Err(FsError::NotFound);
+            Err(FsError::NotFound)
         }
     }
 
@@ -950,7 +954,7 @@ impl VNode for FNode {
             options,
             true,
         )
-        .ok_or(FsError::Other((String::from("vm allocation failed"))))?;
+        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
         let virt_addr = allocation.base;
 
         // Safety: we trust our virtual memory allocator and this won't be reused until after allocation is freed
@@ -1014,7 +1018,7 @@ impl VNode for FNode {
             options,
             true,
         )
-        .ok_or(FsError::Other((String::from("vm allocation failed"))))?;
+        .ok_or(FsError::Other(String::from("vm allocation failed")))?;
         let virt_addr = allocation.base;
 
         // Safety: this mapping will stay alive for the duration of
