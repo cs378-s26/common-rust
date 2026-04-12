@@ -1,10 +1,7 @@
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-use alloc::collections::btree_map::BTreeMap;
-use alloc::string::String;
-use alloc::sync::Arc;
-use core::sync::atomic::AtomicUsize;
-use core::sync::atomic::Ordering;
+use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc};
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::sync::{IntMutex, MutexLike};
 
 // TODO we probably don't want to cache on both the fs and the VFS level,
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
@@ -139,30 +136,30 @@ pub trait VNode: Send + Sync {
 
     // add default implementations for all these types so that filesystems don't need to
     // implement unnecessary functions, if they're a directory they just implement directory functions, etc
-    fn read_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+    fn read_page(&self, _physical_address: usize, _offset: usize) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
     }
 
-    fn write_page(&self, physical_address: usize, offset: usize) -> Result<usize, FsError> {
+    fn write_page(&self, _physical_address: usize, _offset: usize) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
     }
 
     // Directory
-    fn lookup(&self, target: &str) -> Result<Arc<dyn VNode>, FsError> {
+    fn lookup(&self, _target: &str) -> Result<Arc<dyn VNode>, FsError> {
         Err(FsError::NotImplemented)
     }
 
     fn add_entry(
         &self,
-        target: &str,
-        inumber: usize,
-        inode_type: INodeType,
+        _target: &str,
+        _inumber: usize,
+        _inode_type: INodeType,
     ) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 
     // should only be implemented for directories
-    fn create_child(&self, name: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
+    fn create_child(&self, _name: &str, _inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
         Err(FsError::NotImplemented)
     }
 
@@ -173,11 +170,11 @@ pub trait VNode: Send + Sync {
 
     // note: these really are not the main interface for vfs, reads and writes should be done through page cache,
     // this is for non-caching and convenience.
-    fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+    fn read_unaligned(&self, _offset: usize, _buffer: &mut [u8]) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
     }
 
-    fn write_unaligned(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
+    fn write_unaligned(&self, _offset: usize, _buffer: &[u8]) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
     }
 
