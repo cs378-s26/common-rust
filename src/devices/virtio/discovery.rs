@@ -1,6 +1,3 @@
-// TODO once acpi handling gets added this will need to be removed, used for device node enum that only has one enum rn
-#![allow(irrefutable_let_patterns)]
-
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ptr::NonNull;
 

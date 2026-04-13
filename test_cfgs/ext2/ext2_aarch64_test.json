@@ -1,0 +1,28 @@
+{
+    "is_unittest": false,
+    "test_name": "ext2_vfs",
+    "n_runs": 1,
+    "timeout_ms": 60000,
+    "expected_output_path": "test_cfgs/ext2/out.txt",
+    "filesystem_path": "test_cfgs/ext2/files",
+    "target": "aarch64",
+    "qemu_args": [
+        "-machine",
+        "virt,acpi=off",
+        "-cpu",
+        "cortex-a72",
+        "-bios",
+        "{PATH_TO_EFI}",
+        "-drive",
+        "file={PATH_TO_IMG},format=raw",
+        "-no-reboot",
+        "-D",
+        "qemu.log",
+        "-m",
+        "4G",
+        "-smp",
+        "4",
+        "-display",
+        "none"
+    ]
+}
