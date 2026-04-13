@@ -179,6 +179,13 @@ impl ContextTrait for Context {
         ctx.gp.rsp = slice_stack_pointer(stack);
         ctx
     }
+
+    fn new_uthread(
+        sp: *const u8,
+        pc: *const u8,
+    ) -> Self {
+        todo!()
+    }
 }
 
 impl Context {

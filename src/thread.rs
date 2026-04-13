@@ -466,3 +466,22 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }
+
+pub fn make_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thread> {
+    let thread = Thread::new();
+    thread.process.call_once(|| Arc::clone(process));
+
+    {
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_uthread(sp as *const u8, pc as *const u8);
+    }
+
+    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()
+}
+
+pub fn spawn_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) {
+    let thread = make_thread_but_based(process, pc, sp);
+    GLOBAL_WORK_QUEUE.lock().push_back(thread);
+    Arch::wake_other_cores();
+}

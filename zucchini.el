@@ -7,7 +7,8 @@
      '("cargo"
        "buildtool"
        "qemu-test"
-       "test_cfgs/virtual_memory/virtual_memory_aarch64_test.json"
+       "test_cfgs/example_integration/example_aarch64_test.json"
        "--stdout")
      " "))))
+ [d] :project (call-interactively #'lldb)
  [j] :project (vterm))

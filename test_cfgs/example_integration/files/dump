@@ -1,0 +1,85 @@
+
+init.elf:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000000000 <_start>:
+       0: f81f0ffe     	str	x30, [sp, #-0x10]!
+       4: d13ec3ff     	sub	sp, sp, #0xfb0
+       8: b9000fff     	str	wzr, [sp, #0xc]
+       c: 14000001     	b	0x10 <_start+0x10>
+      10: b9400fe8     	ldr	w8, [sp, #0xc]
+      14: 710fa108     	subs	w8, w8, #0x3e8
+      18: 5400016a     	b.ge	0x44 <_start+0x44>
+      1c: 14000001     	b	0x20 <_start+0x20>
+      20: b9400fe8     	ldr	w8, [sp, #0xc]
+      24: b9800fea     	ldrsw	x10, [sp, #0xc]
+      28: 910043e9     	add	x9, sp, #0x10
+      2c: b82a7928     	str	w8, [x9, x10, lsl #2]
+      30: 14000001     	b	0x34 <_start+0x34>
+      34: b9400fe8     	ldr	w8, [sp, #0xc]
+      38: 11000508     	add	w8, w8, #0x1
+      3c: b9000fe8     	str	w8, [sp, #0xc]
+      40: 17fffff4     	b	0x10 <_start+0x10>
+      44: 913ec3ff     	add	sp, sp, #0xfb0
+      48: f84107fe     	ldr	x30, [sp], #0x10
+      4c: d65f03c0     	ret
+
+Disassembly of section .comment:
+
+0000000000000000 <.comment>:
+       0: 00 4c 69 6e  	.word	0x6e694c00
+       4: 6b 65 72 3a  	.word	0x3a72656b
+       8: 20 4c 4c 44  	.word	0x444c4c20
+       c: 20 32 31 2e  	.word	0x2e313220
+      10: 31 2e 38 00  	.word	0x00382e31
+      14: 63 6c 61 6e  	.word	0x6e616c63
+      18: 67 20 76 65  	.word	0x65762067
+      1c: 72 73 69 6f  	.word	0x6f697372
+      20: 6e 20 32 31  	.word	0x3132206e
+      24: 2e 31 2e 38  	.word	0x382e312e
+      28: 00           	.byte	0x00
+
+Disassembly of section .symtab:
+
+0000000000000000 <.symtab>:
+		...
+      18: 00000001     	udf	#0x1
+      1c: fff10004     	<unknown>
+		...
+      30: 00000008     	udf	#0x8
+      34: 00010000     	<unknown>
+		...
+      48: 0000000b     	udf	#0xb
+      4c: 00020000     	<unknown>
+		...
+      60: 0000000e     	udf	#0xe
+      64: 00010012     	<unknown>
+		...
+      70: 00000050     	udf	#0x50
+      74: 00000000     	udf	#0x0
+
+Disassembly of section .shstrtab:
+
+0000000000000000 <.shstrtab>:
+       0: 65742e00     	fmls	z0.h, p3/m, z16.h, z20.h
+       4: 2e007478     	<unknown>
+       8: 6d6d6f63     	ldp	d3, d27, [x27, #-0x130]
+       c: 00746e65     	<unknown>
+      10: 6d79732e     	ldp	d14, d28, [x25, #-0x70]
+      14: 00626174     	<unknown>
+      18: 7368732e     	<unknown>
+      1c: 61747274     	<unknown>
+      20: 732e0062     	<unknown>
+      24: 61747274     	<unknown>
+      28: 62 00        	<unknown>
+
+Disassembly of section .strtab:
+
+0000000000000000 <.strtab>:
+       0: 696e6900     	ldpsw	x0, x26, [x8, #-0x90]
+       4: 00632e74     	<unknown>
+       8: 24007824     	cmplt	p4.b, p6/z, z1.b, z0.d
+       c: 735f0064     	<unknown>
+      10: 74726174     	<unknown>
+      14: 00           	<unknown>

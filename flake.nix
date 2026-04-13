@@ -21,6 +21,7 @@
             buildInputs = [
               llvmPackages_21.clang-unwrapped
               llvmPackages_21.bintools
+              llvmPackages_21.lldb
               rustToolchain
               pkg-config
               openssl
