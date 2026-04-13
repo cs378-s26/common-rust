@@ -1,7 +1,9 @@
 use crate::{
+    arch::{Arch, ArchTrait},
+    fs::vfs::VNode,
+    memory::virtual_memory_2::VirtualMemory,
     print::kprintln,
-    // arch::Arch,
-    // virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    thread::this_thread,
 };
 
 mod eh_constants {
@@ -161,6 +163,9 @@ pub enum ElfError {
     PHFileReadError,
     PHInvalidMemSize,
     PHUnsupportedType,
+    MmapError,
+    InodeKeyError,
+    ProcessError,
 }
 
 impl Elf {
@@ -199,27 +204,41 @@ impl Elf {
         Ok(())
     }
 
-    fn load(file: &dyn File) -> Result<u64, ElfError> {
+    fn load(file: &dyn VNode) -> Result<u64, ElfError> {
         const EHSIZE: usize = eh_constants::E_EHSIZE as usize;
         let mut header_buffer = [0u8; EHSIZE];
-        if file.read_all(0, &mut header_buffer, EHSIZE) != EHSIZE {
+        let read_size = file
+            .read_unaligned(0, &mut header_buffer)
+            .map_err(|_| ElfError::EHFileReadError)?;
+        if read_size < EHSIZE {
             return Err(ElfError::EHFileReadError);
         }
 
+        let header = ElfHeader::parse(&header_buffer);
         let header = ElfHeader::parse(&header_buffer);
         Self::validate_elf_header(&header)?;
 
         let phoff = header.e_phoff as usize;
         let phnum = header.e_phnum as usize;
         const PHENTSIZE: usize = eh_constants::E_PHENTSIZE as usize;
-
         for i in 0..phnum {
+            // Read program header.
             let mut ph_buffer = [0u8; PHENTSIZE];
-            if file.read_all(phoff + i * PHENTSIZE, &mut ph_buffer, PHENTSIZE) != PHENTSIZE {
+            let read_size = file
+                .read_unaligned(phoff + i * PHENTSIZE, &mut ph_buffer)
+                .map_err(|_| ElfError::PHFileReadError)?;
+            if read_size < PHENTSIZE {
                 return Err(ElfError::PHFileReadError);
             }
-
             let ph = ProgramHeader::parse(&ph_buffer, 0);
+
+            let thread = this_thread();
+            let vm = &thread
+                .process
+                .get()
+                .ok_or(ElfError::ProcessError)?
+                .virtual_memory;
+            let inode_key = file.get_inode_key().map_err(|_| ElfError::InodeKeyError)?;
 
             match ph.p_type {
                 ph_constants::PT_LOAD => {
@@ -232,14 +251,20 @@ impl Elf {
                         return Err(ElfError::PHInvalidMemSize);
                     }
 
-                    // TODO: mmap this when we can mmap from a file.
-                    kprintln!(
-                        "Load segment. vaddr: {:#x}, memsz: {:#x}, filesz: {:#x}, offset: {:#x}",
-                        vaddr,
+                    // kprintln!(
+                    //     "Load segment. vaddr: {:#x}, memsz: {:#x}, filesz: {:#x}, offset: {:#x}",
+                    //     vaddr,
+                    //     memsz,
+                    //     filesz,
+                    //     offset
+                    // );
+                    vm.mmap(
+                        Some((inode_key, offset, Some(filesz))),
                         memsz,
-                        filesz,
-                        offset
-                    );
+                        false,
+                        Some(vaddr),
+                    )
+                    .map_err(|_| ElfError::MmapError)?;
                 }
                 _ => {
                     let segment_type = ph.p_type;
@@ -248,8 +273,7 @@ impl Elf {
                 }
             }
         }
-        Ok(header.e_entry)
+
+        Ok(entry)
     }
 }
-
-// TODO: tests once we have a file system.
