@@ -98,59 +98,44 @@
 exception_vector_table:
     // Current EL with SP0
     .align 7
-    mov x0, x0
     b c_elx_sync_handler
     .align 7
-    mov x1, x1
     b c_default_irq_handler
     .align 7
-    mov x2, x2
     b .
     .align 7
-    mov x3, x3
     b .
     
     // Current EL with SPx
 	// kernel faults
     .align 7
-    mov x4, x4
     b c_elx_sync_handler
     .align 7
-    mov x5, x5
     b c_elx_irq_handler
     .align 7
     b .
     .align 7
-    mov x7, x7
     b .
     
     // Lower EL (AArch64)
 	// syscalls
     .align 7
-    mov x8, x8
     b c_elx_sync_handler_but_based
     .align 7
-    mov x9, x9
     b c_elx_irq_handler_but_based
     .align 7
-    mov x10, x10
     b .
     .align 7
-    mov x11, x11
     b .
     
     // Lower EL (AArch32)
     .align 7
-    mov x12, x12
     b .
     .align 7
-    mov x13, x13
     b c_default_irq_handler
     .align 7
-    mov x14, x14
     b .
     .align 7
-    mov x15, x15
     b .
 
 
