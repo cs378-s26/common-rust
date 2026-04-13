@@ -7,8 +7,6 @@
     "filesystem_path": "test_cfgs/example_integration/files",
     "target": "aarch64",
     "qemu_args": [
-        "-s",
-        "-S",
         "-machine",
         "virt,acpi=off",
         "-bios",

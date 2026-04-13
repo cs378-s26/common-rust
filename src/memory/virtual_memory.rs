@@ -148,7 +148,6 @@ pub fn init_virtual_memory_allocator() {
 }
 
 pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {
-    kprintln!("ADDRESS: {}", address);
     if address < USERSPACE_END {
         if let Some(process) = thread.process.get() {
             process

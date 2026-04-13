@@ -61,7 +61,12 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
-        kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+        // TODO: iss bits for instruction abort as well
+        if exception_class == INSTRUCTION_ABORT_LOWER {
+            page_fault_handler(exc, exception_class);
+        } else {
+            kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+        }
     } else if exception_class == DATA_ABORT || exception_class == DATA_ABORT_LOWER {
         page_fault_handler(exc, exception_class);
     } else {
