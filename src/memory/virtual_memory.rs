@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
 
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
@@ -7,9 +7,13 @@ use spin::{Mutex, Once};
 
 use crate::{
     arch::{Arch, ArchTrait},
-    memory::physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+    memory::{
+        physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+        virtual_memory_2::USERSPACE_END,
+    },
     print::kprintln,
     state::{CorePin, StateGuard},
+    thread::Thread,
 };
 
 bitflags! {
@@ -143,7 +147,18 @@ pub fn init_virtual_memory_allocator() {
     );
 }
 
-pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
+pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {
+    if address < USERSPACE_END {
+        if let Some(process) = thread.process.get() {
+            process
+                .virtual_memory
+                .handle_page_fault(cause, address)
+                .unwrap();
+        } else {
+            panic!("*** PAGE FAULT AT {:x} when no process exists ***", address);
+        }
+        return;
+    }
     if !cause.contains(PageFaultConditions::PRESENT) {
         let mut vmes = VMES
             .get()
