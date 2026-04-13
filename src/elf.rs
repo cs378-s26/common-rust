@@ -141,12 +141,7 @@ impl ProgramHeader {
     }
 }
 
-// TODO: replace with the interface our file system supports.
-trait File {
-    fn read_all(&self, offset: usize, buffer: &mut [u8], size: usize) -> usize;
-}
-
-pub struct Elf;
+pub struct ElfLoader;
 
 pub enum ElfError {
     EHFileReadError,
@@ -168,8 +163,8 @@ pub enum ElfError {
     ProcessError,
 }
 
-impl Elf {
-    fn validate_elf_header(header: &ElfHeader) -> Result<(), ElfError> {
+impl ElfLoader {
+    pub fn validate_elf_header(header: &ElfHeader) -> Result<(), ElfError> {
         if header.ei_mag != eh_constants::EI_MAG {
             return Err(ElfError::EHInvalidMagic);
         }
@@ -204,7 +199,7 @@ impl Elf {
         Ok(())
     }
 
-    fn load(file: &dyn VNode) -> Result<u64, ElfError> {
+    pub fn load(file: &dyn VNode) -> Result<u64, ElfError> {
         const EHSIZE: usize = eh_constants::E_EHSIZE as usize;
         let mut header_buffer = [0u8; EHSIZE];
         let read_size = file
