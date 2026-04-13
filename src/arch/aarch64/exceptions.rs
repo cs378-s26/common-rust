@@ -15,6 +15,8 @@ use crate::{
 
 global_asm!(include_str!("exception.s"));
 
+// TODO: use bitflags or smth
+
 // docs for all this here:
 // https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
 const SVC: u64 = 0b010101; // SVC instruction from AArch64
@@ -53,8 +55,6 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     if exception_class == SVC {
-        kprintln!("SVC");
-        exc.elr_el1 += 4;
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
