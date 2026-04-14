@@ -1,10 +1,6 @@
-use crate::{
-    arch::{Arch, ArchTrait},
-    fs::vfs::VNode,
-    memory::virtual_memory_2::VirtualMemory,
-    print::kprintln,
-    thread::this_thread,
-};
+use alloc::sync::Arc;
+
+use crate::{fs::vfs::VNode, print::kprintln, thread::this_thread};
 
 mod eh_constants {
     pub const EI_MAG: [u8; 4] = [0x7f, b'E', b'L', b'F'];
@@ -141,8 +137,10 @@ impl ProgramHeader {
     }
 }
 
+#[derive(Debug)]
 pub struct ElfLoader;
 
+#[derive(Debug)]
 pub enum ElfError {
     EHFileReadError,
     EHInvalidMagic,
@@ -164,7 +162,7 @@ pub enum ElfError {
 }
 
 impl ElfLoader {
-    pub fn validate_elf_header(header: &ElfHeader) -> Result<(), ElfError> {
+    fn validate_elf_header(header: &ElfHeader) -> Result<(), ElfError> {
         if header.ei_mag != eh_constants::EI_MAG {
             return Err(ElfError::EHInvalidMagic);
         }
@@ -199,7 +197,7 @@ impl ElfLoader {
         Ok(())
     }
 
-    pub fn load(file: &dyn VNode) -> Result<u64, ElfError> {
+    pub fn load(file: Arc<dyn VNode>) -> Result<u64, ElfError> {
         const EHSIZE: usize = eh_constants::E_EHSIZE as usize;
         let mut header_buffer = [0u8; EHSIZE];
         let read_size = file
