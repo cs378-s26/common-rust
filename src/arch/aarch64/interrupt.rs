@@ -1,13 +1,6 @@
-use super::context::GPRegisters;
-
 // Minimal interrupt context placeholder; real implementation TBD.
 #[repr(C)]
-pub struct InterruptContext {
-    pub gpr: GPRegisters,
-    pub sp: u64,
-    pub pc: u64,
-    pub spsr: u64,
-}
+pub struct InterruptContext;
 
 pub const IPI_WAKE_VECTOR: u8 = 0;
 

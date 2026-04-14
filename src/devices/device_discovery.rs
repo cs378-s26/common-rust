@@ -1,6 +1,6 @@
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::char::uart_pl011::UartPl011Discovery;
-use crate::devices::virtio_discovery::VirtioDiscovery;
+use crate::devices::virtio_discovery::{VirtioDiscovery, VirtioNetDiscovery};
 use crate::devices::{block::BlockDevice, char::CharDevice, network::NetworkDevice};
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
@@ -46,8 +46,6 @@ pub enum DeviceType {
 pub trait DeviceDiscovery {
     // when finding a matching node, return a corresponding device driver with its proper fields initialized.
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType>;
-
-    fn name(&self) -> &'static str;
 }
 
 pub fn create_drivers() {
@@ -55,5 +53,6 @@ pub fn create_drivers() {
     let mut drivers = SYSTEM_DRIVERS.lock();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
+    drivers.push(Box::new(VirtioNetDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
 }

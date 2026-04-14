@@ -1,4 +1,0 @@
-Starting Testing Code...
-virtio_net: device discovered and initialized
-virtio_net: send_packet succeeded
-virtio_net: receive_packet returned no packet (expected)

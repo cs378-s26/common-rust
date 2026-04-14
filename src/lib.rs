@@ -203,7 +203,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
             Work::work();
         })
     });
-    all!({ Arch::set_irq_enabled(true) });
+    one!({ Arch::set_irq_enabled(true) });
     poll_tasks() // runs on all cores, never to return
 }
 

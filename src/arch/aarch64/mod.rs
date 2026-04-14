@@ -2,7 +2,6 @@ use core::arch::asm;
 
 use spin::Once;
 
-// use crate::arch::IrqStateTrait;
 use crate::print::CharSink;
 use crate::virtual_memory::PagingOptions;
 
@@ -14,16 +13,13 @@ pub mod apic;
 mod asm;
 mod context;
 mod devices;
-mod exceptions;
-pub mod gic;
 mod interrupt;
 mod mp;
-pub use exceptions::{dump_core_state, init_exceptions};
 
+pub use apic::timer_ticks;
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
-pub use gic::timer_ticks;
 pub use interrupt::*;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
@@ -114,9 +110,13 @@ impl ArchTrait for Arch {
         vmm::vunmap(space, vaddr)
     }
 
-    fn virtual_invalidate(_vaddr: u64) {}
+    fn virtual_invalidate(_vaddr: u64) {
+        panic!("TLB invalidation not implemented for aarch64");
+    }
 
-    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {}
+    fn shootdown_tlbs(_space: u64, _base: usize, _length: usize) {
+        panic!("TLB shootdown not implemented for aarch64");
+    }
 
     fn virtual_unmap_no_dealloc(_space: u64, _vaddr: u64) -> Option<u64> {
         vmm::vunmap_no_dealloc(_space, _vaddr)
@@ -142,10 +142,10 @@ impl ArchTrait for Arch {
     }
 
     fn create_arch_specific_drivers(
-        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
         // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
-        devices::create_arch_specific_drivers(system_drivers);
+        devices::create_arch_specific_drivers(_system_drivers);
     }
 }
 

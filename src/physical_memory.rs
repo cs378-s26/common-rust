@@ -63,6 +63,7 @@ pub fn init_physical_memory_allocator() {
                 display_entry_type(entry.entry_type)
             );
         }
+        kprintln!("");
         entries
     });
 
