@@ -18,6 +18,7 @@ pub mod coroutine;
 pub mod devices;
 pub mod event;
 // pub mod ext2;
+pub mod elf;
 pub mod fs;
 pub mod local_storage;
 pub mod memory;
