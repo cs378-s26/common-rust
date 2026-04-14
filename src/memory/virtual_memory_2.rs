@@ -260,7 +260,8 @@ impl VirtualMemory {
             PagingOptions::PRESENT
                 | PagingOptions::CACHEABLE
                 | PagingOptions::WRITABLE
-                | PagingOptions::USER_ACCESSIBLE,
+                | PagingOptions::USER_ACCESSIBLE
+                | PagingOptions::EXECUTABLE,
         );
     }
 

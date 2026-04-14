@@ -473,7 +473,7 @@ pub fn make_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) -> Ar
 
     {
         let mut ctx = CONTEXT.read_for(&thread).lock();
-        *ctx = Context::new_uthread(sp as *const u8, pc as *const u8);
+        *ctx = Context::new_uthread(pc as *const u8, sp as *const u8);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
