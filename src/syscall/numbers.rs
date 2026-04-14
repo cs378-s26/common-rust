@@ -46,9 +46,9 @@ pub mod number {
 // Constants for syscall translation via wrappers
 #[allow(dead_code)] // we allow dead code because on aarch64 it will appear dead
 pub mod wrapper_constants {
-    const AT_FDCWD: i32 = -100;
-    const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
-    const SIGCHLD: usize = 17;
-    const CLONE_VM: usize = 0x00000100;
-    const CLONE_VFORK: usize = 0x00004000;
+    pub const AT_FDCWD: i32 = -100;
+    pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
+    pub const SIGCHLD: usize = 17;
+    pub const CLONE_VM: usize = 0x00000100;
+    pub const CLONE_VFORK: usize = 0x00004000;
 }

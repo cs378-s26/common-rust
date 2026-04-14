@@ -1,5 +1,5 @@
 pub mod numbers;
-pub use numbers::{number, wrapper_constants};
+pub use numbers::{number, wrapper_constants::*};
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
