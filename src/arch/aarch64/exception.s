@@ -62,7 +62,23 @@
 
 
 
+
+
 // Exception vector table
+
+// four levels, four types per level
+// levels: 
+//   Current EL with SP0 - exception taken at level x while using user stack pointer. very rare and atypical
+//   Current EL with SPx - exception taken at level x while using stack pointer x. ex: fault within the kernel
+//   Lower EL (AArch64)  - exception taken from EL0. ex: userspace syscall or userspace fault
+//   Lower EL (AArch32)  - same as previous but for AArch32. We will not use.
+// types (they follow this order in the vector):
+//   Synchronous - caused by an instruction: svc, page fault, breakpoint, etc.
+//   IRQ - Asynchronous interrupt from hardware: UART, GIC, DMA, etc.
+//   Fast IRQ - higher priority than IRQ and meant for specific latency critical hardware interrupts
+//   SError - system error that can't be attributed to a single instruction (which would be synchronous) but is likely fatal. ex. bus error or memory fault
+
+
 // Align by 2^11 bytes, as demanded by ARMv8-A. Same as ALIGN(2048) in an ld script.
 .align 11
 
@@ -72,11 +88,11 @@ exception_vector_table:
     .align 7
     b c_elx_sync_handler
     .align 7
-    b c_default_irq_handler
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_unimplemented_handler
     
     // Current EL with SPx
 	// kernel faults
@@ -85,33 +101,33 @@ exception_vector_table:
     .align 7
     b c_elx_irq_handler
     .align 7
-    b .
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_elx_serror_handler
     
     // Lower EL (AArch64)
 	// syscalls
     .align 7
-    b .
+    b c_el0_sync_handler
     .align 7
-    b c_default_irq_handler
+    b c_el0_irq_handler
     .align 7
-    b .
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_el0_serror_handler
     
     // Lower EL (AArch32)
     .align 7
-    b .
+    b c_unimplemented_handler
     .align 7
-    b c_default_irq_handler
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_unimplemented_handler
     .align 7
-    b .
+    b c_unimplemented_handler
 
 
-c_default_irq_handler:
+c_unimplemented_handler:
     SAVE_REGS
     mov x0, sp
     bl unimplemented
@@ -129,5 +145,33 @@ c_elx_irq_handler:
     SAVE_REGS
     mov x0, sp
     bl current_elx_irq
+    RESTORE_REGS
+    eret
+
+c_elx_serror_handler:
+    SAVE_REGS
+    mov x0, sp
+    bl current_elx_serror
+    RESTORE_REGS
+    eret
+
+c_el0_sync_handler:
+    SAVE_REGS
+    mov x0, sp
+    bl el0_sync
+    RESTORE_REGS
+    eret
+
+c_el0_irq_handler:
+    SAVE_REGS
+    mov x0, sp
+    bl el0_irq
+    RESTORE_REGS
+    eret
+
+c_el0_serror_handler:
+    SAVE_REGS
+    mov x0, sp
+    bl el0_serror
     RESTORE_REGS
     eret

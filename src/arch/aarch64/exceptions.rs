@@ -178,7 +178,14 @@ extern "C" fn el0_serror(e: &mut ExceptionContext) {
 
 #[unsafe(no_mangle)]
 extern "C" fn unimplemented(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    kprintln!("Hit unimplemented exception vector!");
+
+    panic!(
+        "Exception on core {}!\n\n\
+        {}",
+        CORE_ID.get(),
+        e
+    );
 }
 
 //--------------------------------------------------------------------------------------------------
