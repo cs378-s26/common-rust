@@ -230,13 +230,13 @@ fn sys_select_wrapper(ctx: &impl SyscallContext) {
 }
 
 #[cfg(target_arch = "x86_64")]
-fn sys_fork_wrapper(ctx: &impl SyscallContext) {
+fn sys_fork_wrapper(_ctx: &impl SyscallContext) {
     // x86_64 fork() -> clone(SIGCHLD, 0, NULL, NULL, 0)
     sys_clone(SIGCHLD, 0, 0, 0, 0);
 }
 
 #[cfg(target_arch = "x86_64")]
-fn sys_vfork_wrapper(ctx: &impl SyscallContext) {
+fn sys_vfork_wrapper(_ctx: &impl SyscallContext) {
     // x86_64 vfork() -> clone(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, NULL, NULL, 0)
     sys_clone(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, 0, 0, 0);
 }
