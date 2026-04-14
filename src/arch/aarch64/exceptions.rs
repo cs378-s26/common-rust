@@ -73,18 +73,6 @@ impl SyscallContext for ExceptionContext {
         self.gpr.regs[5]
     }
 
-    fn get_arg(&self, n: u64) -> Option<u64> {
-        match n {
-            0 => Some(self.arg0()),
-            1 => Some(self.arg1()),
-            2 => Some(self.arg2()),
-            3 => Some(self.arg3()),
-            4 => Some(self.arg4()),
-            5 => Some(self.arg5()),
-            _ => None,
-        }
-    }
-
     fn set_return_value(&mut self, ret: u64) {
         self.gpr.regs[0] = ret;
     }
