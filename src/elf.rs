@@ -26,6 +26,10 @@ mod eh_constants {
 
 mod ph_constants {
     pub const PT_LOAD: u32 = 1;
+    pub const PT_NOTE: u32 = 4;
+    pub const PT_GNU_STACK: u32 = 0x6474e551;
+    pub const PT_GNU_RELRO: u32 = 0x6474e552;
+    pub const PT_GNU_PROPERTY: u32 = 0x6474e553;
     // TODO: handle more? What else do we want?
 }
 
@@ -255,6 +259,21 @@ impl ElfLoader {
                         Some(vaddr),
                     )
                     .map_err(|_| ElfError::MmapError)?;
+                }
+                ph_constants::PT_NOTE => {
+                    // Parse notes if needed later.
+                }
+                ph_constants::PT_GNU_STACK => {
+                    // TODO: handle stack permissions. Save this somewhere probably.
+                    // ph.p_flags has PF_X (1), PF_W (2), PF_R (4) flags.
+                }
+                ph_constants::PT_GNU_RELRO => {
+                    // "Relocation Read-Only."
+                    // TODO: handle relocations.
+                }
+                ph_constants::PT_GNU_PROPERTY => {
+                    // TODO: handle other GNU properties.
+                    // Stuff about CPU/ABI/security or something.
                 }
                 _ => {
                     // TODO: handle other types. Ignore for now.
