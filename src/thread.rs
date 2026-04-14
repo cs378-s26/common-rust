@@ -467,7 +467,7 @@ pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     Arch::wake_other_cores();
 }
 
-pub fn make_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thread> {
+pub fn make_user_thread(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thread> {
     let thread = Thread::new();
     thread.process.call_once(|| Arc::clone(process));
 
@@ -480,8 +480,8 @@ pub fn make_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) -> Ar
     thread.clone()
 }
 
-pub fn spawn_thread_but_based(process: &Arc<Process>, pc: usize, sp: usize) {
-    let thread = make_thread_but_based(process, pc, sp);
+pub fn spawn_user_thread(process: &Arc<Process>, pc: usize, sp: usize) {
+    let thread = make_user_thread(process, pc, sp);
     GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }

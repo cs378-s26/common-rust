@@ -158,7 +158,6 @@ fn run_with_config(
     let display_name = test_display_name(config_path, test_cfg);
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
     let kernel_path = build_test_binary(test_cfg, release)?;
-    println!("KERNEL PATH: {}", kernel_path.to_string_lossy());
     let img_path = build_image_with_tag(
         &(kernel_path.clone(), vec![]),
         release,

@@ -58,13 +58,14 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     if exception_class == SVC {
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
+        let syscall_id = exc.gpr.regs[8];
 
         this_thread()
             .process
             .get()
             .unwrap()
             .exit_code
-            .fetch_add(67, Ordering::SeqCst);
+            .fetch_add(syscall_id, Ordering::SeqCst);
         suspend_to_thread(IDLE.get().unwrap().clone());
 
         return;
