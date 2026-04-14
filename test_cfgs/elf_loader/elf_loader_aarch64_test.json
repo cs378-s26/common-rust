@@ -3,8 +3,8 @@
     "test_name": "elf_loader",
     "n_runs": 1,
     "timeout_ms": 60000,
-    "expected_output_path": "test_cfgs/elf_loader/out.txt",
-    "filesystem_path": "test_cfgs/elf_loader/files",
+    "expected_output_path": "test_cfgs/elf_loader/out_arm.txt",
+    "filesystem_path": "test_cfgs/elf_loader/files_arm",
     "target": "aarch64",
     "qemu_args": [
         "-machine",

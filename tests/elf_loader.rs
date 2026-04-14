@@ -20,6 +20,26 @@ kernel_common::integration_test!({
         sync::MutexLike,
     };
 
+    #[cfg(target_arch = "x86_64")]
+    fn read_entry(entry: u64) {
+        kprintln!("First 26 bytes:");
+        for i in 0..26 {
+            kprintln!("{:#x}: {:02x}", entry + i, unsafe {
+                *((entry + i) as *const u8)
+            });
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn read_entry(entry: u64) {
+        kprintln!("First 8 instructions:");
+        for i in 0..8 {
+            kprintln!("{:#x}: {:08x}", entry + i * 4, unsafe {
+                *((entry + i * 4) as *const u32)
+            });
+        }
+    }
+
     static DONE_COUNT: AtomicU64 = AtomicU64::new(0);
 
     let process = Process::new();
@@ -45,12 +65,8 @@ kernel_common::integration_test!({
         kprintln!("Loaded ELF file. Entry point: {:#x}", entry);
 
         // Read from entry.
-        kprintln!("First 26 bytes:");
-        for i in 0..26 {
-            kprintln!("{:#x}: {:02x}", entry + i, unsafe {
-                *((entry + i) as *const u8)
-            });
-        }
+        read_entry(entry);
+
         kprintln!("\nProcess complete.");
         DONE_COUNT.fetch_add(1, Ordering::SeqCst);
     });
