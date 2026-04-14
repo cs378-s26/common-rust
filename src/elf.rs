@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::{Arch, ArchTrait, fs::vfs::VNode, thread::this_thread, kprintln};
+use crate::{Arch, ArchTrait, fs::vfs::VNode, thread::this_thread};
 
 mod eh_constants {
     pub const EI_MAG: [u8; 4] = [0x7f, b'E', b'L', b'F'];
@@ -276,10 +276,10 @@ impl ElfLoader {
                     // Stuff about CPU/ABI/security or something.
                 }
                 _ => {
-                    // TODO: handle other types. Ignore for now.
-                    let segment_type = ph.p_type;
-                    kprintln!("Unsupported segment type: {}", segment_type);
-                    // return Err(ElfError::PHUnsupportedType);
+                    // TODO: handle other types. Ignore for now. Uncomment for type.
+                    // let segment_type = ph.p_type;
+                    // kprintln!("Unsupported segment type: {}", segment_type);
+                    return Err(ElfError::PHUnsupportedType);
                 }
             }
         }
