@@ -10,7 +10,6 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    syscall::syscall_handler,
     thread::{block_to_idle, preempt_to_idle, this_thread},
 };
 
@@ -58,7 +57,6 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         exc.elr_el1 += 4;
         exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
-
 
         // uncomment this once the other prs are in
         // syscall_handler(exc);
