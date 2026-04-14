@@ -30,7 +30,7 @@ pub trait SyscallContext {
         }
     }
 
-    fn set_return_value(&self, ret: usize);
+    fn set_return_value(&mut self, ret: usize);
 
     fn is_user_address(&self, ptr: usize) -> bool;
 

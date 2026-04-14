@@ -10,6 +10,7 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
+    syscall::SyscallContext,
     thread::{block_to_idle, preempt_to_idle, this_thread},
 };
 
@@ -46,6 +47,51 @@ struct ExceptionContext {
     esr_el1: u64,
     sp: u64,
     _pad: u64, // padding to make the size a multiple of 16 bytes for alignment, see SAVE_REGS in exception.s
+}
+
+impl SyscallContext for ExceptionContext {
+    fn syscall_number(&self) -> usize {
+        self.gpr.regs[8]
+    }
+
+    fn arg0(&self) -> usize {
+        self.gpr.regs[0]
+    }
+    fn arg1(&self) -> usize {
+        self.gpr.regs[1]
+    }
+    fn arg2(&self) -> usize {
+        self.gpr.regs[2]
+    }
+    fn arg3(&self) -> usize {
+        self.gpr.regs[3]
+    }
+    fn arg4(&self) -> usize {
+        self.gpr.regs[4]
+    }
+    fn arg5(&self) -> usize {
+        self.gpr.regs[5]
+    }
+
+    fn get_arg(&self, n: usize) -> Option<usize> {
+        match n {
+            0 => Some(self.arg0()),
+            1 => Some(self.arg1()),
+            2 => Some(self.arg2()),
+            3 => Some(self.arg3()),
+            4 => Some(self.arg4()),
+            5 => Some(self.arg5()),
+            _ => None,
+        }
+    }
+
+    fn set_return_value(&mut self, ret: usize) {
+        self.gpr.regs[0] = ret;
+    }
+
+    fn is_user_address(&self, ptr: usize) -> bool {
+        (ptr >> 63) & 1 == 0
+    }
 }
 
 /// Prints verbose information about the exception and then panics.
