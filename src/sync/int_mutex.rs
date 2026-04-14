@@ -9,7 +9,7 @@ use super::{MutexLike, int_spinlock::IntSpinLock};
 use crate::{
     arch::{Arch, ArchTrait},
     state::{Irq, State},
-    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
+    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue_if},
 };
 
 pub struct IntMutexGuard<'a, T> {
@@ -21,14 +21,9 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
     fn drop(&mut self) {
         self.mutex.lock.store(false, Ordering::Release);
 
-        // Wake all blocked threads, not just one. There is a TOCTOU race
-        // between the Relaxed load in lock_block_yield and suspend_to_queue:
-        // a thread can check the lock (held), then the lock gets released and
-        // this Drop finds an empty queue, then the thread blocks forever.
-        // Waking all threads eliminates this lost-wakeup window.
         {
             let mut blocked = self.mutex.blocked.lock();
-            while let Some(task) = blocked.pop_front() {
+            if let Some(task) = blocked.pop_front() {
                 schedule_thread(task);
             }
         }
@@ -96,9 +91,10 @@ impl<T> IntMutex<T> {
             }
 
             while self.lock.load(Ordering::Relaxed) {
-                // attempt to block
+                // attempt to block, but only if the lock is still held when we
+                // grab the queue lock — closes the TOCTOU lost-wakeup race
                 let queue = &self.blocked;
-                suspend_to_queue(queue);
+                suspend_to_queue_if(queue, || self.lock.load(Ordering::Acquire));
             }
         }
     }

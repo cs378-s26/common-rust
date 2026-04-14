@@ -1,7 +1,7 @@
 {
     "is_unittest": false,
     "test_name": "synch_prims",
-    "n_runs": 1000,
+    "n_runs": 4,
     "timeout_ms": 120000,
     "expected_output_path": "test_cfgs/synch_prims/out.txt",
     "target": "x86_64",

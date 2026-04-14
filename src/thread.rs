@@ -379,6 +379,47 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
     );
 }
 
+/// Like `suspend_to_queue`, but only actually suspends if `condition()` returns true
+/// after the queue lock is held. This closes the TOCTOU window where the lock owner
+/// releases the lock and finds the queue empty, then this thread enqueues itself and
+/// sleeps forever.
+#[inline(always)]
+pub fn suspend_to_queue_if<T, F>(queue: &T, condition: F)
+where
+    T: MutexLike<ThreadQueue>,
+    F: FnOnce() -> bool,
+{
+    let guard = StateGuard::<Irq>::guard();
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
+    }
+    drop(guard);
+
+    let _guard = StateGuard::<Irq>::preserve();
+
+    let mut queue = queue.lock_no_restore_irq();
+
+    assert!(
+        !Arch::irq_is_enabled(),
+        "interrupts must either be disabled by the lock, or be disabled on entry"
+    );
+
+    // Re-check the condition while holding the queue lock. If the lock owner
+    // already released and is about to wake waiters, we'll see the lock as free
+    // here and bail out instead of sleeping forever.
+    if !condition() {
+        return;
+    }
+
+    suspend_impl(
+        move |t| {
+            queue.push_back(t);
+            drop(queue);
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
+
 #[inline(always)]
 // Queue must already be locked.
 // adds the current thread to the queue, unlocks it, then switches to idle
