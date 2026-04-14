@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::{fs::vfs::VNode, print::kprintln, thread::this_thread};
+use crate::{Arch, ArchTrait, fs::vfs::VNode, thread::this_thread};
 
 mod eh_constants {
     pub const EI_MAG: [u8; 4] = [0x7f, b'E', b'L', b'F'];
@@ -253,16 +253,17 @@ impl ElfLoader {
                     // );
                     vm.mmap(
                         Some((inode_key, offset, Some(filesz))),
-                        memsz,
+                        (memsz + Arch::PAGE_SIZE - 1) & !(Arch::PAGE_SIZE - 1), // Round up.
                         false,
                         Some(vaddr),
                     )
                     .map_err(|_| ElfError::MmapError)?;
                 }
                 _ => {
-                    let segment_type = ph.p_type;
-                    kprintln!("Unsupported segment type: {}", segment_type);
-                    return Err(ElfError::PHUnsupportedType);
+                    // TODO: handle other types. Ignore for now.
+                    // let segment_type = ph.p_type;
+                    // kprintln!("Unsupported segment type: {}", segment_type);
+                    // return Err(ElfError::PHUnsupportedType);
                 }
             }
         }

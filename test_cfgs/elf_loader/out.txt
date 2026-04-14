@@ -1,0 +1,36 @@
+
+Starting Testing Code...
+Inside process.
+Mounted ext2 and set root.
+Found ELF file.
+Loaded ELF file. Entry point: 0xefa00016
+First 26 bytes:
+0xefa00016: f3
+0xefa00017: 0f
+0xefa00018: 1e
+0xefa00019: fa
+0xefa0001a: 55
+0xefa0001b: 48
+0xefa0001c: 89
+0xefa0001d: e5
+0xefa0001e: be
+0xefa0001f: 00
+0xefa00020: 00
+0xefa00021: 00
+0xefa00022: 00
+0xefa00023: bf
+0xefa00024: 00
+0xefa00025: 00
+0xefa00026: 00
+0xefa00027: 00
+0xefa00028: e8
+0xefa00029: d3
+0xefa0002a: ff
+0xefa0002b: ff
+0xefa0002c: ff
+0xefa0002d: 90
+0xefa0002e: 5d
+0xefa0002f: c3
+
+Process complete.
+ELF loader test complete.
