@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use core::sync::atomic::AtomicU32;
 
 use crate::{
     arch::{Arch, ArchTrait},
@@ -8,12 +9,14 @@ use crate::{
 
 pub struct Process {
     pub virtual_memory: VirtualMemory,
+    pub exit_code: AtomicU32,
 }
 
 impl Process {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             virtual_memory: VirtualMemory::new(),
+            exit_code: AtomicU32::new(0),
         })
     }
 

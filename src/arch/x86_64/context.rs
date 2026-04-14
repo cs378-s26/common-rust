@@ -180,10 +180,7 @@ impl ContextTrait for Context {
         ctx
     }
 
-    fn new_uthread(
-        sp: *const u8,
-        pc: *const u8,
-    ) -> Self {
+    fn new_uthread(_pc: *const u8, _sp: *const u8) -> Self {
         todo!()
     }
 }

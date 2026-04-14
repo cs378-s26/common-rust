@@ -17,7 +17,7 @@ kernel_common::integration_test!({
         print::kprintln,
         process::Process,
         sync::MutexLike,
-        thread::spawn_thread_but_based
+        thread::{spawn_thread_but_based, yield_thread},
     };
     let mut block_devices = BLOCK_DEVICES.lock();
     let fs = Ext2::new_from_block_devices(&mut block_devices)
@@ -42,6 +42,14 @@ kernel_common::integration_test!({
         .virtual_memory
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
-    spawn_thread_but_based(&process, 0x40000, stack+4096*4);
-    loop {}
+    spawn_thread_but_based(&process, 0x40000, stack + 4096 * 4);
+    loop {
+        if let x = process.exit_code.load(Ordering::SeqCst)
+            && x != 0
+        {
+            kprintln!("{}", x);
+            break;
+        }
+        yield_thread();
+    }
 });

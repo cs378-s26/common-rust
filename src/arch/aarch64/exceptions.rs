@@ -1,6 +1,7 @@
 use core::{
     arch::{asm, global_asm},
     fmt,
+    sync::atomic::Ordering,
 };
 
 use super::{context::GPRegisters, interrupt::InterruptContext};
@@ -10,7 +11,7 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    thread::{block_to_idle, preempt_to_idle, this_thread},
+    thread::{IDLE, block_to_idle, preempt_to_idle, suspend_to_thread, this_thread},
 };
 
 global_asm!(include_str!("exception.s"));
@@ -55,9 +56,16 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     if exception_class == SVC {
-        exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
+
+        this_thread()
+            .process
+            .get()
+            .unwrap()
+            .exit_code
+            .fetch_add(67, Ordering::SeqCst);
+        suspend_to_thread(IDLE.get().unwrap().clone());
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {

@@ -1,5 +1,5 @@
 void _start(void) {
-  int x[1];
+  int x[1000];
   for (int i = 0; i < 1; i++) {
     x[i] = i;
   }

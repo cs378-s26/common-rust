@@ -100,7 +100,7 @@ exception_vector_table:
     .align 7
     b c_elx_sync_handler
     .align 7
-    b c_default_irq_handler
+    b c_elx_irq_handler
     .align 7
     b .
     .align 7
@@ -132,7 +132,7 @@ exception_vector_table:
     .align 7
     b .
     .align 7
-    b c_default_irq_handler
+    b .
     .align 7
     b .
     .align 7

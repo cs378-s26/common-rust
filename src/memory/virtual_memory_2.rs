@@ -269,7 +269,10 @@ impl VirtualMemory {
             self.page_table as u64,
             vaddr as u64,
             paddr as u64,
-            PagingOptions::PRESENT | PagingOptions::CACHEABLE | PagingOptions::USER_ACCESSIBLE | PagingOptions::EXECUTABLE,
+            PagingOptions::PRESENT
+                | PagingOptions::CACHEABLE
+                | PagingOptions::USER_ACCESSIBLE
+                | PagingOptions::EXECUTABLE,
         );
     }
 }

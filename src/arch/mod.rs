@@ -56,10 +56,7 @@ pub trait ContextTrait {
         function: unsafe extern "C" fn(*mut T) -> !,
         data: *mut T,
     ) -> Self;
-    fn new_uthread(
-        sp: *const u8,
-        pc: *const u8,
-    ) -> Self;
+    fn new_uthread(pc: *const u8, sp: *const u8) -> Self;
 }
 
 pub trait ArchTrait {
