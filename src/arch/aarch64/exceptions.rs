@@ -50,30 +50,30 @@ struct ExceptionContext {
 }
 
 impl SyscallContext for ExceptionContext {
-    fn syscall_number(&self) -> usize {
+    fn syscall_number(&self) -> u64 {
         self.gpr.regs[8]
     }
 
-    fn arg0(&self) -> usize {
+    fn arg0(&self) -> u64 {
         self.gpr.regs[0]
     }
-    fn arg1(&self) -> usize {
+    fn arg1(&self) -> u64 {
         self.gpr.regs[1]
     }
-    fn arg2(&self) -> usize {
+    fn arg2(&self) -> u64 {
         self.gpr.regs[2]
     }
-    fn arg3(&self) -> usize {
+    fn arg3(&self) -> u64 {
         self.gpr.regs[3]
     }
-    fn arg4(&self) -> usize {
+    fn arg4(&self) -> u64 {
         self.gpr.regs[4]
     }
-    fn arg5(&self) -> usize {
+    fn arg5(&self) -> u64 {
         self.gpr.regs[5]
     }
 
-    fn get_arg(&self, n: usize) -> Option<usize> {
+    fn get_arg(&self, n: u64) -> Option<u64> {
         match n {
             0 => Some(self.arg0()),
             1 => Some(self.arg1()),
@@ -85,11 +85,11 @@ impl SyscallContext for ExceptionContext {
         }
     }
 
-    fn set_return_value(&mut self, ret: usize) {
+    fn set_return_value(&mut self, ret: u64) {
         self.gpr.regs[0] = ret;
     }
 
-    fn is_user_address(&self, ptr: usize) -> bool {
+    fn is_user_address(&self, ptr: u64) -> bool {
         (ptr >> 63) & 1 == 0
     }
 }

@@ -8,17 +8,17 @@
 pub trait SyscallContext {
     // syscall number
     // x8 on ARM - rax on x86
-    fn syscall_number(&self) -> usize;
+    fn syscall_number(&self) -> u64;
 
     // max of 6 arguments to a unix sycall
-    fn arg0(&self) -> usize;
-    fn arg1(&self) -> usize;
-    fn arg2(&self) -> usize;
-    fn arg3(&self) -> usize;
-    fn arg4(&self) -> usize;
-    fn arg5(&self) -> usize;
+    fn arg0(&self) -> u64;
+    fn arg1(&self) -> u64;
+    fn arg2(&self) -> u64;
+    fn arg3(&self) -> u64;
+    fn arg4(&self) -> u64;
+    fn arg5(&self) -> u64;
 
-    fn get_arg(&self, n: usize) -> Option<usize> {
+    fn get_arg(&self, n: u64) -> Option<u64> {
         match n {
             0 => Some(self.arg0()),
             1 => Some(self.arg1()),
@@ -30,11 +30,11 @@ pub trait SyscallContext {
         }
     }
 
-    fn set_return_value(&mut self, ret: usize);
+    fn set_return_value(&mut self, ret: u64);
 
-    fn is_user_address(&self, ptr: usize) -> bool;
+    fn is_user_address(&self, ptr: u64) -> bool;
 
-    fn get_arg_ptr_safe(&self, n: usize) -> Option<usize> {
+    fn get_arg_ptr_safe(&self, n: u64) -> Option<u64> {
         let potential_pointer = self.get_arg(n)?;
         if self.is_user_address(potential_pointer) {
             Some(potential_pointer)

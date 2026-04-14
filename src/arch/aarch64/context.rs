@@ -16,15 +16,15 @@ const SPSR_IRQ_MASK: u64 = 1 << 7;
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GPRegisters {
-    pub regs: [usize; 31],
+    pub regs: [u64; 31],
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Context {
     pub gp: GPRegisters,
-    pub sp: usize,
-    pub pc: usize,
-    pub spsr: usize,
+    pub sp: u64,
+    pub pc: u64,
+    pub spsr: u64,
 }
 
 fn slice_stack_ptr(stack: &[u8]) -> u64 {
