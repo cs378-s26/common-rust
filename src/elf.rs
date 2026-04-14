@@ -208,7 +208,6 @@ impl ElfLoader {
         }
 
         let header = ElfHeader::parse(&header_buffer);
-        let header = ElfHeader::parse(&header_buffer);
         Self::validate_elf_header(&header)?;
 
         let phoff = header.e_phoff as usize;
@@ -268,6 +267,6 @@ impl ElfLoader {
             }
         }
 
-        Ok(entry)
+        Ok(header.e_entry)
     }
 }
