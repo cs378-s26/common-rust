@@ -21,8 +21,16 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
     fn drop(&mut self) {
         self.mutex.lock.store(false, Ordering::Release);
 
-        if let Some(task) = self.mutex.blocked.lock().pop_front() {
-            schedule_thread(task);
+        // Wake all blocked threads, not just one. There is a TOCTOU race
+        // between the Relaxed load in lock_block_yield and suspend_to_queue:
+        // a thread can check the lock (held), then the lock gets released and
+        // this Drop finds an empty queue, then the thread blocks forever.
+        // Waking all threads eliminates this lost-wakeup window.
+        {
+            let mut blocked = self.mutex.blocked.lock();
+            while let Some(task) = blocked.pop_front() {
+                schedule_thread(task);
+            }
         }
 
         self.irq_state.restore();
