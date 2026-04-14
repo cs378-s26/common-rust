@@ -18,6 +18,10 @@ global_asm!(include_str!("exception.s"));
 
 // TODO: use bitflags or smth
 
+// TODO: do we need a core local stack for temporary interrupts?
+// context switching happens on a context switching stack. this can
+// act like a core local stack for us.
+
 // docs for all this here:
 // https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
 const SVC: u64 = 0b010101; // SVC instruction from AArch64

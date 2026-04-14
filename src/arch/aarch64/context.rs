@@ -65,11 +65,12 @@ impl ContextTrait for Context {
     }
 
     fn new_uthread(pc: *const u8, sp: *const u8) -> Self {
-        let mut ctx = Self::default();
-        ctx.spsr = 0;
-        ctx.pc = pc as u64;
-        ctx.sp = sp as u64;
-        ctx
+        Context {
+            spsr: 0,
+            pc: pc as u64,
+            sp: sp as u64,
+            ..Default::default()
+        }
     }
 }
 
