@@ -15,6 +15,8 @@ mod eh_constants {
     pub const E_MACHINE: u16 = 0x3E;
     #[cfg(target_arch = "aarch64")]
     pub const E_MACHINE: u16 = 0xB7;
+    #[cfg(target_arch = "aarch64")]
+    pub const E_FLAGS: u32 = 0;
 
     pub const E_VERSION: u32 = 1; // Current version.
 
@@ -95,7 +97,6 @@ impl ParseLittleEndian {
 
 impl ElfHeader {
     fn parse(buffer: &[u8]) -> Self {
-        // TODO: is there a better way to do this without unsafe?
         ElfHeader {
             ei_mag: [buffer[0], buffer[1], buffer[2], buffer[3]],
             ei_class: buffer[4],
@@ -153,6 +154,7 @@ pub enum ElfError {
     EHInvalidElfHeaderSize,
     EHInvalidProgramHeaderSize,
     EHInvalidProgramHeader,
+    EHInvalidFlags,
     PHFileReadError,
     PHInvalidMemSize,
     PHUnsupportedType,
@@ -193,7 +195,10 @@ impl ElfLoader {
         if header.e_phentsize as usize != core::mem::size_of::<ProgramHeader>() {
             return Err(ElfError::EHInvalidProgramHeaderSize);
         }
-        // TODO: AArch64-specific checks? Something about flags. Not quite sure what you guys support.
+        #[cfg(target_arch = "aarch64")]
+        if header.e_flags != eh_constants::E_FLAGS {
+            return Err(ElfError::EHInvalidFlags);
+        }
         Ok(())
     }
 
@@ -243,13 +248,6 @@ impl ElfLoader {
                         return Err(ElfError::PHInvalidMemSize);
                     }
 
-                    // kprintln!(
-                    //     "Load segment. vaddr: {:#x}, memsz: {:#x}, filesz: {:#x}, offset: {:#x}",
-                    //     vaddr,
-                    //     memsz,
-                    //     filesz,
-                    //     offset
-                    // );
                     vm.mmap(
                         Some((inode_key, offset, Some(filesz))),
                         (memsz + Arch::PAGE_SIZE - 1) & !(Arch::PAGE_SIZE - 1), // Round up.
@@ -261,7 +259,7 @@ impl ElfLoader {
                 _ => {
                     // TODO: handle other types. Ignore for now.
                     // let segment_type = ph.p_type;
-                    // kprintln!("Unsupported segment type: {}", segment_type);
+                    kprintln!("Unsupported segment type: {}", segment_type);
                     // return Err(ElfError::PHUnsupportedType);
                 }
             }
