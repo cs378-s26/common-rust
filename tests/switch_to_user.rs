@@ -32,5 +32,6 @@ kernel_common::integration_test!({
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
     spawn_user_thread(&process, start_address as usize, stack + 4096 * 4);
-    kprintln!("{}", process.exit_code.get());
+    let holy_shit = process.exit_code.get();
+    kprintln!("{}", holy_shit);
 });
