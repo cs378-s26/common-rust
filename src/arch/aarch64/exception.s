@@ -24,6 +24,9 @@
 
     stp x30, x0, [sp, #16 * 15]
     stp x1, x2, [sp, #16 * 16]
+
+    // when saving the sp on ARM, we need to know which one to save.
+    // this code figures that out, and puts the result into x3.
     and x4, x1, #0b1111
     cmp x4, #0b0000
     b.eq 1f
@@ -31,7 +34,8 @@
     b 2f
 1:      
     mrs x3, sp_el0
-2:      
+2:
+
     stp x3, xzr, [sp, #16 * 17] // store stack pointer, xzr is just to pad to keep stack 16B aligned
 .endm
 

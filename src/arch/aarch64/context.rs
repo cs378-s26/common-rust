@@ -105,6 +105,9 @@ unsafe extern "C" fn jump_to_context(
     naked_asm!(
         // AAPCS64 call ABI:
         // x0 = buf, x1 = sp, x2 = spsr, x3 = pc, x4 = is_user
+
+        // put the sp in the correct exception level sp depending on
+        // 'is_user'
         "cmp x4, #1",
         "b.eq 1f",
         "mov sp, x1",
