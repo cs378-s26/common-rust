@@ -1,0 +1,17 @@
+Starting Testing Code...
+Inside process.
+Mounted ext2 and set root.
+Found ELF file.
+Loaded ELF file. Entry point: 0x400018
+First 8 instructions:
+0x400018: a9bf7bfd
+0x40001c: 910003fd
+0x400020: d2800001
+0x400024: 52800000
+0x400028: 97fffff6
+0x40002c: d503201f
+0x400030: a8c17bfd
+0x400034: d65f03c0
+
+Process complete.
+ELF loader test complete.

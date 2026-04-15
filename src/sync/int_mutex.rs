@@ -9,7 +9,7 @@ use super::{MutexLike, int_spinlock::IntSpinLock};
 use crate::{
     arch::{Arch, ArchTrait},
     state::{Irq, State},
-    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue},
+    thread::{ThreadQueue, can_yield, new_thread_queue, schedule_thread, suspend_to_queue_if},
 };
 
 pub struct IntMutexGuard<'a, T> {
@@ -21,8 +21,11 @@ impl<'a, T> Drop for IntMutexGuard<'a, T> {
     fn drop(&mut self) {
         self.mutex.lock.store(false, Ordering::Release);
 
-        if let Some(task) = self.mutex.blocked.lock().pop_front() {
-            schedule_thread(task);
+        {
+            let mut blocked = self.mutex.blocked.lock();
+            if let Some(task) = blocked.pop_front() {
+                schedule_thread(task);
+            }
         }
 
         self.irq_state.restore();
@@ -88,9 +91,10 @@ impl<T> IntMutex<T> {
             }
 
             while self.lock.load(Ordering::Relaxed) {
-                // attempt to block
+                // attempt to block, but only if the lock is still held when we
+                // grab the queue lock — closes the TOCTOU lost-wakeup race
                 let queue = &self.blocked;
-                suspend_to_queue(queue);
+                suspend_to_queue_if(queue, || self.lock.load(Ordering::Acquire));
             }
         }
     }
