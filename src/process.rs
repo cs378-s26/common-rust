@@ -2,21 +2,19 @@ use alloc::sync::Arc;
 use core::sync::atomic::AtomicU64;
 
 use crate::{
-    arch::{Arch, ArchTrait},
-    memory::virtual_memory_2::VirtualMemory,
-    thread::{THIS_THREAD, spawn_thread},
+    arch::{Arch, ArchTrait}, memory::virtual_memory_2::VirtualMemory, sync::Promise, thread::{THIS_THREAD, spawn_thread}
 };
 
 pub struct Process {
     pub virtual_memory: VirtualMemory,
-    pub exit_code: AtomicU64,
+    pub exit_code: Promise<u64>,
 }
 
 impl Process {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             virtual_memory: VirtualMemory::new(),
-            exit_code: AtomicU64::new(0),
+            exit_code: Promise::new(),
         })
     }
 

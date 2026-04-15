@@ -69,7 +69,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
             .get()
             .unwrap()
             .exit_code
-            .fetch_add(syscall_id, Ordering::SeqCst);
+            .set(syscall_id);
         suspend_to_thread(IDLE.get().unwrap().clone());
 
         return;

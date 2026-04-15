@@ -34,13 +34,5 @@ kernel_common::integration_test!({
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
     spawn_user_thread(&process, start_address as usize, stack + 4096 * 4);
-    loop {
-        if let x = process.exit_code.load(Ordering::SeqCst)
-            && x != 0
-        {
-            kprintln!("{}", x);
-            break;
-        }
-        yield_thread();
-    }
+    kprintln!("{}", process.exit_code.get());
 });
