@@ -81,4 +81,8 @@ impl DeviceDiscovery for PSCIDiscovery {
         }
         None
     }
+
+    fn name(&self) -> &'static str {
+        "PSCIDiscovery"
+    }
 }
