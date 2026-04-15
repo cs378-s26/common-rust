@@ -4,14 +4,13 @@
 #![test_runner(kernel_common::test_runner)]
 
 kernel_common::integration_test!({
-    use core::sync::atomic::{AtomicU64, Ordering};
+    use core::sync::atomic::Ordering;
 
     use kernel_common::{
-        arch::{Arch, ArchTrait},
         devices::discovery::BLOCK_DEVICES,
         fs::{
             ext2::Ext2,
-            vfs::{Filesystem, INodeKey, INodeType, VFS},
+            vfs::{Filesystem, VFS},
         },
         print::kprintln,
         process::Process,
