@@ -100,7 +100,7 @@ unsafe extern "C" fn jump_to_context(
     _sp: u64,
     _spsr: u64,
     _pc: u64,
-    _el: u64,
+    _is_user: u64,
 ) -> ! {
     naked_asm!(
         // AAPCS64 call ABI:
