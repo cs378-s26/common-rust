@@ -1,7 +1,6 @@
 use core::{
     arch::{asm, global_asm},
     fmt,
-    sync::atomic::Ordering,
 };
 
 use super::{context::GPRegisters, interrupt::InterruptContext};

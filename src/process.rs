@@ -1,8 +1,10 @@
 use alloc::sync::Arc;
-use core::sync::atomic::AtomicU64;
 
 use crate::{
-    arch::{Arch, ArchTrait}, memory::virtual_memory_2::VirtualMemory, sync::Promise, thread::{THIS_THREAD, spawn_thread}
+    arch::{Arch, ArchTrait},
+    memory::virtual_memory_2::VirtualMemory,
+    sync::Promise,
+    thread::{THIS_THREAD, spawn_thread},
 };
 
 pub struct Process {

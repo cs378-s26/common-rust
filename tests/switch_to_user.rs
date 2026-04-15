@@ -4,8 +4,6 @@
 #![test_runner(kernel_common::test_runner)]
 
 kernel_common::integration_test!({
-    use core::sync::atomic::Ordering;
-
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
         elf::ElfLoader,
@@ -16,7 +14,7 @@ kernel_common::integration_test!({
         print::kprintln,
         process::Process,
         sync::MutexLike,
-        thread::{spawn_user_thread, yield_thread},
+        thread::spawn_user_thread,
     };
     let mut block_devices = BLOCK_DEVICES.lock();
     let fs = Ext2::new_from_block_devices(&mut block_devices)
@@ -34,6 +32,5 @@ kernel_common::integration_test!({
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
     spawn_user_thread(&process, start_address as usize, stack + 4096 * 4);
-    let holy_shit = process.exit_code.get();
-    kprintln!("{}", holy_shit);
+    kprintln!("{}", process.exit_code.get());
 });
