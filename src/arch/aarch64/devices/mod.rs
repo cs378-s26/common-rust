@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 pub mod a15_gic;
+
 pub mod psci;
 
 pub fn create_arch_specific_drivers(

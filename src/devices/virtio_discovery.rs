@@ -5,6 +5,7 @@ use crate::arch::{Arch, ArchTrait};
 use crate::devices::block::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::device_discovery;
 use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::network::virtio_net::VirtIONetDriver;
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
 use alloc::boxed::Box;
 use core::ptr::NonNull;
@@ -14,6 +15,11 @@ use virtio_drivers::transport::mmio::{MmioTransport, VirtIOHeader};
 pub struct VirtioDiscovery;
 
 impl DeviceDiscovery for VirtioDiscovery {
+    fn name(&self) -> &'static str {
+        "virtio_discovery"
+    }
+
+
     fn am_i_this(&self, node: DeviceNode) -> Option<DeviceType> {
         if let DeviceNode::DTB(fdt_node) = node
             && let Some(c) = fdt_node.compatible()
@@ -40,24 +46,40 @@ impl DeviceDiscovery for VirtioDiscovery {
             let header = virt_addr as *mut VirtIOHeader;
             // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
             unsafe {
-                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
-                    && transport.device_type() == virtio_drivers::transport::DeviceType::Block
-                {
+                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size) {
                     let options = PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
                         | PagingOptions::DEVICE_MEMORY
                         | PagingOptions::SHADOW;
-                    // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
-                    VirtualMemoryAllocation::new(
-                        Arch::get_address_space(),
-                        Some(virt_base as usize),
-                        size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
-                        Some(phys_base as usize),
-                        options,
-                        false,
-                    );
-                    let driver = VirtIOBlkDiskDriver::new(transport);
-                    return Some(device_discovery::DeviceType::Block(Box::new(driver)));
+                    match transport.device_type() {
+                        virtio_drivers::transport::DeviceType::Block => {
+                            // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
+                            VirtualMemoryAllocation::new(
+                                Arch::get_address_space(),
+                                Some(virt_base as usize),
+                                size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
+                                Some(phys_base as usize),
+                                options,
+                                false,
+                            );
+                            let driver = VirtIOBlkDiskDriver::new(transport);
+                            return Some(device_discovery::DeviceType::Block(Box::new(driver)));
+                        }
+                        virtio_drivers::transport::DeviceType::Network => {
+                            // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
+                            VirtualMemoryAllocation::new(
+                                Arch::get_address_space(),
+                                Some(virt_base as usize),
+                                size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
+                                Some(phys_base as usize),
+                                options,
+                                false,
+                            );
+                            let driver = VirtIONetDriver::new(transport);
+                            return Some(device_discovery::DeviceType::Network(Box::new(driver)));
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

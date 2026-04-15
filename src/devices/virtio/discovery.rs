@@ -3,6 +3,7 @@
 
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::discovery::{self, DeviceDiscovery, DeviceNode, DeviceType};
+use crate::devices::network::virtio_net::{VirtIONetDriver, VirtioNetHal};
 use crate::devices::virtio::virtio_blk::VirtIOBlkDiskDriver;
 use crate::devices::virtio::{KernelConfigurationAccess, VirtioBlkHal};
 use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
@@ -44,9 +45,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             let header = virt_addr as *mut VirtIOHeader;
             // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
             unsafe {
-                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
-                    && transport.device_type() == virtio_drivers::transport::DeviceType::Block
-                {
+                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size) {
                     let options = PagingOptions::PRESENT
                         | PagingOptions::WRITABLE
                         | PagingOptions::DEVICE_MEMORY
@@ -60,8 +59,17 @@ impl DeviceDiscovery for VirtioDiscovery {
                         options,
                         false,
                     );
-                    let driver = VirtIOBlkDiskDriver::new(transport);
-                    return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+                    match transport.device_type() {
+                        virtio_drivers::transport::DeviceType::Block => {
+                            let driver = VirtIOBlkDiskDriver::new(transport);
+                            return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+                        }
+                        virtio_drivers::transport::DeviceType::Network => {
+                            let driver = VirtIONetDriver::<VirtioNetHal, _, 16>::new(transport);
+                            return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
+                        }
+                        _ => {}
+                    }
                 }
             }
         } else if let DeviceNode::Pcie(pcie_fn) = node {
