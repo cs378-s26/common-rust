@@ -222,7 +222,6 @@ fn run_with_config(
             .map(|arg| {
                 arg.replace("{PATH_TO_EFI}", &path_to_efi)
                     .replace("{PATH_TO_IMG}", &path_to_img)
-                    .replace("{PATH_TO_DISK}", &path_to_disk)
             })
             .collect();
         if let Some(filesystem_image) = filesystem_image.as_deref() {

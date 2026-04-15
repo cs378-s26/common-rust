@@ -1,12 +1,18 @@
 extern crate virtio_drivers;
-use super::{NetworkDevice, NetworkError};
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::Device;
-use crate::memory::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use core::ptr::NonNull;
-use virtio_drivers::device::net::{TxBuffer, VirtIONet};
-use virtio_drivers::transport::Transport;
-use virtio_drivers::{BufferDirection, Hal, PhysAddr};
+
+use virtio_drivers::{
+    BufferDirection, Hal, PhysAddr,
+    device::net::{TxBuffer, VirtIONet},
+    transport::Transport,
+};
+
+use super::{NetworkDevice, NetworkError};
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::Device,
+    memory::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc},
+};
 
 /// VirtIONetDriver wraps the virtio-drivers VirtIONet device and ties it to our kernel's HAL
 /// constructed from a transport (MMIO) and used by the device framework to send and receive packets

@@ -28,8 +28,7 @@ impl DeviceDiscovery for VirtioDiscovery {
             let base_addr = reg.starting_address; // physical address of the MMIO region
             let size = reg.size.unwrap(); // virtio mmio device tree node should always give size of mmio header region, 512 bytes
 
-            let header: NonNull<VirtIOHeader> =
-                super::map_mmio(base_addr as usize, size).cast();
+            let header: NonNull<VirtIOHeader> = super::map_mmio(base_addr as usize, size).cast();
             // safety: we trust the device tree to give a valid mmio region for a virtio device
             unsafe {
                 if let Ok(transport) = MmioTransport::new(header, size) {
