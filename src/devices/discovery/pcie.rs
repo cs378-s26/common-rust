@@ -1,6 +1,8 @@
-use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mcfg};
 use alloc::vec::Vec;
+
 use spin::once::Once;
+
+use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mcfg};
 
 pub static PCIE: Once<Pcie> = Once::new();
 

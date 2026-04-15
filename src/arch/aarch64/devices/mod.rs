@@ -1,6 +1,6 @@
+use alloc::{boxed::Box, vec::Vec};
+
 use crate::devices::discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 pub mod a15_gic;
 

@@ -1,10 +1,13 @@
-use crate::arch::ArchTrait;
-use crate::devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use spin::Once;
+
+use crate::{
+    arch::ArchTrait,
+    devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType},
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+};
 
 pub static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 pub static GICD_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
@@ -27,7 +30,7 @@ impl GicA15Driver {
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
         let gicd_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicd_phys_address),
@@ -36,7 +39,7 @@ impl GicA15Driver {
         );
 
         let gicc_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicc_phys_address),

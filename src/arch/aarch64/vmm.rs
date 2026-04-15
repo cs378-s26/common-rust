@@ -1,9 +1,15 @@
-use crate::kprintln;
-use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
-use crate::virtual_memory::PagingOptions;
-use bitflags::bitflags;
 use core::arch::asm;
+
+use bitflags::bitflags;
 use spin::Mutex;
+
+use crate::{
+    kprintln,
+    memory::{
+        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        virtual_memory::PagingOptions,
+    },
+};
 
 const PTE_ADDR_MASK: u64 = 0x0000FFFFFFFFF000; // bits [47:12] contain the physical address for a page table entry, the rest are flags
 const PTE_PER_PAGE: usize = 512; // each page table has 512 entries, since each entry is 8 bytes and page size is 4096 bytes
@@ -50,8 +56,8 @@ bitflags! {
     }
 }
 
-pub fn get_address_space() -> u64 {
-    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e above hhdm_offset
+pub fn get_kernel_address_space() -> u64 {
+    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e starting at 0xffff_0000_...
 
     unsafe {
         asm!(
@@ -61,6 +67,37 @@ pub fn get_address_space() -> u64 {
         );
     }
     ttbr1
+}
+
+pub fn get_user_address_space() -> u64 {
+    let mut ttbr0: u64; // translation table base register 0, used for user space mappings, i.e below 0xffff_0000_...
+
+    unsafe {
+        asm!(
+            "mrs {}, ttbr0_el1",
+            out(reg) ttbr0,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ttbr0
+}
+
+pub fn set_user_address_space(space: u64) {
+    // TODO: Currently, this is just a hack so that we don't flush the
+    // TLB too much. In the future, we should implement process ID
+    // tagging.
+    if space == get_user_address_space() {
+        return;
+    }
+    unsafe {
+        asm!(
+            "msr ttbr0_el1, {}",
+            "tlbi vmalle1is",
+            "dsb ishst",
+            in(reg) space,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
 }
 
 // map a virtual address to a physical address in the given address space, with the given paging options

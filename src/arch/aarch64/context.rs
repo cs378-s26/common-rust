@@ -4,9 +4,10 @@ use core::{
     ptr::{self},
 };
 
+use spin::MutexGuard;
+
 use super::interrupt::InterruptContext;
 use crate::arch::{Arch, ContextTrait};
-use spin::MutexGuard;
 
 const SPSR_MODE_EL1H: u64 = 0x5;
 const SPSR_DAIF_MASK: u64 = 0b1111 << 6;

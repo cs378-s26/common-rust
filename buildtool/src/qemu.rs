@@ -1,10 +1,14 @@
+use std::{
+    env::current_dir,
+    path::{Path, PathBuf},
+};
+
+use anyhow::Result;
+
 use crate::util::{
     Target, build_ext2_filesystem_from_dir, build_image, build_kernel, download_ovmf, exec,
     path_to_string, run_dir,
 };
-use anyhow::Result;
-use std::env::current_dir;
-use std::path::{Path, PathBuf};
 
 pub fn run(
     kvm: bool,

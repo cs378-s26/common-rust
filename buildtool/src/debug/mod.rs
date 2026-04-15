@@ -1,11 +1,12 @@
 #![allow(non_upper_case_globals)]
 
+use std::{borrow::Cow, path::PathBuf};
+
 use anyhow::Result;
 use dwarf::{Context, FunctionInfo, LineInfo};
 use gimli::{DwarfSections, EndianSlice, RunTimeEndian, SectionId};
 use io::DebugModuleFileWriter;
 use object::{Object, ObjectSection};
-use std::{borrow::Cow, path::PathBuf};
 
 mod dwarf;
 mod io;

@@ -4,13 +4,14 @@ use core::{
     ptr::{self},
 };
 
-use super::interrupt::InterruptContext;
-
 use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
-use crate::arch::{Arch, ContextTrait};
+use super::interrupt::InterruptContext;
+use crate::arch::{
+    Arch, ContextTrait,
+    x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
+};
 
 /// Represents the general-purpose registers of an x86 CPU.
 #[repr(C)]

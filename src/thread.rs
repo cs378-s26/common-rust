@@ -1,5 +1,11 @@
 extern crate alloc;
 
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
@@ -9,13 +15,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
-#[cfg(target_arch = "x86_64")]
-use core::arch::naked_asm;
-
-use alloc::{
-    boxed::Box,
-    sync::{Arc, Weak},
-};
 use intrusive_collections::{
     LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
 };
@@ -24,7 +23,9 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
+    memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
+    process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
@@ -40,6 +41,7 @@ pub struct Thread {
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
+    pub process: Once<Arc<Process>>,
 }
 
 impl Thread {
@@ -52,6 +54,7 @@ impl Thread {
             rb_link: RBTreeAtomicLink::new(),
             tls: Pin::new(tls),
             tls_addr,
+            process: Once::new(),
         });
 
         THIS_THREAD
@@ -178,6 +181,11 @@ fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
 
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+    if let Some(process) = thread.process.get() {
+        Arch::set_user_address_space(process.virtual_memory.get_page_table() as u64);
+    } else {
+        Arch::set_user_address_space(VirtualMemory::get_limine_page_table() as u64);
+    }
     CURRENT_THREAD.set(Some(thread));
 }
 

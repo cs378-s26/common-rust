@@ -1,8 +1,9 @@
+use core::sync::atomic::Ordering;
+
 use crate::{
     Arch, ArchTrait,
     thread::{CAN_YIELD, PINNED_TO_CORE},
 };
-use core::sync::atomic::Ordering;
 
 // for saving and restoring interrupts, preemption, core pinning, ...
 pub trait StateTrait {

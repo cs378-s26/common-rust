@@ -1,15 +1,17 @@
+use std::{
+    fs,
+    io::BufReader,
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
+    sync::OnceLock,
+    thread::sleep,
+    time::{Duration, Instant, SystemTime},
+};
+
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::OnceLock;
-use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime};
-use tempfile;
 
 use crate::util::{
     Target, build_ext2_filesystem_from_dir, build_image_with_tag, cache_dir, download_ovmf,
@@ -503,7 +505,9 @@ fn assert_output_match(
     expected_path: &Path,
     actual_path: &Path,
 ) -> Result<()> {
-    if normalize_output(expected) == normalize_output(actual) {
+    let expected = normalize_output(expected);
+    let actual = normalize_output(actual);
+    if expected == actual {
         return Ok(());
     }
 

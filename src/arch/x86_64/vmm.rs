@@ -1,8 +1,5 @@
-use crate::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
-    virtual_memory::PagingOptions,
-};
 use core::arch::asm;
+
 use spin::Mutex;
 use x86_64::{
     PhysAddr, VirtAddr,
@@ -10,6 +7,11 @@ use x86_64::{
         FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags,
         PhysFrame, Size4KiB,
     },
+};
+
+use crate::memory::{
+    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+    virtual_memory::PagingOptions,
 }; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
 
 // ChatGPT told me how to do this trait impl'ing
@@ -43,6 +45,15 @@ pub fn get_address_space() -> u64 {
         );
     }
     cr3
+}
+
+pub fn set_address_space(cr3: u64) {
+    unsafe {
+        asm!(
+            "mov cr3, {0}",
+            in(reg) cr3,
+        );
+    }
 }
 
 // TODO allocator wrapper is kinda dumb
