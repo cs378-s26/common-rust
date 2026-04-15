@@ -2,8 +2,7 @@ extern crate virtio_drivers;
 use super::{NetworkDevice, NetworkError};
 use crate::arch::{Arch, ArchTrait};
 use crate::devices::Device;
-use crate::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use crate::memory::physical_memory::{HHDM_REQUEST, alloc_frames, frame_dealloc};
 use core::ptr::NonNull;
 use virtio_drivers::device::net::{TxBuffer, VirtIONet};
 use virtio_drivers::transport::Transport;
@@ -50,16 +49,7 @@ unsafe impl Hal for VirtioNetHal {
     }
 
     unsafe fn mmio_phys_to_virt(paddr: PhysAddr, size: usize) -> NonNull<u8> {
-        let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
-        let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
-        let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
-
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr() + page_offset;
-
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
-
-        NonNull::new(virt_addr as *mut u8).unwrap()
+        crate::devices::virtio::map_mmio(paddr as usize, size)
     }
 
     // allocates a DMA bounce buffer and copies data into it if the direction is driver-to-device

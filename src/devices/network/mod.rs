@@ -1,3 +1,5 @@
+pub mod virtio_net;
+
 use alloc::string::String;
 
 use crate::devices::Device;
