@@ -7,9 +7,7 @@ kernel_common::integration_test!({
     extern crate alloc;
     use alloc::vec;
 
-    use kernel_common::{
-        devices::device_discovery::NETWORK_DEVICES, print::kprintln, sync::MutexLike,
-    };
+    use kernel_common::{devices::discovery::NETWORK_DEVICES, print::kprintln, sync::MutexLike};
 
     let mut virtio_net_device = {
         let mut network_devices = NETWORK_DEVICES.lock();
