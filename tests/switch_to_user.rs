@@ -8,6 +8,7 @@ kernel_common::integration_test!({
 
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
+        elf::ElfLoader,
         fs::{
             ext2::Ext2,
             vfs::{Filesystem, VFS},
@@ -27,20 +28,12 @@ kernel_common::integration_test!({
     let process = Process::new();
     let root = VFS.get_root().unwrap();
     let node = root.lookup("init").unwrap();
-    let _ = process
-        .virtual_memory
-        .mmap(
-            Some((node.get_inode_key().unwrap(), 0, None)),
-            4096,
-            false,
-            Some(0x40000),
-        )
-        .unwrap();
+    let start_address = ElfLoader::load(node, &process).expect("Failed to load ELF file.");
     let stack = process
         .virtual_memory
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
-    spawn_user_thread(&process, 0x40000, stack + 4096 * 4);
+    spawn_user_thread(&process, start_address as usize, stack + 4096 * 4);
     loop {
         if let x = process.exit_code.load(Ordering::SeqCst)
             && x != 0

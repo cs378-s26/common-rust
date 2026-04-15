@@ -108,7 +108,7 @@ exception_vector_table:
     .align 7
     b c_unimplemented_handler
     .align 7
-    b c_elx_serror_handler
+    b c_unimplemented_handler
     
     // Lower EL (AArch64)
 	// syscalls
@@ -119,7 +119,7 @@ exception_vector_table:
     .align 7
     b c_unimplemented_handler
     .align 7
-    b c_el0_serror_handler
+    b c_unimplemented_handler
     
     // Lower EL (AArch32)
     .align 7
@@ -153,13 +153,6 @@ c_elx_irq_handler:
     RESTORE_REGS
     eret
 
-c_elx_serror_handler:
-    SAVE_REGS
-    mov x0, sp
-    bl current_elx_serror
-    RESTORE_REGS
-    eret
-
 c_el0_sync_handler:
     SAVE_REGS
     mov x0, sp
@@ -171,12 +164,5 @@ c_el0_irq_handler:
     SAVE_REGS
     mov x0, sp
     bl el0_irq
-    RESTORE_REGS
-    eret
-
-c_el0_serror_handler:
-    SAVE_REGS
-    mov x0, sp
-    bl el0_serror
     RESTORE_REGS
     eret

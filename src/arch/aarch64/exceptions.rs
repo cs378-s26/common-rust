@@ -172,11 +172,6 @@ extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     gic::eoi(intid);
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
-}
-
 // Usermode
 
 #[unsafe(no_mangle)]
@@ -186,12 +181,7 @@ extern "C" fn el0_sync(e: &mut ExceptionContext) {
 
 #[unsafe(no_mangle)]
 extern "C" fn el0_irq(e: &mut ExceptionContext) {
-    default_exception_handler(e);
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn el0_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    current_elx_irq(e);
 }
 
 #[unsafe(no_mangle)]

@@ -61,7 +61,7 @@ kernel_common::integration_test!({
         kprintln!("Found ELF file.");
 
         // Load ELF file.
-        let entry = ElfLoader::load(hello).expect("Failed to load ELF file.");
+        let entry = ElfLoader::load(hello, &process).expect("Failed to load ELF file.");
         kprintln!("Loaded ELF file. Entry point: {:#x}", entry);
 
         // Read from entry.

@@ -1,4 +1,4 @@
-void _start(void) {
+void start(void) {
   int x[3000];
   for (int i = 0; i < 3000; i++) {
     x[i] = i;
@@ -7,7 +7,7 @@ void _start(void) {
   for (int i = 0; i < 12; i++) {
     sum += x[i];
   }
-  asm("mov x8, %x0\n"
+  __asm__ volatile("mov x8, %x0\n"
       "svc #0\n"
       :
       : "r"(sum)

@@ -14,6 +14,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+        aarch64Cross = pkgs.pkgsCross.aarch64-multiplatform;
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       in
         {
@@ -22,6 +23,8 @@
               llvmPackages_21.clang-unwrapped
               llvmPackages_21.bintools
               llvmPackages_21.lldb
+              aarch64Cross.buildPackages.binutils
+              aarch64Cross.buildPackages.gcc
               rustToolchain
               pkg-config
               openssl
