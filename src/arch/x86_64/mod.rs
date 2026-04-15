@@ -21,6 +21,7 @@ mod devices;
 mod interrupt;
 mod mp;
 mod tables;
+mod ioapic;
 pub mod tsc;
 mod vmm;
 
