@@ -44,7 +44,7 @@ pub mod number {
 }
 
 // Constants for syscall translation via wrappers
-#[allow(dead_code)] // we allow dead code because on aarch64 it will appear dead
+#[cfg(target_arch = "x86_64")]
 pub mod wrapper_constants {
     pub const AT_FDCWD: i32 = -100;
     pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
