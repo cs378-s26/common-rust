@@ -73,11 +73,9 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         }
         let syscall_id = exc.gpr.regs[8];
         kprintln!("System call invoked with ID: {}", syscall_id);
-        kprintln!("arg1: {:#018x}", exc.gpr.regs[0]);
+        kprintln!("arg1: {}", exc.gpr.regs[0]);
         let x0: u64 = 5; // dummy return value
-        unsafe {
-            asm!("mov x0, {}", in(reg) x0);
-        }
+        exc.gpr.regs[0] = x0; // place return value in x0
         exc.elr_el1 += 4; // advance past the SVC instruction, which is 4 bytes long
         
 
