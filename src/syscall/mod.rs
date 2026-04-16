@@ -1,5 +1,7 @@
 pub mod numbers;
-pub use numbers::{number, wrapper_constants::*};
+pub use numbers::number;
+#[cfg(target_arch = "x86_64")]
+pub use numbers::wrapper_constants::*;
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
