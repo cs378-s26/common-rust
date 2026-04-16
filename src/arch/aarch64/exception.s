@@ -41,8 +41,16 @@
 
 .macro RESTORE_REGS
     // Restore special registers first
+    // x4 is a temp register, not used for anything
+    ldp x3, x4, [sp, #16 * 17]
     ldp x30, x0, [sp, #16 * 15]   // x30=LR, x0=ELR_EL1
     ldp x1, x2,  [sp, #16 * 16]   // x1=SPSR_EL1, x2=ESR_EL1 (discarded)
+    and x4, x1, #0b1111
+    cmp x4, #0b0000
+    b.ne 1f
+    msr sp_el0, x3
+
+1:
     msr ELR_EL1,  x0
     msr SPSR_EL1, x1
 

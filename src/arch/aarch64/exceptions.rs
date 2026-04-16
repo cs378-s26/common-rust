@@ -61,15 +61,26 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     if exception_class == SVC {
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
-        let syscall_id = exc.gpr.regs[8];
+        if exc.gpr.regs[7] == 5 {
+            this_thread()
+                .process
+                .get()
+                .unwrap()
+                .exit_code
+                .set(15);
+            suspend_to_thread(IDLE.get().unwrap().clone());
 
-        this_thread()
-            .process
-            .get()
-            .unwrap()
-            .exit_code
-            .set(syscall_id);
-        suspend_to_thread(IDLE.get().unwrap().clone());
+        }
+        let syscall_id = exc.gpr.regs[8];
+        kprintln!("System call invoked with ID: {}", syscall_id);
+        kprintln!("arg1: {:#018x}", exc.gpr.regs[0]);
+        let x0: u64 = 5; // dummy return value
+        unsafe {
+            asm!("mov x0, {}", in(reg) x0);
+        }
+        exc.elr_el1 += 4; // advance past the SVC instruction, which is 4 bytes long
+        
+
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
