@@ -168,7 +168,7 @@ impl ArchTrait for Arch {
                         latch: latch.clone(),
                     },
                     CoreId(core),
-                    true
+                    true,
                 ); // TODO avoid sending this when not needed
             }
         }

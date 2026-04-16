@@ -1,3 +1,5 @@
+use crate::print::kprintln;
+
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
 // x86 and ARM such that each architecture can implement this
@@ -51,8 +53,14 @@ pub fn syscall_handler(syscall_context: &mut impl SyscallContext) {
     // We can write two syscall handlers depending on the target. This will still let us share the syscall functions.
     // We could also implement some sort of higher translation between number and some sycall enum to avoid this.
 
-    match syscall_context.syscall_number() {
-        0 => panic!("TRIED TO SYSCALL READ"),
-        _ => panic!("SYSCALLS UNIMPLEMENTED"),
-    }
+    kprintln!(
+        "SYSCALL: {} {}",
+        syscall_context.syscall_number(),
+        syscall_context.arg0()
+    );
+    syscall_context.set_return_value(10);
+
+    // match syscall_context.syscall_number() {
+
+    // }
 }

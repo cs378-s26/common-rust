@@ -7,7 +7,10 @@ use core::{
 use spin::MutexGuard;
 
 use super::interrupt::InterruptContext;
-use crate::arch::{Arch, ContextTrait};
+use crate::{
+    arch::{Arch, ContextTrait},
+    syscall::SyscallContext,
+};
 
 const SPSR_MODE_EL1H: u64 = 0x5;
 const SPSR_DAIF_MASK: u64 = 0b1111 << 6;
@@ -30,6 +33,39 @@ pub struct Context {
 fn slice_stack_ptr(stack: &[u8]) -> u64 {
     assert!(stack.as_ptr_range().end as u64 & 0xF == 0);
     stack.as_ptr_range().end as u64
+}
+
+impl SyscallContext for Context {
+    fn syscall_number(&self) -> u64 {
+        self.gp.regs[8]
+    }
+
+    fn arg0(&self) -> u64 {
+        self.gp.regs[0]
+    }
+    fn arg1(&self) -> u64 {
+        self.gp.regs[1]
+    }
+    fn arg2(&self) -> u64 {
+        self.gp.regs[2]
+    }
+    fn arg3(&self) -> u64 {
+        self.gp.regs[3]
+    }
+    fn arg4(&self) -> u64 {
+        self.gp.regs[4]
+    }
+    fn arg5(&self) -> u64 {
+        self.gp.regs[5]
+    }
+
+    fn set_return_value(&mut self, ret: u64) {
+        self.gp.regs[0] = ret;
+    }
+
+    fn is_user_address(&self, ptr: u64) -> bool {
+        (ptr >> 63) & 1 == 0
+    }
 }
 
 impl ContextTrait for Context {

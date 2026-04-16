@@ -3,19 +3,20 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::Once;
-use crate::syscall::{SyscallContext, syscall_handler};
 
 use crate::{
     arch::{Arch, ArchTrait},
     memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
-    thread::{CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    virtual_memory::{PageFaultConditions, handle_page_fault},
-    thread::{ThreadQueue, ThreadQueueAdapter, this_thread}
+    syscall::syscall_handler,
+    thread::{
+        CONTEXT, CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, ThreadQueue,
+        ThreadQueueAdapter, make_thread, this_thread, yield_thread,
+    },
 };
 
-pub enum Event<S: SyscallContext> {
+pub enum Event {
     Shootdown {
         space: u64,
         base: usize,
@@ -27,9 +28,9 @@ pub enum Event<S: SyscallContext> {
         address: usize,
         //thread: Arc<Thread>,
     },
-    Syscall {
-        context: S,
-    }
+
+    // necessary info stored in thread's context
+    Syscall,
 }
 
 pub struct EventNode {
@@ -66,8 +67,13 @@ pub fn init_event_handler() {
                         }
                         latch.fetch_sub(1, Ordering::Release);
                     }
-                    PageFault {..} => {
-                        panic!("Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault");
+                    PageFault { .. } => {
+                        panic!(
+                            "Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault"
+                        );
+                    }
+                    Syscall => {
+                        panic!("Syscalls should be handled by the current thread");
                     }
                 }
             }
@@ -79,16 +85,23 @@ pub fn init_event_handler() {
                 let event = CUR_EVENT.read_for(&thread).lock().take().unwrap();
                 match event {
                     Event::PageFault { cause, address } => {
-                        handle_page_fault(cause, address);
+                        handle_page_fault(cause, address, &thread);
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                     Event::Shootdown { .. } => {
-                        panic!("Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown");
+                        panic!(
+                            "Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown"
+                        );
                     }
-                    _ => unreachable!(),
+                    Event::Syscall => {
+                        let mut ctx = CONTEXT.read_for(&thread).lock();
+                        syscall_handler(&mut *ctx);
+                        LOCAL_WORK_QUEUE.lock().push_back(thread);
+                    }
                 }
+
+                yield_thread(); // TODO block somehow
             }
-            yield_thread(); // TODO block somehow
         }
     });
     PINNED_TO_CORE
@@ -101,7 +114,7 @@ pub fn init_event_handler() {
     LOCAL_WORK_QUEUE.lock().push_back(thread);
 }
 
-pub fn push_event(event: Event, core: CoreId, should_alloc : bool) {
+pub fn push_event(event: Event, core: CoreId, should_alloc: bool) {
     let queue = EVENT_QUEUE.read_for(core);
     if should_alloc {
         // if the event is being pushed from an interrupt handler, we need to allocate the event node on the heap
