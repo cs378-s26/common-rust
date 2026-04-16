@@ -5,6 +5,11 @@ use core::{
 
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
+use intrusive_collections::{KeyAdapter, LinkedList, LinkedListAtomicLink, intrusive_adapter};
+use alloc::{vec, vec::Vec, boxed::Box, rc::Rc};
+use intrusive_collections::{RBTree, RBTreeLink};
+use crate::sync::{IntMutex, MutexLike, IntSpinLock};
+use crate::Once;
 
 use super::apic;
 use crate::{
@@ -189,5 +194,75 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             context.err,
             unsafe { cr2() }
         ),
+    }
+}
+
+
+//this is hardcoded since apparently x86-64 has only 256 interrupt vectors
+static mut occupied_vectors: IntMutex<[bool; 256]> = 
+    IntMutex::new([false; 256]);
+static mut next_vector : IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
+
+/*
+* Design: 
+*/
+
+intrusive_adapter!(InterruptHandlerAdapter = Arc<InterruptHandler>: InterruptHandler { link => LinkedListAtomicLink });
+struct InterruptHandler {
+    handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    link : LinkedListAtomicLink,
+}
+
+use core::cell::RefCell;
+
+struct InterruptHandlersLine {
+    irq : u8,
+    handlers : RefCell<LinkedList<InterruptHandlerAdapter>>,
+    link : RBTreeLink,
+}
+
+impl<'a> KeyAdapter<'a> for InterruptHandlersLineAdapter {
+    type Key = u8;
+    fn get_key(&self, value: &'a InterruptHandlersLine) -> u8 {
+        value.irq
+    }
+}
+
+intrusive_adapter!(InterruptHandlersLineAdapter = Rc<InterruptHandlersLine>: InterruptHandlersLine { link => RBTreeLink });
+
+use alloc::sync::Arc;
+
+static mut handlers : 
+IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::new()));
+
+pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+    let handler = Arc::new(InterruptHandler { handler, link: LinkedListAtomicLink::new() });
+    let mut handlers_list = unsafe {handlers.lock() };
+    let handlers_for_line = handlers_list.find_mut(&irq_num);
+    if let Some(true_list) = handlers_for_line.get() {
+        true_list.handlers.borrow_mut().push_back(handler);
+    } else {
+        let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
+        new_list.push_back(handler);
+        let new_line = InterruptHandlersLine { irq: irq_num, handlers: new_list, link: RBTreeLink::new() };
+        handlers_list.insert(Rc::new(new_line));
+    }
+}
+
+//TODO: store a mapping of irq vector --> irq number
+fn handle_device_interrupt(irq_vec : u8) {
+    let handlers_list = unsafe {handlers.lock() };
+    let mut has_handled = false;
+    if let Some(true_list) = handlers_list.find(&irq_num).get() {
+        for handler in true_list.handlers.borrow().iter() {
+            let irq_handler = &handler.handler;
+            if let Some(_) = irq_handler() {
+                has_handled = true;
+                break;
+            }
+        }
+    }
+    if !has_handled {
+        kprintln!("Spurious/unhandled interrupt on IRQ line {}", irq_num);
     }
 }

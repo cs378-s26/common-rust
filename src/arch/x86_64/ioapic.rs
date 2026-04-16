@@ -4,7 +4,7 @@ use crate::arch::{Arch, ArchTrait};
 use crate::print::kprintln;
 use crate::memory::dma::MmioRegion;
 use crate::devices::discovery::{DeviceDiscovery, DeviceType, acpi::MadtEntry};
-use alloc::{vec, vec::Vec};
+use alloc::vec;
 
 const IOREGSEL: usize = 0x00;
 const IOWIN: usize = 0x10;
