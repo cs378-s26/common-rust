@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::Once;
+use crate::syscall::{SyscallContext, syscall_handler};
 
 use crate::{
     arch::{Arch, ArchTrait},
@@ -12,7 +13,7 @@ use crate::{
     thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
 };
 
-pub enum Event {
+pub enum Event<S: SyscallContext> {
     Shootdown {
         space: u64,
         base: usize,
@@ -24,9 +25,12 @@ pub enum Event {
         address: usize,
         thread: Arc<Thread>,
     },
+    Syscall {
+        context: S,
+    }
 }
-pub struct EventNode {
-    event: Event,
+pub struct EventNode<S: SyscallContext> {
+    event: Event<S>,
     link: LinkedListAtomicLink,
 }
 
