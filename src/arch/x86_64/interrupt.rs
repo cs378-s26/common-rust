@@ -166,9 +166,9 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                     PageFault {
                         cause,
                         address: unsafe { cr2() },
-                        thread: this_thread(),
                     },
                     CORE_ID.get(),
+                    false
                 );
                 unsafe { crate::thread::block_to_idle(context) };
             } else {

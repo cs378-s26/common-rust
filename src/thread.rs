@@ -28,6 +28,7 @@ use crate::{
     process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
+    event::Event
 };
 
 pub struct Thread {
@@ -168,6 +169,7 @@ thread_local! {
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
     pub PINNED_TO_CORE: AtomicBool = AtomicBool::new(false);
     pub CORE_PINNED_TO: AtomicUsize = AtomicUsize::new(usize::MAX);
+    pub CUR_EVENT: Mutex<Option<Event>> = Mutex::new(None);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
