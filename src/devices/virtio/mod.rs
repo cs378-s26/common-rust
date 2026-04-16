@@ -1,5 +1,4 @@
 pub mod discovery;
-pub mod virtio_blk;
 use core::ptr::NonNull;
 
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, transport::pci::bus::ConfigurationAccess};
@@ -29,9 +28,10 @@ pub fn map_mmio(phys_addr: usize, size: usize) -> core::ptr::NonNull<u8> {
     core::ptr::NonNull::new(virt_addr as *mut u8).unwrap()
 }
 
-pub struct VirtioBlkHal;
+pub struct VirtioHal;
 
-unsafe impl Hal for VirtioBlkHal {
+// trait needed to allow virtio drivers to communicate with our hardware
+unsafe impl Hal for VirtioHal {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
         let paddr = alloc_frames(pages) as u64;

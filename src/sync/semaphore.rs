@@ -79,7 +79,7 @@ impl Semaphore {
     }
 
     pub fn up(&self) {
-        let mut to_wake = None;
+        let to_wake;
 
         {
             let mut st = self.state.lock();
