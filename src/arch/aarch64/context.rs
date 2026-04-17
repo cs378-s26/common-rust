@@ -45,7 +45,7 @@ impl ContextTrait for Context {
                 self.sp,
                 self.spsr,
                 self.pc,
-                ((self.spsr & 0b1111) == 0) as u64,
+                (self.spsr & 0b1111) == 0,
             );
         }
     }
@@ -100,7 +100,7 @@ unsafe extern "C" fn jump_to_context(
     _sp: u64,
     _spsr: u64,
     _pc: u64,
-    _is_user: u64,
+    _is_user: bool,
 ) -> ! {
     naked_asm!(
         // AAPCS64 call ABI:
