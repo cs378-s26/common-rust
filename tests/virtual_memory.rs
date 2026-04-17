@@ -13,6 +13,7 @@ kernel_common::integration_test!({
             ext2::Ext2,
             vfs::{Filesystem, INodeKey, INodeType, VFS},
         },
+        print::kprintln,
         process::Process,
         sync::MutexLike,
     };
@@ -156,5 +157,5 @@ kernel_common::integration_test!({
     test01();
     test02();
     test03();
-    kernel_common::print::kprintln!("Virtual memory done!");
+    kprintln!("Virtual memory done!");
 });

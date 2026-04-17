@@ -3,17 +3,20 @@ use alloc::sync::Arc;
 use crate::{
     arch::{Arch, ArchTrait},
     memory::virtual_memory_2::VirtualMemory,
+    sync::Promise,
     thread::{THIS_THREAD, spawn_thread},
 };
 
 pub struct Process {
     pub virtual_memory: VirtualMemory,
+    pub exit_code: Promise<u64>,
 }
 
 impl Process {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             virtual_memory: VirtualMemory::new(),
+            exit_code: Promise::new(),
         })
     }
 

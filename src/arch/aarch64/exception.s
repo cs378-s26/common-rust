@@ -22,11 +22,21 @@
     mrs x1, SPSR_EL1
     mrs x2, ESR_EL1
 
-    stp x30, x0, [sp, #16 * 15]  
-    stp x1, x2, [sp, #16 * 16]   
+    stp x30, x0, [sp, #16 * 15]
+    stp x1, x2, [sp, #16 * 16]
+
+    // when saving the sp on ARM, we need to know which one to save.
+    // this code figures that out, and puts the result into x3.
+    and x4, x1, #0b1111
+    cmp x4, #0b0000
+    b.eq 1f
     add x3, sp, #18 * 16
+    b 2f
+1:      
+    mrs x3, sp_el0
+2:
+
     stp x3, xzr, [sp, #16 * 17] // store stack pointer, xzr is just to pad to keep stack 16B aligned
-    
 .endm
 
 .macro RESTORE_REGS
@@ -56,7 +66,6 @@
     // Deallocate the whole frame at once
     add sp, sp, #18 * 16
 .endm
-
 
 .section .text
 
@@ -103,7 +112,7 @@ exception_vector_table:
     .align 7
     b c_unimplemented_handler
     .align 7
-    b c_elx_serror_handler
+    b c_unimplemented_handler
     
     // Lower EL (AArch64)
 	// syscalls
@@ -114,7 +123,7 @@ exception_vector_table:
     .align 7
     b c_unimplemented_handler
     .align 7
-    b c_el0_serror_handler
+    b c_unimplemented_handler
     
     // Lower EL (AArch32)
     .align 7
@@ -148,13 +157,6 @@ c_elx_irq_handler:
     RESTORE_REGS
     eret
 
-c_elx_serror_handler:
-    SAVE_REGS
-    mov x0, sp
-    bl current_elx_serror
-    RESTORE_REGS
-    eret
-
 c_el0_sync_handler:
     SAVE_REGS
     mov x0, sp
@@ -166,12 +168,5 @@ c_el0_irq_handler:
     SAVE_REGS
     mov x0, sp
     bl el0_irq
-    RESTORE_REGS
-    eret
-
-c_el0_serror_handler:
-    SAVE_REGS
-    mov x0, sp
-    bl el0_serror
     RESTORE_REGS
     eret

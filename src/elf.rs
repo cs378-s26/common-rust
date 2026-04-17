@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::{Arch, ArchTrait, fs::vfs::VNode, thread::this_thread};
+use crate::{Arch, ArchTrait, fs::vfs::VNode, process::Process};
 
 mod eh_constants {
     pub const EI_MAG: [u8; 4] = [0x7f, b'E', b'L', b'F'];
@@ -164,7 +164,6 @@ pub enum ElfError {
     PHUnsupportedType,
     MmapError,
     InodeKeyError,
-    ProcessError,
 }
 
 impl ElfLoader {
@@ -206,7 +205,7 @@ impl ElfLoader {
         Ok(())
     }
 
-    pub fn load(file: Arc<dyn VNode>) -> Result<u64, ElfError> {
+    pub fn load(file: Arc<dyn VNode>, process: &Arc<Process>) -> Result<u64, ElfError> {
         const EHSIZE: usize = eh_constants::E_EHSIZE as usize;
         let mut header_buffer = [0u8; EHSIZE];
         let read_size = file
@@ -233,12 +232,7 @@ impl ElfLoader {
             }
             let ph = ProgramHeader::parse(&ph_buffer, 0);
 
-            let thread = this_thread();
-            let vm = &thread
-                .process
-                .get()
-                .ok_or(ElfError::ProcessError)?
-                .virtual_memory;
+            let vm = &process.virtual_memory;
             let inode_key = file.get_inode_key().map_err(|_| ElfError::InodeKeyError)?;
 
             match ph.p_type {
