@@ -37,8 +37,8 @@ pub(super) struct GlobalDescriptorTable {
     null: Descriptor,
     cs: Descriptor,
     ds: Descriptor,
-    // user_cs: Descriptor,
-    // user_ds: Descriptor,
+    user_cs: Descriptor,
+    user_ds: Descriptor,
     tss: Descriptor64,
 }
 
@@ -50,7 +50,9 @@ pub(super) struct InterruptDescriptorTable {
 impl GlobalDescriptorTable {
     pub const CS: u16 = 1;
     pub const DS: u16 = 2;
-    pub const TSS: u16 = 3;
+    pub const USER_CS: u16 = 3;
+    pub const USER_DS: u16 = 4;
+    pub const TSS: u16 = 5;
 
     pub fn new(ist: &InterruptStackTable) -> GlobalDescriptorTable {
         let cs: Descriptor =
@@ -77,10 +79,28 @@ impl GlobalDescriptorTable {
         .present()
         .finish();
 
+        let user_cs: Descriptor =
+            DescriptorBuilder::code_descriptor(0, 0xfffff, CodeSegmentType::ExecuteRead)
+                .present()
+                .dpl(Ring::Ring3)
+                .limit_granularity_4kb()
+                .l()
+                .finish();
+
+        let user_ds: Descriptor =
+            DescriptorBuilder::data_descriptor(0, 0xfffff, DataSegmentType::ReadWrite)
+                .present()
+                .dpl(Ring::Ring3)
+                .limit_granularity_4kb()
+                .l()
+                .finish();
+
         GlobalDescriptorTable {
             null: Descriptor::NULL,
             cs,
             ds,
+            user_cs,
+            user_ds,
             tss,
         }
     }
@@ -132,6 +152,8 @@ impl InterruptDescriptorTable {
         for i in 32..=255 {
             entries[i] = Self::pack_idt_entry(jmp_targets[i], 1, Ring::Ring0);
         }
+
+        entries[0x80] = Self::pack_idt_entry(jmp_targets[0x80], 1, Ring::Ring3);
 
         InterruptDescriptorTable { entries }
     }
