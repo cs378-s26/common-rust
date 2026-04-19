@@ -93,7 +93,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     let ist = IST.call_once(|| InterruptStackTable {
         reserved0: 0,
         // allocate stack for kernel -> user switch
-        rsp0: allocate_sp(32),
+        rsp0: 0,
         rsp1: 0,
         rsp2: 0,
         reserved1: 0,
