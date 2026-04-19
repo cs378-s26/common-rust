@@ -10,13 +10,11 @@ use virtio_drivers::transport::{
     },
 };
 
-use crate::{
-    arch::{Arch, ArchTrait},
-    devices::{
-        discovery::{self, DeviceDiscovery, DeviceNode, DeviceType},
-        virtio::{KernelConfigurationAccess, VirtioBlkHal, virtio_blk::VirtIOBlkDiskDriver},
-    },
-    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+use crate::devices::{
+    block::virtio_blk::VirtIOBlkDiskDriver,
+    discovery::{self, DeviceDiscovery, DeviceNode, DeviceType},
+    network::virtio_net::VirtIONetDriver,
+    virtio::{KernelConfigurationAccess, VirtioHal},
 };
 
 pub struct VirtioDiscovery;
@@ -31,46 +29,27 @@ impl DeviceDiscovery for VirtioDiscovery {
             let base_addr = reg.starting_address; // physical address of the MMIO region
             let size = reg.size.unwrap(); // virtio mmio device tree node should always give size of mmio header region, 512 bytes
 
-            let hhdm_offset = crate::memory::physical_memory::HHDM_OFFSET.get().unwrap();
-            let virt_addr = base_addr as u64 + *hhdm_offset as u64;
-            let virt_base = virt_addr & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
-            let phys_base = base_addr as u64 & !(Arch::PAGE_SIZE as u64 - 1); // round down to nearest page boundary
-
-            // create temporary mapping for the MMIO region to read the device, this can later be overwritten
-            // by the vm allocator, mapping made permanent below for any finalized match
-            Arch::virtual_map(
-                Arch::get_kernel_address_space(),
-                virt_base,
-                phys_base,
-                PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY,
-            );
-
-            let header = virt_addr as *mut VirtIOHeader;
-            // Safety: we just mapped this region and we trust device tree to give a valid MMIO region for a virtio device
+            // TODO this is making many permanent mappings of the same region, we should ideally be reusing if it is already mapped
+            let header: NonNull<VirtIOHeader> = super::map_mmio(base_addr as usize, size).cast();
+            // safety: we trust the device tree to give a valid mmio region for a virtio device
             unsafe {
-                if let Ok(transport) = MmioTransport::new(NonNull::new(header).unwrap(), size)
-                    && transport.device_type() == virtio_drivers::transport::DeviceType::Block
-                {
-                    let options = PagingOptions::PRESENT
-                        | PagingOptions::WRITABLE
-                        | PagingOptions::DEVICE_MEMORY
-                        | PagingOptions::SHADOW;
-                    // use shadow to tell the virtual memory allocator to not reuse this mapping for anything else
-                    VirtualMemoryAllocation::new(
-                        Arch::get_kernel_address_space(),
-                        Some(virt_base as usize),
-                        size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // round up to nearest page size
-                        Some(phys_base as usize),
-                        options,
-                        false,
-                    );
-                    let driver = VirtIOBlkDiskDriver::new(transport);
-                    return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+                if let Ok(transport) = MmioTransport::new(header, size) {
+                    match transport.device_type() {
+                        virtio_drivers::transport::DeviceType::Block => {
+                            let driver = VirtIOBlkDiskDriver::new(transport);
+                            return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+                        }
+                        virtio_drivers::transport::DeviceType::Network => {
+                            let driver = VirtIONetDriver::<VirtioHal, _, 16>::new(transport);
+                            return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
+                        }
+                        _ => {}
+                    }
                 }
             }
         } else if let DeviceNode::Pcie(pcie_fn) = node {
             let mut pci_root = PciRoot::new(KernelConfigurationAccess {});
-            let transport = PciTransport::new::<VirtioBlkHal, KernelConfigurationAccess>(
+            let transport = PciTransport::new::<VirtioHal, KernelConfigurationAccess>(
                 &mut pci_root,
                 DeviceFunction {
                     bus: pcie_fn.bus,
@@ -79,8 +58,18 @@ impl DeviceDiscovery for VirtioDiscovery {
                 },
             )
             .ok()?;
-            let driver = VirtIOBlkDiskDriver::new(transport);
-            return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+
+            match transport.device_type() {
+                virtio_drivers::transport::DeviceType::Block => {
+                    let driver = VirtIOBlkDiskDriver::new(transport);
+                    return Some(vec![discovery::DeviceType::Block(Box::new(driver))]);
+                }
+                virtio_drivers::transport::DeviceType::Network => {
+                    let driver = VirtIONetDriver::<VirtioHal, _, 16>::new(transport);
+                    return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
+                }
+                _ => {}
+            }
         }
         None
     }

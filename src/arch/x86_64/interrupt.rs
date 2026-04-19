@@ -10,7 +10,7 @@ use super::apic;
 use crate::{
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
-    mp::{CORE_ID, get_cpu_local_pointer_for},
+    mp::CORE_ID,
     thread::{IDLE, suspend_to_thread, this_thread},
 };
 use crate::print::kprintln;
