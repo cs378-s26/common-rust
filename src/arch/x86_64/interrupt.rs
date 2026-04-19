@@ -10,9 +10,10 @@ use super::apic;
 use crate::{
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
-    mp::CORE_ID,
+    mp::{CORE_ID, get_cpu_local_pointer_for},
     thread::{IDLE, suspend_to_thread, this_thread},
 };
+use crate::print::kprintln;
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -59,6 +60,85 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
         const I,
         sym irq_handler_t0
     )
+}
+
+#[unsafe(naked)]
+pub(super) unsafe extern "C" fn irq_handler_user<const I: u8>() -> ! {
+    naked_asm!(
+        // required for ABI reasons
+        "cld",
+        // normalize the stack frame: [int#, ec]
+        "subq ${}, %rsp",
+        "pushq ${}",
+        "jmp {}",
+
+        options(att_syntax),
+        const error_code_offset(I),
+        const I,
+        sym irq_handler_t0_user
+    )
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn irq_handler_t0_user() -> ! {
+    naked_asm!(
+        "swapgs",
+        "pushq %rbp",
+        "pushq %rax",
+        "pushq %rcx",
+        "pushq %rdx",
+        "pushq %rbx",
+        "pushq %rsi",
+        "pushq %rdi",
+        "pushq %r8",
+        "pushq %r9",
+        "pushq %r10",
+        "pushq %r11",
+        "pushq %r12",
+        "pushq %r13",
+        "pushq %r14",
+        "pushq %r15",
+
+        // point to top of stack (1st arg: InterruptContext*)
+        "movq %rsp, %rdi",
+
+        // simulate the call frame
+        "pushq $0",
+        "pushq %rbp",
+        "movq %rsp, %rbp",
+
+        // align stack
+        "andq $~15, %rsp",
+
+        // invoke
+        "call {}",
+
+        "movq %rbp, %rsp",
+        "popq %rbp",
+        "addq $8, %rsp",
+
+        "popq %r15",
+        "popq %r14",
+        "popq %r13",
+        "popq %r12",
+        "popq %r11",
+        "popq %r10",
+        "popq %r9",
+        "popq %r8",
+        "popq %rdi",
+        "popq %rsi",
+        "popq %rbx",
+        "popq %rdx",
+        "popq %rcx",
+        "popq %rax",
+        "popq %rbp",
+
+        "addq $16, %rsp",
+        "swapgs",
+        "iretq",
+        options(att_syntax),
+        sym irq_handler_t1,
+    );
 }
 
 #[unsafe(naked)]
@@ -117,7 +197,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "addq $16, %rsp",
         "iretq",
         options(att_syntax),
-        sym irq_handler_t1
+        sym irq_handler_t1,
     );
 }
 

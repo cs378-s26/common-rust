@@ -11,7 +11,7 @@ use x86::{
     task::load_tr,
 };
 
-use crate::arch::x86_64::irq_handler_entry;
+use crate::arch::x86_64::{irq_handler_user, irq_handler_entry};
 
 #[repr(C, packed)]
 pub(super) struct InterruptStackTable {
@@ -141,6 +141,8 @@ impl InterruptDescriptorTable {
                 // always switch to stack 1
                 entries[N] = irq_handler_entry::<N> as *const () as u64;
             });
+
+            entries[0x80] = irq_handler_user::<0x80> as *const () as u64;
 
             entries
         };
