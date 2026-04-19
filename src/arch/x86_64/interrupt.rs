@@ -5,6 +5,7 @@ use core::{
 
 use x86::controlregs::cr2;
 use x86_64::structures::idt::PageFaultErrorCode;
+use x86_64::registers::segmentation::GS;
 
 use super::apic;
 use crate::{
@@ -13,7 +14,6 @@ use crate::{
     mp::CORE_ID,
     thread::{IDLE, suspend_to_thread, this_thread},
 };
-use crate::print::kprintln;
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
@@ -60,85 +60,6 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
         const I,
         sym irq_handler_t0
     )
-}
-
-#[unsafe(naked)]
-pub(super) unsafe extern "C" fn irq_handler_user<const I: u8>() -> ! {
-    naked_asm!(
-        // required for ABI reasons
-        "cld",
-        // normalize the stack frame: [int#, ec]
-        "subq ${}, %rsp",
-        "pushq ${}",
-        "jmp {}",
-
-        options(att_syntax),
-        const error_code_offset(I),
-        const I,
-        sym irq_handler_t0_user
-    )
-}
-
-#[unsafe(naked)]
-unsafe extern "C" fn irq_handler_t0_user() -> ! {
-    naked_asm!(
-        "swapgs",
-        "pushq %rbp",
-        "pushq %rax",
-        "pushq %rcx",
-        "pushq %rdx",
-        "pushq %rbx",
-        "pushq %rsi",
-        "pushq %rdi",
-        "pushq %r8",
-        "pushq %r9",
-        "pushq %r10",
-        "pushq %r11",
-        "pushq %r12",
-        "pushq %r13",
-        "pushq %r14",
-        "pushq %r15",
-
-        // point to top of stack (1st arg: InterruptContext*)
-        "movq %rsp, %rdi",
-
-        // simulate the call frame
-        "pushq $0",
-        "pushq %rbp",
-        "movq %rsp, %rbp",
-
-        // align stack
-        "andq $~15, %rsp",
-
-        // invoke
-        "call {}",
-
-        "movq %rbp, %rsp",
-        "popq %rbp",
-        "addq $8, %rsp",
-
-        "popq %r15",
-        "popq %r14",
-        "popq %r13",
-        "popq %r12",
-        "popq %r11",
-        "popq %r10",
-        "popq %r9",
-        "popq %r8",
-        "popq %rdi",
-        "popq %rsi",
-        "popq %rbx",
-        "popq %rdx",
-        "popq %rcx",
-        "popq %rax",
-        "popq %rbp",
-
-        "addq $16, %rsp",
-        "swapgs",
-        "iretq",
-        options(att_syntax),
-        sym irq_handler_t1::<true>,
-    );
 }
 
 #[unsafe(naked)]
@@ -197,7 +118,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "addq $16, %rsp",
         "iretq",
         options(att_syntax),
-        sym irq_handler_t1::<false>,
+        sym irq_handler_t1,
     );
 }
 
@@ -220,10 +141,12 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
     apic::eoi();
 }
 
-unsafe extern "C" fn irq_handler_t1<const FROM_USER: bool>(addr: *mut InterruptContext) {
+unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
     use irq_vector::*;
-    if FROM_USER {
+    let from_user = context.cs & 0b11 == 3;
+    if from_user {
+        unsafe { GS::swap() };
         //reset FS
         let cur_thread = crate::thread::CURRENT_THREAD.take();
         if let Some(thread) = &cur_thread {
@@ -292,4 +215,5 @@ unsafe extern "C" fn irq_handler_t1<const FROM_USER: bool>(addr: *mut InterruptC
             unsafe { cr2() }
         ),
     }
+    unsafe { GS::swap() };
 }
