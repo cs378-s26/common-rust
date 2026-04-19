@@ -1,5 +1,4 @@
 pub mod discovery;
-pub mod virtio_blk;
 use core::ptr::NonNull;
 
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, transport::pci::bus::ConfigurationAccess};
@@ -13,9 +12,26 @@ use crate::{
     },
 };
 
-pub struct VirtioBlkHal;
+// map a physical mmio address to a virtual address the cpu can access
+// the mapping is kept alive by forgetting the mmio region so it persists for the lifetime of the kernel
+// used by both the virtio hal and device discovery
+pub fn map_mmio(phys_addr: usize, size: usize) -> core::ptr::NonNull<u8> {
+    let phys_base = phys_addr & !(Arch::PAGE_SIZE - 1);
+    let page_offset = phys_addr % Arch::PAGE_SIZE;
+    let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
 
-unsafe impl Hal for VirtioBlkHal {
+    let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
+    let virt_addr = region.virt_addr() + page_offset;
+
+    core::mem::forget(region);
+
+    core::ptr::NonNull::new(virt_addr as *mut u8).unwrap()
+}
+
+pub struct VirtioHal;
+
+// trait needed to allow virtio drivers to communicate with our hardware
+unsafe impl Hal for VirtioHal {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         let hhdm = HHDM_REQUEST.get_response().unwrap().offset() as usize;
         let paddr = alloc_frames(pages) as u64;
@@ -38,16 +54,7 @@ unsafe impl Hal for VirtioBlkHal {
     }
 
     unsafe fn mmio_phys_to_virt(paddr: PhysAddr, size: usize) -> NonNull<u8> {
-        let phys_base = (paddr as usize) & !(Arch::PAGE_SIZE - 1);
-        let page_offset = (paddr as usize) % Arch::PAGE_SIZE;
-        let pages_covered = (page_offset + size).div_ceil(Arch::PAGE_SIZE);
-
-        let region = MmioRegion::new(phys_base, pages_covered * Arch::PAGE_SIZE);
-        let virt_addr = region.virt_addr() + page_offset;
-
-        core::mem::forget(region); // Nowhere to really keep ownership of it, we just want the mapping to stay as long as needed by driver
-
-        NonNull::new(virt_addr as *mut u8).unwrap()
+        map_mmio(paddr as usize, size)
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
