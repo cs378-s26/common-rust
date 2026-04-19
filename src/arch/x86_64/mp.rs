@@ -40,7 +40,7 @@ core_local! {
 pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe { wrmsr(IA32_GS_BASE, ptr) };
-    unsafe { wrmsr (IA32_KERNEL_GSBASE, ptr) };
+    unsafe { wrmsr(IA32_KERNEL_GSBASE, ptr) };
 }
 
 pub fn get_cpu_local_pointer() -> u64 {

@@ -4,8 +4,7 @@ use core::{
 };
 
 use x86::controlregs::cr2;
-use x86_64::structures::idt::PageFaultErrorCode;
-use x86_64::registers::segmentation::GS;
+use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
