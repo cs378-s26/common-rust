@@ -64,7 +64,7 @@ impl ContextTrait for Context {
         ctx
     }
 
-    fn new_uthread(pc: *const u8, sp: *const u8) -> Self {
+    fn new_uthread(pc: u64, sp: u64) -> Self {
         Context {
             spsr: 0,
             pc: pc as u64,

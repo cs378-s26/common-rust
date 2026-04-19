@@ -179,7 +179,7 @@ impl ContextTrait for Context {
         ctx
     }
 
-    fn new_uthread(_pc: *const u8, _sp: *const u8) -> Self {
+    fn new_uthread(_pc: u64, _sp: u64) -> Self {
         Self {
             rip: _pc as u64,
             gp: GPRegisters {

@@ -514,7 +514,7 @@ pub fn make_user_thread(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thr
 
     {
         let mut ctx = CONTEXT.read_for(&thread).lock();
-        *ctx = Context::new_uthread(pc as *const u8, sp as *const u8);
+        *ctx = Context::new_uthread(pc as u64, sp as u64);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
