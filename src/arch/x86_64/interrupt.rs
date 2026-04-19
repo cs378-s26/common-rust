@@ -11,7 +11,7 @@ use crate::{
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
-    thread::this_thread,
+    thread::{IDLE, suspend_to_thread, this_thread},
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -126,6 +126,7 @@ pub mod irq_vector {
     pub const TIMER_INTERRUPT: u8 = 0x20;
     pub const IPI_WAKE: u8 = 0x21;
     pub const TLB_SHOOTDOWN: u8 = 0x22;
+    pub const SYSCALL: u8 = 0x80;
 }
 
 pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
@@ -182,6 +183,19 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         TLB_SHOOTDOWN => {
             apic::eoi();
             unsafe { crate::thread::preempt_to_idle(context) };
+        }
+        SYSCALL => {
+            // TODO: general purpose syscall handler
+            // get rax
+            let syscall_id = context.regs[13];
+
+            this_thread()
+                .process
+                .get()
+                .unwrap()
+                .exit_code
+                .set(syscall_id);
+            suspend_to_thread(IDLE.get().unwrap().clone());
         }
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
