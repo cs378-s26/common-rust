@@ -79,14 +79,11 @@ impl Semaphore {
     }
 
     pub fn up(&self) {
-        let to_wake;
-
-        {
-            let mut st = self.state.lock();
-            st.count += 1;
-            // wake one waiter so it can grab the new permit
-            to_wake = st.waiters.pop_front();
-        }
+        let mut st = self.state.lock();
+        st.count += 1;
+        // wake one waiter so it can grab the new permit
+        let to_wake = st.waiters.pop_front();
+        drop(st);
 
         if let Some(t) = to_wake {
             schedule_thread(t);
