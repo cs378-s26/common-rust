@@ -215,5 +215,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             unsafe { cr2() }
         ),
     }
-    unsafe { GS::swap() };
+    if from_user {
+        unsafe { GS::swap() };
+    }
 }
