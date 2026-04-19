@@ -156,7 +156,7 @@ struct Stack([u8; 4 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    pub CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
     pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
@@ -514,7 +514,7 @@ pub fn make_user_thread(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thr
 
     {
         let mut ctx = CONTEXT.read_for(&thread).lock();
-        *ctx = Context::new_uthread(pc as *const u8, sp as *const u8);
+        *ctx = Context::new_uthread(pc as u64, sp as u64);
     }
 
     CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);

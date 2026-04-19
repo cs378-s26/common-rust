@@ -4,7 +4,7 @@ use core::{
 };
 
 use x86::controlregs::cr2;
-use x86_64::structures::idt::PageFaultErrorCode;
+use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
@@ -117,7 +117,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "addq $16, %rsp",
         "iretq",
         options(att_syntax),
-        sym irq_handler_t1
+        sym irq_handler_t1,
     );
 }
 
@@ -143,6 +143,16 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
     use irq_vector::*;
+    let from_user = context.cs & 0b11 == 3;
+    if from_user {
+        unsafe { GS::swap() };
+        //reset FS
+        let cur_thread = crate::thread::CURRENT_THREAD.take();
+        if let Some(thread) = &cur_thread {
+            unsafe { super::set_thread_local_pointer(&thread.tls_addr) };
+        }
+        crate::thread::CURRENT_THREAD.set(cur_thread);
+    }
     match context.id as u8 {
         PAGE_FAULT => {
             if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
@@ -203,5 +213,8 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             context.err,
             unsafe { cr2() }
         ),
+    }
+    if from_user {
+        unsafe { GS::swap() };
     }
 }

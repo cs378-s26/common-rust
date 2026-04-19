@@ -8,7 +8,7 @@ use limine::mp::Cpu;
 use spin::Once;
 use x86::{
     cpuid::CpuId,
-    msr::{IA32_FS_BASE, IA32_GS_BASE, wrmsr},
+    msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
 };
 
 use crate::{
@@ -40,6 +40,7 @@ core_local! {
 pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe { wrmsr(IA32_GS_BASE, ptr) };
+    unsafe { wrmsr(IA32_KERNEL_GSBASE, ptr) };
 }
 
 pub fn get_cpu_local_pointer() -> u64 {
@@ -92,7 +93,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     let ist = IST.call_once(|| InterruptStackTable {
         reserved0: 0,
         // allocate stack for kernel -> user switch
-        rsp0: allocate_sp(32),
+        rsp0: 0,
         rsp1: 0,
         rsp2: 0,
         reserved1: 0,
