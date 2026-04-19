@@ -156,7 +156,7 @@ struct Stack([u8; 4 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    pub CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
     pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
