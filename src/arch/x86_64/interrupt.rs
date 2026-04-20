@@ -4,19 +4,19 @@ use core::{
 };
 
 use x86::controlregs::cr2;
-use x86_64::structures::idt::PageFaultErrorCode;
 use intrusive_collections::{KeyAdapter, LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use alloc::{vec, vec::Vec, boxed::Box, rc::Rc};
 use intrusive_collections::{RBTree, RBTreeLink};
 use crate::sync::{IntMutex, MutexLike, IntSpinLock};
 use crate::Once;
+use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
-    thread::this_thread,
+    thread::{IDLE, suspend_to_thread, this_thread},
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -122,7 +122,7 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "addq $16, %rsp",
         "iretq",
         options(att_syntax),
-        sym irq_handler_t1
+        sym irq_handler_t1,
     );
 }
 
@@ -131,6 +131,7 @@ pub mod irq_vector {
     pub const TIMER_INTERRUPT: u8 = 0x20;
     pub const IPI_WAKE: u8 = 0x21;
     pub const TLB_SHOOTDOWN: u8 = 0x22;
+    pub const SYSCALL: u8 = 0x80;
 }
 
 pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
@@ -147,6 +148,16 @@ pub extern "C" fn ipi_wake_handler(_ctx: &InterruptContext) {
 unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
     let context = unsafe { &*addr };
     use irq_vector::*;
+    let from_user = context.cs & 0b11 == 3;
+    if from_user {
+        unsafe { GS::swap() };
+        //reset FS
+        let cur_thread = crate::thread::CURRENT_THREAD.take();
+        if let Some(thread) = &cur_thread {
+            unsafe { super::set_thread_local_pointer(&thread.tls_addr) };
+        }
+        crate::thread::CURRENT_THREAD.set(cur_thread);
+    }
     match context.id as u8 {
         PAGE_FAULT => {
             if let Some(code) = PageFaultErrorCode::from_bits(context.err) {
@@ -188,12 +199,28 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             apic::eoi();
             unsafe { crate::thread::preempt_to_idle(context) };
         }
+        SYSCALL => {
+            // TODO: general purpose syscall handler
+            // get rax
+            let syscall_id = context.regs[13];
+
+            this_thread()
+                .process
+                .get()
+                .unwrap()
+                .exit_code
+                .set(syscall_id);
+            suspend_to_thread(IDLE.get().unwrap().clone());
+        }
         _ => panic!(
             "Unhandled interrupt #{}: err={}, cr2={:x}",
             context.id,
             context.err,
             unsafe { cr2() }
         ),
+    }
+    if from_user {
+        unsafe { GS::swap() };
     }
 }
 
@@ -261,8 +288,5 @@ fn handle_device_interrupt(irq_vec : u8) {
                 break;
             }
         }
-    }
-    if !has_handled {
-        kprintln!("Spurious/unhandled interrupt on IRQ line {}", irq_num);
     }
 }

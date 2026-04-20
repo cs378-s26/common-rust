@@ -1,3 +1,4 @@
+pub mod virtio_blk;
 use alloc::{string::String, vec, vec::Vec};
 
 use crate::devices::Device;

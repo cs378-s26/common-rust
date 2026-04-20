@@ -173,11 +173,27 @@ impl ContextTrait for Context {
     ) -> Self {
         let mut ctx = Self::default();
         ctx.setup_kthread_context();
-
         ctx.rip = function as usize as u64;
         ctx.gp.rdi = data as u64;
         ctx.gp.rsp = slice_stack_pointer(stack);
         ctx
+    }
+
+    fn new_uthread(_pc: u64, _sp: u64) -> Self {
+        Self {
+            rip: _pc,
+            gp: GPRegisters {
+                rsp: _sp,
+                ..Default::default()
+            },
+            cs: SegmentSelector::new(GlobalDescriptorTable::USER_CS, Ring::Ring3)
+                .bits()
+                .into(),
+            ss: SegmentSelector::new(GlobalDescriptorTable::USER_DS, Ring::Ring3)
+                .bits()
+                .into(),
+            rflags: RFlags::FLAGS_IF, // make sure IF is set
+        }
     }
 }
 

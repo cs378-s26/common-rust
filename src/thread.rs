@@ -156,7 +156,7 @@ struct Stack([u8; 4 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    pub CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
     pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
@@ -504,6 +504,25 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
+    GLOBAL_WORK_QUEUE.lock().push_back(thread);
+    Arch::wake_other_cores();
+}
+
+pub fn make_user_thread(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thread> {
+    let thread = Thread::new();
+    thread.process.call_once(|| Arc::clone(process));
+
+    {
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_uthread(pc as u64, sp as u64);
+    }
+
+    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()
+}
+
+pub fn spawn_user_thread(process: &Arc<Process>, pc: usize, sp: usize) {
+    let thread = make_user_thread(process, pc, sp);
     GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }

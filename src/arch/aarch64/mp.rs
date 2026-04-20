@@ -6,7 +6,6 @@ use core::{
 use limine::mp::Cpu;
 
 use crate::{
-    // arch::x86_64::cpuid::Features,
     arch::aarch64::{exceptions, gic},
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::kprintln,
