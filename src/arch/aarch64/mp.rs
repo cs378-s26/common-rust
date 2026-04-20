@@ -1,11 +1,15 @@
+use core::{
+    arch::asm,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+use limine::mp::Cpu;
+
 use crate::{
-    // arch::x86_64::cpuid::Features,
     arch::aarch64::{exceptions, gic},
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
+    print::kprintln,
 };
-use core::arch::asm;
-use core::sync::atomic::{AtomicU64, Ordering};
-use limine::mp::Cpu;
 
 core_local! {
     pub MPDIR_ID: AtomicU64 = AtomicU64::new(0);
@@ -84,4 +88,10 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     exceptions::init_exceptions(); // force switches to kernel stack and sets up vbar to point to ISR
     gic::gicc_init(); // initialized gicc
     gic::setup_timer(); // kicks off all timers by setting them on a 1s loop
+    kprintln!(
+        "done init core {}, CLS base={:x}, TPIDR_EL1={:x}",
+        id,
+        get_cpu_local_pointer(),
+        get_cpu_local_pointer_for(id)
+    );
 }

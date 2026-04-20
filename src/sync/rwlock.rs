@@ -184,7 +184,7 @@ impl<T> RwLock<T> {
                 wake_one_writer = st.write_wait.pop_front();
             } else {
                 while let Some(t) = st.read_wait.pop_front() {
-                    schedule_thread(t);
+                    wake_readers.push_back(t);
                 }
             }
         }

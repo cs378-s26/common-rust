@@ -1,14 +1,16 @@
+use alloc::{boxed::Box, sync::Arc};
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
+use spin::Once;
+
 use crate::{
     arch::{Arch, ArchTrait},
+    memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
     thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    virtual_memory::{PageFaultConditions, handle_page_fault},
 };
-use alloc::{boxed::Box, sync::Arc};
-use core::sync::atomic::{AtomicUsize, Ordering};
-use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
-use spin::Once;
 
 pub enum Event {
     Shootdown {
@@ -60,7 +62,7 @@ pub fn init_event_handler() {
                         address,
                         thread,
                     } => {
-                        handle_page_fault(cause, address);
+                        handle_page_fault(cause, address, &thread);
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }

@@ -1,8 +1,15 @@
-use crate::physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc};
-use crate::virtual_memory::PagingOptions;
-use bitflags::bitflags;
 use core::arch::asm;
+
+use bitflags::bitflags;
 use spin::Mutex;
+
+use crate::{
+    kprintln,
+    memory::{
+        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        virtual_memory::PagingOptions,
+    },
+};
 
 const PTE_ADDR_MASK: u64 = 0x0000FFFFFFFFF000; // bits [47:12] contain the physical address for a page table entry, the rest are flags
 const PTE_PER_PAGE: usize = 512; // each page table has 512 entries, since each entry is 8 bytes and page size is 4096 bytes
@@ -24,6 +31,7 @@ pub fn configure_vm() {
             options(nostack, preserves_flags)
         );
     }
+    kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
 }
 
 // TODO allow for shared mappings and write-through caching
@@ -48,8 +56,8 @@ bitflags! {
     }
 }
 
-pub fn get_address_space() -> u64 {
-    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e above hhdm_offset
+pub fn get_kernel_address_space() -> u64 {
+    let mut ttbr1: u64; // translation table base register 1, used for kernel space mappings, i.e starting at 0xffff_0000_...
 
     unsafe {
         asm!(
@@ -61,7 +69,39 @@ pub fn get_address_space() -> u64 {
     ttbr1
 }
 
+pub fn get_user_address_space() -> u64 {
+    let mut ttbr0: u64; // translation table base register 0, used for user space mappings, i.e below 0xffff_0000_...
+
+    unsafe {
+        asm!(
+            "mrs {}, ttbr0_el1",
+            out(reg) ttbr0,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ttbr0
+}
+
+pub fn set_user_address_space(space: u64) {
+    // TODO: Currently, this is just a hack so that we don't flush the
+    // TLB too much. In the future, we should implement process ID
+    // tagging.
+    if space == get_user_address_space() {
+        return;
+    }
+    unsafe {
+        asm!(
+            "msr ttbr0_el1, {}",
+            "tlbi vmalle1is",
+            "dsb ishst",
+            in(reg) space,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
 // map a virtual address to a physical address in the given address space, with the given paging options
+// if calling this directly, make sure to call tlb shootdown to prevent any caching issues with overwriting
 pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
@@ -127,6 +167,28 @@ fn create_aarch64_attributes(options: PagingOptions) -> u64 {
     }
 
     attr
+}
+
+pub fn tlb_shootdown(vaddr: u64) {
+    // TODO right now this is assuming we are invalidating a global address, like hhdm or mmio, the
+    // pattern will look different for non-global addresses, like user pages
+    // pattern is documented here: https://developer.arm.com/documentation/ddi0487/maa/-Part-K-Appendixes/-Appendix-K11-Barrier-Litmus-Tests/-K11-5-Cache-and-TLB-maintenance-instructions-and-barriers/-K11-5-3-TLB-maintenance-instructions-and-barriers
+    // tlbi ops here: https://developer.arm.com/documentation/ddi0601/2025-12/AArch64-Instructions
+
+    let page_size_shift: u64 = 12; // log2 of page size
+
+    unsafe {
+        asm!(
+            // data synchronization barrier, inner shareable domain, st means store. This ensures
+            // the write to the page table will be seen before the TLB shootdown
+            "dsb ishst",
+            "tlbi vaae1is, {}", // invalidate the virtual address in the TLB for EL1 and the inner shareable domain, ensuring all cores see it
+            "dsb ish", // stronger synch, ensure tlb shootdown is done before any other memory accesses
+            "isb", // ensure next instructions see updates to page tables and tlb
+            in(reg) (vaddr >> page_size_shift), // pass in page number
+            options(nostack, preserves_flags)
+        )
+    }
 }
 
 // make sure a pt entry contains a valid next-level table, allocating one if necessary,

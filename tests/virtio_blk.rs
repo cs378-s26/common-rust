@@ -6,9 +6,8 @@
 kernel_common::integration_test!({
     extern crate alloc;
     use alloc::vec;
-    use kernel_common::devices::device_discovery::BLOCK_DEVICES;
-    use kernel_common::print::kprintln;
-    use kernel_common::sync::MutexLike;
+
+    use kernel_common::{devices::discovery::BLOCK_DEVICES, print::kprintln, sync::MutexLike};
 
     // helper to fill a buffer with a deterministic pattern for testing
     let fill_pattern = |buf: &mut [u8], mul: usize, add: usize| {

@@ -1,18 +1,25 @@
-use crate::debug::gen_debug_module;
-use anyhow::{Error, Result};
+use std::{
+    collections::hash_map::DefaultHasher,
+    env::{current_dir, current_exe},
+    fs::{self, File},
+    hash::{Hash, Hasher},
+    io::{self, BufReader, Write},
+    os::unix::process::CommandExt,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    str,
+    time::SystemTime,
+};
+
+use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Message, MetadataCommand};
 use fatfs::{FatType, FileSystem, FormatVolumeOptions, FsOptions, format_volume};
 use fscommon::StreamSlice;
 use gptman::{GPT, GPTPartitionEntry};
-use std::env::{current_dir, current_exe};
-use std::fs::{self, File};
-use std::io::{self, BufReader, Write};
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::str;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
+
+use crate::debug::gen_debug_module;
 
 const LIMINE_X86_URL: &str =
     "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";
@@ -73,7 +80,7 @@ impl Target {
 
     pub fn qemu_machine(self) -> &'static str {
         match self {
-            Target::X86_64 => "pc",
+            Target::X86_64 => "q35",
             Target::Aarch64 => "virt,acpi=off",
         }
     }
@@ -98,6 +105,13 @@ impl Target {
             Target::X86_64 => None,
             // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
             Target::Aarch64 => Some("cortex-a72"),
+        }
+    }
+
+    pub fn qemu_virtio_blk_device(self) -> &'static str {
+        match self {
+            Target::X86_64 => "virtio-blk-pci",
+            Target::Aarch64 => "virtio-blk-device",
         }
     }
 }
@@ -235,6 +249,116 @@ pub fn path_to_string(path: &Path) -> Result<String> {
         .to_string())
 }
 
+fn build_ext2_filesystem_from_dir_with_size(
+    source_dir: &Path,
+    cache_tag: &str,
+    image_size: u64,
+) -> Result<PathBuf> {
+    let source_dir = source_dir.canonicalize().with_context(|| {
+        format!(
+            "failed to resolve filesystem source directory: {}",
+            source_dir.display()
+        )
+    })?;
+    if !source_dir.is_dir() {
+        return Err(anyhow!(
+            "filesystem source must be a directory: {}",
+            source_dir.display()
+        ));
+    }
+
+    let cache_dir = cache_dir()?;
+    let output_img = cache_dir.join(format!(
+        "{}-{}-{}.ext2",
+        sanitize_cache_tag(cache_tag),
+        image_size,
+        source_path_cache_key(&source_dir)
+    ));
+    let latest_source_modified = latest_modified_in_dir(&source_dir)?;
+
+    if output_img.exists()
+        && fs::metadata(&output_img)
+            .with_context(|| format!("failed to read metadata: {}", output_img.display()))?
+            .modified()
+            .with_context(|| format!("failed to read mtime: {}", output_img.display()))?
+            >= latest_source_modified
+    {
+        return Ok(output_img);
+    }
+
+    eprintln!(
+        "rebuilding ext2 filesystem: {} from {}",
+        output_img.display(),
+        source_dir.display()
+    );
+
+    let temp_img = NamedTempFile::new_in(&cache_dir)?;
+    temp_img.as_file().set_len(image_size)?;
+
+    let status = Command::new("mkfs.ext2")
+        .arg("-q")
+        .arg("-F")
+        .arg("-m")
+        .arg("0")
+        .arg("-b")
+        .arg("4096")
+        .arg("-d")
+        .arg(&source_dir)
+        .arg(temp_img.path())
+        .status()
+        .context("failed to launch mkfs.ext2")?;
+    if !status.success() {
+        return Err(anyhow!(
+            "mkfs.ext2 failed while creating {} from {} with status {}",
+            output_img.display(),
+            source_dir.display(),
+            status
+        ));
+    }
+
+    fs::rename(temp_img.path(), &output_img).with_context(|| {
+        format!(
+            "failed to move ext2 filesystem into cache: {}",
+            output_img.display()
+        )
+    })?;
+
+    Ok(output_img)
+}
+
+pub fn build_ext2_filesystem_from_dir(source_dir: &Path, cache_tag: &str) -> Result<PathBuf> {
+    build_ext2_filesystem_from_dir_with_size(source_dir, cache_tag, 64 * 1024 * 1024)
+}
+
+fn source_path_cache_key(path: &Path) -> String {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn latest_modified_in_dir(path: &Path) -> Result<SystemTime> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to read metadata: {}", path.display()))?;
+    let mut latest = metadata
+        .modified()
+        .with_context(|| format!("failed to read mtime: {}", path.display()))?;
+
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path)
+            .with_context(|| format!("failed to read directory: {}", path.display()))?
+        {
+            let entry = entry
+                .with_context(|| format!("failed to read directory entry: {}", path.display()))?;
+            let modified = latest_modified_in_dir(&entry.path())?;
+            if modified > latest {
+                latest = modified;
+            }
+        }
+    }
+
+    Ok(latest)
+}
+
 pub fn split_debug_info(elf: &Path, target: Target) -> Result<Vec<u8>> {
     let cache = cache_dir()?;
     let tmp_stripped = NamedTempFile::new_in(&cache)?;
@@ -278,6 +402,11 @@ pub fn build_image_with_tag(
     let (kernel_elf, package_data) = build_res;
 
     let cache_dir = cache_dir()?;
+    let ramdisk = build_ext2_filesystem_from_dir_with_size(
+        &current_dir()?.join("ramdisk"),
+        "ramdisk",
+        1024 * 1024,
+    )?;
     let profile = if release { "release" } else { "debug" };
     let tag_suffix = cache_tag
         .map(sanitize_cache_tag)
@@ -299,14 +428,12 @@ pub fn build_image_with_tag(
         tag_suffix
     ));
 
-    let fs_dir = current_dir()?.join("fs_dir");
-
     if !fs::exists(&output_img)?
         || fs::metadata(kernel_elf)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_efi)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&limine_cfg)?.modified()? > fs::metadata(&output_img)?.modified()?
+        || fs::metadata(&ramdisk)?.modified()? > fs::metadata(&output_img)?.modified()?
         || fs::metadata(&current_exe()?)?.modified()? > fs::metadata(&output_img)?.modified()?
-        || fs::metadata(&fs_dir)?.modified()? > fs::metadata(&output_img)?.modified()?
     {
         eprintln!(
             "rebuilding image: {}",
@@ -314,22 +441,6 @@ pub fn build_image_with_tag(
                 .to_str()
                 .ok_or(Error::msg("could not convert image file"))?
         );
-
-        let fs_img = cache_dir.join("fs_img");
-        let result = Command::new("mkfs.ext2")
-            .args(vec![
-                "-q",
-                "-F",
-                "-d",
-                &fs_dir.to_str().ok_or(Error::msg("could not find fs dir"))?,
-                &fs_img.to_str().ok_or(Error::msg("could not make fs img"))?,
-                "1M",
-            ])
-            .spawn()?
-            .wait()?;
-        if !result.success() {
-            return Err(Error::msg("could not format file system"));
-        }
 
         let temp_img_out = NamedTempFile::new_in(cache_dir)?;
         let mut output_file = temp_img_out.as_file();
@@ -381,10 +492,9 @@ pub fn build_image_with_tag(
             &mut fs.root_dir().create_file(LIMINE_CONF)?,
         )?;
         io::copy(
-            &mut File::open(fs_img)?,
-            &mut fs.root_dir().create_file("fs_img")?,
+            &mut File::open(&ramdisk)?,
+            &mut fs.root_dir().create_file("ramdisk")?,
         )?;
-
         let elf_data = split_debug_info(kernel_elf, target)?;
         let debug_data = gen_debug_module(fs::read(kernel_elf)?, package_data)?;
 

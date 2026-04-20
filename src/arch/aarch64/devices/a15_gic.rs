@@ -1,8 +1,13 @@
-use crate::arch::ArchTrait;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
+use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use spin::Once;
+
+use crate::{
+    arch::ArchTrait,
+    devices::discovery::{DeviceDiscovery, DeviceNode, DeviceType},
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+};
 
 pub static GICC_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
 pub static GICD_BASE_VIRT: AtomicUsize = AtomicUsize::new(0);
@@ -25,7 +30,7 @@ impl GicA15Driver {
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
 
         let gicd_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicd_phys_address),
@@ -34,7 +39,7 @@ impl GicA15Driver {
         );
 
         let gicc_vm = VirtualMemoryAllocation::new(
-            crate::arch::Arch::get_address_space(),
+            crate::arch::Arch::get_kernel_address_space(),
             None,
             crate::arch::Arch::PAGE_SIZE,
             Some(self.gicc_phys_address),
@@ -87,7 +92,7 @@ impl GicA15Driver {
 pub struct GicA15Discovery;
 
 impl DeviceDiscovery for GicA15Discovery {
-    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,cortex-a15-gic")
@@ -103,7 +108,7 @@ impl DeviceDiscovery for GicA15Discovery {
             };
             gic.init();
             GICD_INIT.call_once(|| gic);
-            return Some(DeviceType::Special);
+            return Some(vec![DeviceType::Special]);
         }
         None
     }

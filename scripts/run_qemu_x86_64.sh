@@ -1,12 +1,12 @@
 #!/bin/sh
 set -x
 qemu-system-x86_64 \
+    -machine q35,smm=off \
     -bios "$1" \
     -drive file="$2",format=raw \
     -no-reboot \
     -d int,cpu_reset \
     -D qemu.log \
-    -M smm=off \
     -m 4G \
     -smp 4 \
     -vga std \

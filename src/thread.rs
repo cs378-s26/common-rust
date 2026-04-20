@@ -1,5 +1,11 @@
 extern crate alloc;
 
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
+#[cfg(target_arch = "x86_64")]
+use core::arch::naked_asm;
 use core::{
     cell::{Cell, OnceCell},
     ffi::c_void,
@@ -9,13 +15,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
-#[cfg(target_arch = "x86_64")]
-use core::arch::naked_asm;
-
-use alloc::{
-    boxed::Box,
-    sync::{Arc, Weak},
-};
 use intrusive_collections::{
     LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
 };
@@ -24,7 +23,9 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
+    memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
+    process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
 };
@@ -40,6 +41,7 @@ pub struct Thread {
     #[allow(unused)]
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
+    pub process: Once<Arc<Process>>,
 }
 
 impl Thread {
@@ -52,6 +54,7 @@ impl Thread {
             rb_link: RBTreeAtomicLink::new(),
             tls: Pin::new(tls),
             tls_addr,
+            process: Once::new(),
         });
 
         THIS_THREAD
@@ -153,7 +156,7 @@ struct Stack([u8; 4 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
-    CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    pub CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
     pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
@@ -178,6 +181,11 @@ fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
 
     unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+    if let Some(process) = thread.process.get() {
+        Arch::set_user_address_space(process.virtual_memory.get_page_table() as u64);
+    } else {
+        Arch::set_user_address_space(VirtualMemory::get_limine_page_table() as u64);
+    }
     CURRENT_THREAD.set(Some(thread));
 }
 
@@ -371,6 +379,47 @@ pub fn suspend_to_queue<T: MutexLike<ThreadQueue>>(queue: &T) {
     );
 }
 
+/// Like `suspend_to_queue`, but only actually suspends if `condition()` returns true
+/// after the queue lock is held. This closes the TOCTOU window where the lock owner
+/// releases the lock and finds the queue empty, then this thread enqueues itself and
+/// sleeps forever.
+#[inline(always)]
+pub fn suspend_to_queue_if<T, F>(queue: &T, condition: F)
+where
+    T: MutexLike<ThreadQueue>,
+    F: FnOnce() -> bool,
+{
+    let guard = StateGuard::<Irq>::guard();
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
+    }
+    drop(guard);
+
+    let _guard = StateGuard::<Irq>::preserve();
+
+    let mut queue = queue.lock_no_restore_irq();
+
+    assert!(
+        !Arch::irq_is_enabled(),
+        "interrupts must either be disabled by the lock, or be disabled on entry"
+    );
+
+    // Re-check the condition while holding the queue lock. If the lock owner
+    // already released and is about to wake waiters, we'll see the lock as free
+    // here and bail out instead of sleeping forever.
+    if !condition() {
+        return;
+    }
+
+    suspend_impl(
+        move |t| {
+            queue.push_back(t);
+            drop(queue);
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
+
 #[inline(always)]
 // Queue must already be locked.
 // adds the current thread to the queue, unlocks it, then switches to idle
@@ -455,6 +504,25 @@ pub fn make_thread<T: FnOnce() + Send + 'static>(task: T) -> Arc<Thread> {
 
 pub fn spawn_thread<T: FnOnce() + Send + 'static>(task: T) {
     let thread = make_thread(task);
+    GLOBAL_WORK_QUEUE.lock().push_back(thread);
+    Arch::wake_other_cores();
+}
+
+pub fn make_user_thread(process: &Arc<Process>, pc: usize, sp: usize) -> Arc<Thread> {
+    let thread = Thread::new();
+    thread.process.call_once(|| Arc::clone(process));
+
+    {
+        let mut ctx = CONTEXT.read_for(&thread).lock();
+        *ctx = Context::new_uthread(pc as u64, sp as u64);
+    }
+
+    CAN_YIELD.read_for(&thread).store(true, Ordering::Relaxed);
+    thread.clone()
+}
+
+pub fn spawn_user_thread(process: &Arc<Process>, pc: usize, sp: usize) {
+    let thread = make_user_thread(process, pc, sp);
     GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
 }

@@ -1,17 +1,22 @@
+use std::{
+    fs,
+    io::BufReader,
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
+    sync::OnceLock,
+    thread::sleep,
+    time::{Duration, Instant, SystemTime},
+};
+
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::OnceLock;
-use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime};
-use tempfile;
 
-use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
+use crate::util::{
+    Target, build_ext2_filesystem_from_dir, build_image_with_tag, cache_dir, download_ovmf,
+    path_to_string,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -20,6 +25,7 @@ pub struct TestConfig {
     pub timeout_ms: u64,
     pub test_name: Option<String>,
     pub expected_output_path: String,
+    pub filesystem_path: Option<String>,
     pub target: TestTarget,
     pub qemu_args: Vec<String>,
 }
@@ -148,7 +154,6 @@ fn run_with_config(
             config_path.display()
         ));
     }
-
     let target = test_cfg.target.to_target();
     let display_name = test_display_name(config_path, test_cfg);
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
@@ -160,12 +165,18 @@ fn run_with_config(
         Some(&display_name),
     )?;
 
-    // use a temporary file for testing, gets removed after Drop
-    let disk_file = tempfile::NamedTempFile::new_in(&cache_paths.root_dir)?;
-    disk_file.as_file().set_len(64 * 1024 * 1024)?; // 64 MiB disk image
+    let filesystem_image = if let Some(filesystem_path) = test_cfg.filesystem_path.as_deref() {
+        let source_path = resolve_repo_root_path(Path::new(filesystem_path))?;
+        Some(build_ext2_filesystem_from_dir(
+            &source_path,
+            &format!("{}-filesystem", display_name),
+        )?)
+    } else {
+        None
+    };
+
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
-    let path_to_disk = path_to_string(disk_file.path())?;
 
     let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
     let expected_output = fs::read_to_string(&expected_output_path).with_context(|| {
@@ -175,12 +186,15 @@ fn run_with_config(
         )
     })?;
 
-    let deps = [
+    let mut deps = vec![
         config_path,
         expected_output_path.as_path(),
         kernel_path.as_path(),
         img_path.as_path(),
     ];
+    if let Some(filesystem_image) = filesystem_image.as_deref() {
+        deps.push(filesystem_image);
+    }
     if !stream_serial_stdout
         && !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
         && let Some(cached_report) = load_cached_report(&cache_paths.report)
@@ -208,9 +222,17 @@ fn run_with_config(
             .map(|arg| {
                 arg.replace("{PATH_TO_EFI}", &path_to_efi)
                     .replace("{PATH_TO_IMG}", &path_to_img)
-                    .replace("{PATH_TO_DISK}", &path_to_disk)
             })
             .collect();
+        if let Some(filesystem_image) = filesystem_image.as_deref() {
+            let filesystem_image = path_to_string(filesystem_image)?;
+            qemu_args.push("-drive".into());
+            qemu_args.push(format!(
+                "if=none,id=testfs0,file={filesystem_image},format=raw"
+            ));
+            qemu_args.push("-device".into());
+            qemu_args.push(format!("{},drive=testfs0", target.qemu_virtio_blk_device()));
+        }
         if stream_serial_stdout {
             qemu_args.push("-chardev".into());
             qemu_args.push(format!(
@@ -482,7 +504,9 @@ fn assert_output_match(
     expected_path: &Path,
     actual_path: &Path,
 ) -> Result<()> {
-    if normalize_output(expected) == normalize_output(actual) {
+    let expected = normalize_output(expected);
+    let actual = normalize_output(actual);
+    if expected == actual {
         return Ok(());
     }
 

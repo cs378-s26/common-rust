@@ -4,9 +4,8 @@ mod parse;
 use core::{cell::SyncUnsafeCell, str::Utf8Error};
 
 pub use lexer::*;
-pub use parse::*;
-
 use limine::request::ExecutableCmdlineRequest;
+pub use parse::*;
 use proc_macros::CmdlineParsable;
 use spin::Once;
 

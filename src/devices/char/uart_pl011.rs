@@ -1,14 +1,15 @@
-// currently the DeviceNode enum only has one variant so rust warns about using it as an if let since it's always one type,
-// removing this warning for now
-#![allow(irrefutable_let_patterns)]
+use alloc::{boxed::Box, string::ToString, vec, vec::Vec};
+
 use super::{CharDevice, CharDeviceError};
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::Device;
-use crate::devices::device_discovery::{DeviceDiscovery, DeviceNode, DeviceType};
-use crate::print::{CharSink, set_serial_backend};
-use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-use alloc::boxed::Box;
-use alloc::string::ToString;
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        Device,
+        discovery::{DeviceDiscovery, DeviceNode, DeviceType},
+    },
+    memory::virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+    print::{CharSink, set_serial_backend},
+};
 
 // TODO: this driver currently is just for outputting characters to uart, later it will need to be expanded most likely
 pub struct UartPl011Driver {
@@ -23,7 +24,7 @@ impl UartPl011Driver {
             PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::DEVICE_MEMORY;
         let backing = Some(self.phys_address);
         let vm = VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             None,
             Arch::PAGE_SIZE,
             backing,
@@ -82,7 +83,7 @@ pub struct UartPl011Discovery;
 
 impl DeviceDiscovery for UartPl011Discovery {
     // this gives full ownership of the driver to the serial backend
-    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<DeviceType> {
+    fn am_i_this(&self, node: DeviceNode<'_, '_>) -> Option<Vec<DeviceType>> {
         if let DeviceNode::DTB(node) = node
             && let Some(c) = node.compatible()
             && c.all().any(|s| s == "arm,pl011")
@@ -101,7 +102,7 @@ impl DeviceDiscovery for UartPl011Discovery {
                 panic!("Failed to initialize UART driver");
             }
 
-            return Some(DeviceType::Special);
+            return Some(vec![DeviceType::Special]);
         }
         None
     }

@@ -1,7 +1,4 @@
-use crate::devices::device_discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{
     cell::SyncUnsafeCell,
     hint,
@@ -13,11 +10,14 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+use crate::devices::discovery::DeviceDiscovery;
+
 pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
 mod debug;
+mod devices;
 mod interrupt;
 mod mp;
 mod tables;
@@ -46,15 +46,19 @@ use crate::{
         ArchTrait, UnwindContextTrait, apic::send_ipi_all_except_self, irq_vector::TLB_SHOOTDOWN,
     },
     event::{Event::Shootdown, push_event},
+    memory::virtual_memory::PagingOptions,
     mp::{CORE_ID, CoreId},
     print::CharSink,
     thread::yield_thread,
-    virtual_memory::PagingOptions,
 };
 pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
+
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
 
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
         let resp = req
@@ -121,8 +125,16 @@ impl ArchTrait for Arch {
 
     fn configure_vm() {}
 
-    fn get_address_space() -> u64 {
+    fn get_kernel_address_space() -> u64 {
         get_address_space()
+    }
+
+    fn get_user_address_space() -> u64 {
+        get_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
+        set_address_space(space)
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
@@ -175,10 +187,10 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn parse_devices() {}
     fn create_arch_specific_drivers(
-        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 
