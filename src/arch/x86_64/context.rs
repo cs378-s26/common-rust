@@ -181,9 +181,9 @@ impl ContextTrait for Context {
 
     fn new_uthread(_pc: u64, _sp: u64) -> Self {
         Self {
-            rip: _pc as u64,
+            rip: _pc,
             gp: GPRegisters {
-                rsp: _sp as u64,
+                rsp: _sp,
                 ..Default::default()
             },
             cs: SegmentSelector::new(GlobalDescriptorTable::USER_CS, Ring::Ring3)
