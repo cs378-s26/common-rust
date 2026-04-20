@@ -96,6 +96,8 @@ pub enum MadtEntry {
     Other(usize), // for now we only care about IO APIC entries, so we'll give a ptr to the rest
 }
 
+// TODO: Construct table from isa irq num --> GSI from MADT entries
+
 impl Madt {
     fn from_addr(addr: usize) -> Option<Self> {
         let mut madt = unsafe { *(addr as *mut Madt) };

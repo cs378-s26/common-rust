@@ -240,12 +240,12 @@ struct InterruptHandler {
     link : LinkedListAtomicLink,
 }
 
-use core::cell::RefCell;
+use intrusive_collections::RBTreeAtomicLink;
 
 struct InterruptHandlersLine {
     irq : u8,
-    handlers : RefCell<LinkedList<InterruptHandlerAdapter>>,
-    link : RBTreeLink,
+    handlers : IntMutex<LinkedList<InterruptHandlerAdapter>>,
+    link : RBTreeAtomicLink,
 }
 
 impl<'a> KeyAdapter<'a> for InterruptHandlersLineAdapter {
@@ -255,33 +255,33 @@ impl<'a> KeyAdapter<'a> for InterruptHandlersLineAdapter {
     }
 }
 
-intrusive_adapter!(InterruptHandlersLineAdapter = Rc<InterruptHandlersLine>: InterruptHandlersLine { link => RBTreeLink });
+intrusive_adapter!(InterruptHandlersLineAdapter = Arc<InterruptHandlersLine>: InterruptHandlersLine { link => RBTreeLink });
 
 use alloc::sync::Arc;
 
-static mut handlers : 
-IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::new()));
+static HANDLERS : 
+IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
 
 pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
     let handler = Arc::new(InterruptHandler { handler, link: LinkedListAtomicLink::new() });
-    let mut handlers_list = unsafe {handlers.lock() };
+    let mut handlers_list = HANDLERS.lock();
     let handlers_for_line = handlers_list.find_mut(&irq_num);
     if let Some(true_list) = handlers_for_line.get() {
-        true_list.handlers.borrow_mut().push_back(handler);
+        true_list.handlers.lock().push_back(handler);
     } else {
         let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
         new_list.push_back(handler);
-        let new_line = InterruptHandlersLine { irq: irq_num, handlers: new_list, link: RBTreeLink::new() };
-        handlers_list.insert(Rc::new(new_line));
+        let new_line = InterruptHandlersLine { irq: irq_num, handlers: IntMutex::new(new_list), link: RBTreeAtomicLink::new() };
+        handlers_list.insert(Arc::new(new_line));
     }
 }
 
 //TODO: store a mapping of irq vector --> irq number
 fn handle_device_interrupt(irq_vec : u8) {
-    let handlers_list = unsafe {handlers.lock() };
+    let handlers_list = HANDLERS.lock();
     let mut has_handled = false;
-    if let Some(true_list) = handlers_list.find(&irq_num).get() {
-        for handler in true_list.handlers.borrow().iter() {
+    if let Some(true_list) = handlers_list.find(&irq_vec).get() {
+        for handler in true_list.handlers.lock().iter() {
             let irq_handler = &handler.handler;
             if let Some(_) = irq_handler() {
                 has_handled = true;
