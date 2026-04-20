@@ -5,6 +5,14 @@ static SYMBOL_TABLE: Once<SymbolTable> = Once::new();
 pub struct FunctionSymbol {
     pub name: &'static str,
     pub inline_parent: Option<usize>,
+    pub location: Option<SourceLocation>,
+}
+
+#[derive(Clone, Copy)]
+pub struct SourceLocation {
+    pub file: &'static str,
+    pub row: u32,
+    pub col: u32,
 }
 
 pub struct SymbolTable {
@@ -13,6 +21,8 @@ pub struct SymbolTable {
     strings_len: usize,
     functions_offset: usize,
     functions_count: usize,
+    location_search_offset: usize,
+    location_search_len: usize,
     function_search_offset: usize,
     function_search_len: usize,
 }
@@ -32,17 +42,18 @@ impl SymbolTable {
         pos += strings_len;
 
         let functions_len = read_usize(data, &mut pos)?;
-        
+
         // Validate functions_len is a multiple of entry size
         if functions_len % FUNCTION_ENTRY_SIZE != 0 {
             return None;
         }
-        
+
         let functions_offset = pos;
         let functions_count = functions_len / FUNCTION_ENTRY_SIZE;
         pos += functions_len;
 
         let location_search_len = read_usize(data, &mut pos)?;
+        let location_search_offset = pos;
         pos += location_search_len;
 
         let function_search_len = read_usize(data, &mut pos)?;
@@ -54,6 +65,8 @@ impl SymbolTable {
             strings_len,
             functions_offset,
             functions_count,
+            location_search_offset,
+            location_search_len,
             function_search_offset,
             function_search_len,
         })
@@ -77,18 +90,24 @@ impl SymbolTable {
             return None;
         }
         let base = self.functions_offset + idx * FUNCTION_ENTRY_SIZE;
-        
+
         // Bounds check
         if base + FUNCTION_ENTRY_SIZE > self.data.len() {
             return None;
         }
-        
+
         let inline_parent = usize::from_le_bytes(self.data[base..base + 8].try_into().ok()?);
         let name_offset = usize::from_le_bytes(self.data[base + 8..base + 16].try_into().ok()?);
         let name = self.get_string(name_offset)?;
+        let file = usize::from_le_bytes(self.data[base + 16..base + 24].try_into().ok()?);
         Some(FunctionSymbol {
             name,
             inline_parent: (inline_parent != usize::MAX).then_some(inline_parent),
+            location: (file != usize::MAX).then_some(SourceLocation {
+                file: self.get_string(file)?,
+                row: u32::from_le_bytes(self.data[base + 24..base + 28].try_into().ok()?),
+                col: u32::from_le_bytes(self.data[base + 28..base + 32].try_into().ok()?),
+            }),
         })
     }
 
@@ -97,14 +116,14 @@ impl SymbolTable {
         if addr < KERNEL_BASE {
             return None;
         }
-        
+
         let offset = addr - KERNEL_BASE;
-        
+
         // Check if offset fits in u32 (symbol table uses u32 offsets)
         if offset > u32::MAX as u64 {
             return None;
         }
-        
+
         let offset_addr = offset as u32;
 
         const ENTRY_SIZE: usize = 12; // u32 addr + u64 index
@@ -117,12 +136,12 @@ impl SymbolTable {
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             let pos = self.function_search_offset + mid * ENTRY_SIZE;
-            
+
             // Bounds check
             if pos + ENTRY_SIZE > self.data.len() {
                 return None;
             }
-            
+
             let entry_addr = u32::from_le_bytes(self.data[pos..pos + 4].try_into().ok()?);
 
             if entry_addr <= offset_addr {
@@ -137,6 +156,34 @@ impl SymbolTable {
         }
 
         best.and_then(|idx| self.get_function(idx))
+    }
+
+    pub fn lookup_location(&self, addr: u64) -> Option<SourceLocation> {
+        const KERNEL_BASE: u64 = 0xffffffff80000000;
+        const ENTRY_SIZE: usize = 4 + core::mem::size_of::<usize>() + 4 + 4;
+        if addr < KERNEL_BASE || addr - KERNEL_BASE > u32::MAX as u64 {
+            return None;
+        }
+        let mut lo = 0;
+        let mut hi = self.location_search_len / ENTRY_SIZE;
+        let mut best = None;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let pos = self.location_search_offset + mid * ENTRY_SIZE;
+            let entry_addr = u32::from_le_bytes(self.data[pos..pos + 4].try_into().ok()?);
+            if entry_addr <= (addr - KERNEL_BASE) as u32 {
+                let file = usize::from_le_bytes(self.data[pos + 4..pos + 12].try_into().ok()?);
+                best = (file != usize::MAX).then_some(SourceLocation {
+                    file: self.get_string(file)?,
+                    row: u32::from_le_bytes(self.data[pos + 12..pos + 16].try_into().ok()?),
+                    col: u32::from_le_bytes(self.data[pos + 16..pos + 20].try_into().ok()?),
+                });
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        best
     }
 }
 
@@ -156,4 +203,8 @@ pub fn try_init_table(table: SymbolTable) -> bool {
 
 pub fn lookup_symbol(addr: u64) -> Option<FunctionSymbol> {
     SYMBOL_TABLE.get()?.lookup(addr)
+}
+
+pub fn lookup_location(addr: u64) -> Option<SourceLocation> {
+    SYMBOL_TABLE.get()?.lookup_location(addr)
 }

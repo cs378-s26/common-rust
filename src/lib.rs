@@ -16,13 +16,12 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
+pub mod elf;
 pub mod event;
-pub mod heap;
 pub mod fs;
 pub mod local_storage;
-pub mod modules;
-pub mod elf;
 pub mod memory;
+pub mod modules;
 pub mod mp;
 pub mod panic;
 pub mod print;
@@ -49,6 +48,7 @@ use memory::{
     physical_memory::{THE_HEAP, init_physical_memory_allocator},
     virtual_memory::init_virtual_memory_allocator,
 };
+use modules::load_modules_early;
 use spin::{Barrier, Once};
 
 use crate::{

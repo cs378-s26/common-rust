@@ -14,11 +14,10 @@ use flanterm::{
 use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
 use spin::Once;
 
-
 use crate::{
     arch::{self, UnwindContext, UnwindContextTrait},
+    symbols::{lookup_location, lookup_symbol},
     sync::{IntMutex, MutexLike},
-    symbols::lookup_symbol,
 };
 
 #[derive(Clone, Copy)]
@@ -330,7 +329,14 @@ impl Display for StackTrace {
             match lookup_symbol(addr) {
                 Some(symbol) => {
                     let demangled = rustc_demangle::demangle(symbol.name);
-                    writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?;
+                    match lookup_location(addr.saturating_sub(1)).or(symbol.location) {
+                        Some(loc) => writeln!(
+                            f,
+                            "#{}: {:#016x} in {} at {}:{}:{}",
+                            i, addr, demangled, loc.file, loc.row, loc.col
+                        )?,
+                        None => writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?,
+                    }
                 }
                 None => {
                     writeln!(f, "#{}: {:#016x}", i, addr)?;

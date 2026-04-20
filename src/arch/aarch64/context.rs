@@ -67,8 +67,8 @@ impl ContextTrait for Context {
     fn new_uthread(pc: u64, sp: u64) -> Self {
         Context {
             spsr: 0,
-            pc: pc as u64,
-            sp: sp as u64,
+            pc,
+            sp,
             ..Default::default()
         }
     }
