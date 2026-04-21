@@ -21,12 +21,15 @@ static inline long syscall_0_arg(long n) {
 }
 
 void start(void) {
+
+    // getpid
     long pid = syscall_0_arg(39);
 
-    if (pid != 1) {
-        syscall_1_arg(60, 1);
-    } else {
+    // exit
+    if (pid == 1) {
         syscall_1_arg(60, 0);
+    } else {
+        syscall_1_arg(60, 1);
     }
 
     while (1) {}

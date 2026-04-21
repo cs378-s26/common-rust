@@ -11,7 +11,7 @@ use crate::{
     mp::CORE_ID,
     print::kprintln,
     syscall::SyscallContext,
-    thread::{IDLE, block_to_idle, preempt_to_idle, suspend_to_thread, this_thread},
+    thread::{block_to_idle, preempt_to_idle, this_thread},
 };
 
 global_asm!(include_str!("exception.s"));

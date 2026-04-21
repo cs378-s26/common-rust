@@ -51,14 +51,14 @@ impl PidAllocator {
         None
     }
 
-    fn free(&mut self, pid: u32) {
+    fn _free(&mut self, pid: u32) {
         let pid = pid as usize;
         assert!(pid >= 1 && pid <= MAX_PID);
         assert!(self.used[pid], "double free of PID {}", pid);
         self.used.set(pid, false);
     }
 
-    fn mark_used(&mut self, pid: u32) {
+    fn _mark_used(&mut self, pid: u32) {
         let pid = pid as usize;
         assert!(pid <= MAX_PID);
         assert!(!self.used[pid], "PID {} already in use", pid);
