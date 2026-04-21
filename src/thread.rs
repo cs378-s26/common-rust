@@ -22,13 +22,13 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
+    event::Event,
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     process::Process,
     state::{Irq, StateGuard},
     sync::{IntSpinLock, MutexLike},
-    event::Event
 };
 
 pub struct Thread {

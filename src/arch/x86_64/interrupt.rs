@@ -179,7 +179,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                         address: unsafe { cr2() },
                     },
                     CORE_ID.get(),
-                    false
+                    false,
                 );
                 unsafe { crate::thread::block_to_idle(context) };
             } else {

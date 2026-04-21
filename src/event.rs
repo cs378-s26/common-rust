@@ -9,8 +9,10 @@ use crate::{
     memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
-    thread::{CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    thread::{ThreadQueue, ThreadQueueAdapter, this_thread}
+    thread::{
+        CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, ThreadQueue,
+        ThreadQueueAdapter, make_thread, this_thread, yield_thread,
+    },
 };
 
 pub enum Event {
@@ -61,8 +63,10 @@ pub fn init_event_handler() {
                         }
                         latch.fetch_sub(1, Ordering::Release);
                     }
-                    PageFault {..} => {
-                        panic!("Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault");
+                    PageFault { .. } => {
+                        panic!(
+                            "Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault"
+                        );
                     }
                 }
             }
@@ -78,7 +82,9 @@ pub fn init_event_handler() {
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                     Event::Shootdown { .. } => {
-                        panic!("Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown");
+                        panic!(
+                            "Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown"
+                        );
                     }
                 }
             }
@@ -95,7 +101,7 @@ pub fn init_event_handler() {
     LOCAL_WORK_QUEUE.lock().push_back(thread);
 }
 
-pub fn push_event(event: Event, core: CoreId, should_alloc : bool) {
+pub fn push_event(event: Event, core: CoreId, should_alloc: bool) {
     let queue = EVENT_QUEUE.read_for(core);
     if should_alloc {
         // if the event is being pushed from an interrupt handler, we need to allocate the event node on the heap
