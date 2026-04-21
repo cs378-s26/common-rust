@@ -9,7 +9,8 @@ use crate::{
     memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
-    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
+    thread::{CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread, CONTEXT},
+    syscall::syscall_handler,
 };
 
 pub enum Event {
@@ -22,6 +23,9 @@ pub enum Event {
     PageFault {
         cause: PageFaultConditions,
         address: usize,
+        thread: Arc<Thread>,
+    },
+    Syscall {
         thread: Arc<Thread>,
     },
 }
@@ -63,6 +67,15 @@ pub fn init_event_handler() {
                         thread,
                     } => {
                         handle_page_fault(cause, address, &thread);
+                        LOCAL_WORK_QUEUE.lock().push_back(thread);
+                    }
+                    Syscall {
+                        thread,
+                    } => {
+                        // Handle syscall event
+                        let mut context = CONTEXT.read_for(&thread).lock();
+                        syscall_handler(&mut *context);
+
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                 }

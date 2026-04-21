@@ -44,12 +44,19 @@ pub trait SyscallContext {
     }
 }
 
-pub fn syscall_handler(syscall_context: &mut impl SyscallContext) {
+pub fn syscall_handler(thread: ) {
     // https://filippo.io/linux-syscall-table/
     // NOTE: x86 and ARM syscall numbers differ in the unix spec
     // Ex: 0 is read() on x86 while 63 is read() on ARM
     // We can write two syscall handlers depending on the target. This will still let us share the syscall functions.
     // We could also implement some sort of higher translation between number and some sycall enum to avoid this.
+    #[cfg(target_arch = "x86_64")]
+    match syscall_context.syscall_number() {
+        60 => {
+            let exit_code = syscall_context.arg0();
+
+        }
+    }
 
     match syscall_context.syscall_number() {
         0 => panic!("TRIED TO SYSCALL READ"),

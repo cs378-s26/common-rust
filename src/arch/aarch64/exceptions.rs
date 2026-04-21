@@ -93,17 +93,22 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     if exception_class == SVC {
-        // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
-        let syscall_id = exc.gpr.regs[8];
-
-        this_thread()
-            .process
-            .get()
-            .unwrap()
-            .exit_code
-            .set(syscall_id);
-        suspend_to_thread(IDLE.get().unwrap().clone());
+        push_event(
+            Event::Syscall {
+                thread: this_thread(),
+            },
+            CORE_ID.get(),
+        );
+        let interrupt_context = InterruptContext {
+            gpr: exc.gpr,
+            sp: exc.sp,
+            pc: exc.elr_el1,
+            spsr: exc.spsr_el1,
+        };
+        unsafe {
+            block_to_idle(&interrupt_context);
+        }
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
