@@ -16,6 +16,7 @@ use spin::Once;
 
 use crate::{
     arch::{self, UnwindContext, UnwindContextTrait},
+    symbols::{lookup_location, lookup_symbol},
     sync::{IntMutex, MutexLike},
 };
 
@@ -324,7 +325,24 @@ impl Display for StackTrace {
         let mut i = 0;
         while unsafe { context.valid() } {
             let addr = unsafe { context.return_address() };
-            writeln!(f, "#{}: {:#016x}", i, addr)?;
+
+            match lookup_symbol(addr) {
+                Some(symbol) => {
+                    let demangled = rustc_demangle::demangle(symbol.name);
+                    match lookup_location(addr.saturating_sub(1)).or(symbol.location) {
+                        Some(loc) => writeln!(
+                            f,
+                            "#{}: {:#016x} in {} at {}:{}:{}",
+                            i, addr, demangled, loc.file, loc.row, loc.col
+                        )?,
+                        None => writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?,
+                    }
+                }
+                None => {
+                    writeln!(f, "#{}: {:#016x}", i, addr)?;
+                }
+            }
+
             i += 1;
             context = unsafe { context.next() };
         }
