@@ -16,44 +16,56 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
-pub mod dma;
+pub mod elf;
 pub mod event;
-// pub mod ext2;
 pub mod fs;
-pub mod heap;
 pub mod local_storage;
+pub mod memory;
+pub mod modules;
 pub mod mp;
 pub mod panic;
-pub mod physical_memory;
 pub mod print;
+pub mod process;
 pub mod state;
+pub mod symbols;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
-pub mod virtual_memory;
-
 extern crate alloc;
-use crate::arch::{Arch, ArchTrait};
-use crate::cmdline::parse_kernel_cmdline;
-use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
-use crate::event::init_event_handler;
-use crate::heap::init_malloc;
-use crate::mp::{MP_STAGE, MPStage, init_cpu_local_table};
-use crate::print::{StackTrace, init_tty, kprintln};
-use crate::thread::{poll_tasks, set_up_idle, spawn_thread};
+use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
-use limine::BaseRevision;
-use limine::firmware_type::FirmwareType;
-use limine::mp::Cpu;
-use limine::request::{
-    BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker, RequestsStartMarker,
-};
-use physical_memory::{THE_HEAP, init_physical_memory_allocator};
-use spin::{Barrier, Once};
-use talc::Span;
-use virtual_memory::init_virtual_memory_allocator;
 
-use crate::devices::discovery::{create_drivers, discover_devices};
+use limine::{
+    BaseRevision,
+    firmware_type::FirmwareType,
+    mp::Cpu,
+    request::{
+        BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
+        RequestsStartMarker,
+    },
+};
+use memory::{
+    physical_memory::{THE_HEAP, init_physical_memory_allocator},
+    virtual_memory::init_virtual_memory_allocator,
+};
+use modules::load_modules_early;
+use spin::{Barrier, Once};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    cmdline::parse_kernel_cmdline,
+    coroutine::{init_coroutine_executor, init_coroutine_queue},
+    devices::discovery::{create_drivers, discover_devices},
+    event::init_event_handler,
+    fs::{
+        fake::{FAKE, Fake},
+        vfs::VFS,
+    },
+    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    print::{StackTrace, init_tty, kprintln},
+    thread::{poll_tasks, set_up_idle, spawn_thread},
+};
 
 // some sample limine requests, for no particular reason
 #[used]
@@ -108,6 +120,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_malloc((&raw mut THE_HEAP) as usize, 256 * 1024 * 1024);
     init_tty();
 
+    load_modules_early();
+
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {
         kprintln!("limine rev: {}", rev);
@@ -132,6 +146,9 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+    VirtualMemory::init();
+    let fake = Arc::clone(FAKE.call_once(Fake::new));
+    VFS.mount(fake);
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();
@@ -225,8 +242,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 pub macro integration_test($test:block) {
-    use kernel_common::KernelWorkTrait;
-    use kernel_common::system_init;
+    use kernel_common::{KernelWorkTrait, system_init};
 
     #[cfg(test)]
     pub struct KernelWork;

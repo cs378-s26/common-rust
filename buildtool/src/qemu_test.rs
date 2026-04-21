@@ -1,14 +1,17 @@
+use std::{
+    fs,
+    io::BufReader,
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
+    sync::OnceLock,
+    thread::sleep,
+    time::{Duration, Instant, SystemTime},
+};
+
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::OnceLock;
-use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime};
 
 use crate::util::{
     Target, build_ext2_filesystem_from_dir, build_image_with_tag, cache_dir, download_ovmf,
@@ -23,8 +26,20 @@ pub struct TestConfig {
     pub test_name: Option<String>,
     pub expected_output_path: String,
     pub filesystem_path: Option<String>,
+    #[serde(default)]
+    pub accepted_exit_codes: Vec<i32>,
+    #[serde(default)]
+    pub output_match: OutputMatchMode,
     pub target: TestTarget,
     pub qemu_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputMatchMode {
+    #[default]
+    Exact,
+    ContainsInOrder,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -265,7 +280,7 @@ fn run_with_config(
             }
         };
 
-        if !qemu_status_ok(&status) {
+        if !qemu_status_ok(&status, test_cfg) {
             failed_at_run = Some(run_idx + 1);
             failure_reason = Some(format!("{} failed with status {}", qemu_cmd, status));
             break;
@@ -295,6 +310,7 @@ fn run_with_config(
         if let Err(err) = assert_output_match(
             &expected_output,
             &actual_output,
+            test_cfg.output_match,
             run_idx + 1,
             &expected_output_path,
             &cache_paths.serial_output,
@@ -497,12 +513,37 @@ fn resolve_repo_root_path(path: &Path) -> Result<PathBuf> {
 fn assert_output_match(
     expected: &str,
     actual: &str,
+    mode: OutputMatchMode,
     run_idx: u32,
     expected_path: &Path,
     actual_path: &Path,
 ) -> Result<()> {
-    if normalize_output(expected) == normalize_output(actual) {
-        return Ok(());
+    let expected = normalize_output(expected);
+    let actual = normalize_output(actual);
+
+    match mode {
+        OutputMatchMode::Exact if expected == actual => return Ok(()),
+        OutputMatchMode::ContainsInOrder => {
+            let mut search_start = 0;
+            for needle in expected
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+            {
+                let Some(relative_match) = actual[search_start..].find(needle) else {
+                    return Err(anyhow!(
+                        "serial output mismatch on run {}.\nexpected: {}\nactual:   {}\nmissing ordered fragment: {:?}",
+                        run_idx,
+                        expected_path.display(),
+                        actual_path.display(),
+                        needle
+                    ));
+                };
+                search_start += relative_match + needle.len();
+            }
+            return Ok(());
+        }
+        OutputMatchMode::Exact => {}
     }
 
     let mut mismatch_preview = String::new();
@@ -555,8 +596,12 @@ fn ansi_escape_regex() -> &'static Regex {
     })
 }
 
-fn qemu_status_ok(status: &ExitStatus) -> bool {
-    status.success() || status.code() == Some(1)
+fn qemu_status_ok(status: &ExitStatus, test_cfg: &TestConfig) -> bool {
+    status.success()
+        || status.code() == Some(1)
+        || status
+            .code()
+            .is_some_and(|code| test_cfg.accepted_exit_codes.contains(&code))
 }
 
 fn run_qemu_with_timeout(

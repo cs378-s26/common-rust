@@ -1,9 +1,11 @@
-use crate::devices::discovery::pcie::init_pcie;
-use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS};
-use crate::dma::MmioRegion;
-use crate::physical_memory::HHDM_OFFSET;
 use alloc::vec::Vec;
+
 use limine::request::RsdpRequest;
+
+use crate::{
+    devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, pcie::init_pcie},
+    memory::{dma::MmioRegion, physical_memory::HHDM_OFFSET},
+};
 // use virtio_drivers::read_config;
 
 #[used]

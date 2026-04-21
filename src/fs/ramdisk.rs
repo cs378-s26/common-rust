@@ -1,11 +1,10 @@
 extern crate alloc;
 
-use limine::request::ModuleRequest;
+use core::slice;
+
+use crate::modules;
 
 const PAGE_SIZE: usize = 4096;
-
-#[unsafe(link_section = ".limine_requests")]
-static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 
 pub trait Disk {
     fn read_sector(&self, sector: usize, buffer: &mut [u8]);
@@ -20,33 +19,22 @@ pub struct Ramdisk<'a> {
 
 impl<'a> Ramdisk<'a> {
     pub fn new(sector_size: usize) -> Self {
-        let response = MODULE_REQUEST
-            .get_response()
-            .expect("could not load modules (needed for fs)");
-        let modules = response.modules();
-        let module = modules
-            .iter()
-            .copied()
-            .find(|module| module.string().to_bytes() == b"ramdisk")
-            .unwrap_or_else(|| {
-                panic!(
-                    "could not find ramdisk module; available modules: {:?}",
-                    modules
-                        .iter()
-                        .map(|module| module.string().to_bytes())
-                        .collect::<alloc::vec::Vec<_>>()
-                )
-            });
-        let addr = module.addr();
-        let size = module.size() as usize;
-        assert!(addr.align_offset(sector_size) == 0);
-        assert!(size.is_multiple_of(sector_size));
+        let module = modules::find_by_cmdline(b"ramdisk").unwrap_or_else(|| {
+            panic!(
+                "could not find ramdisk module; available modules: {:?}",
+                modules::loaded_module_cmdlines().collect::<alloc::vec::Vec<_>>()
+            )
+        });
+
+        let (base_ptr, len) = modules::module_range(module);
+        assert!(base_ptr.align_offset(sector_size) == 0);
+        assert!(len.is_multiple_of(sector_size));
         assert!(PAGE_SIZE.is_multiple_of(sector_size));
-        unsafe {
-            Self {
-                base_address: core::slice::from_raw_parts_mut(addr, size),
-                sector_size,
-            }
+        let base_address = unsafe { slice::from_raw_parts_mut(base_ptr, len) };
+
+        Self {
+            base_address,
+            sector_size,
         }
     }
 }

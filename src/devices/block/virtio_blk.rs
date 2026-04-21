@@ -1,12 +1,19 @@
 extern crate virtio_drivers;
 
-use crate::arch::{Arch, ArchTrait};
-use crate::devices::Device;
-use crate::devices::block::{BlockDevice, BlockDeviceError, PhysicalAddressSize};
-use crate::devices::virtio::VirtioBlkHal;
-use virtio_drivers::Hal;
-use virtio_drivers::device::blk::{SECTOR_SIZE, VirtIOBlk};
-use virtio_drivers::transport::Transport;
+use virtio_drivers::{
+    Hal,
+    device::blk::{SECTOR_SIZE, VirtIOBlk},
+    transport::Transport,
+};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::{
+        Device,
+        block::{BlockDevice, BlockDeviceError, PhysicalAddressSize},
+        virtio::VirtioHal,
+    },
+};
 
 // Wrapper around the virtio blk driver containing the necessary HAL
 // implementation for it to work with our system block device trait.
@@ -14,10 +21,10 @@ pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
     blk: VirtIOBlk<H, T>,
 }
 
-impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
+impl<T: Transport> VirtIOBlkDiskDriver<VirtioHal, T> {
     pub fn new(transport: T) -> Self {
         Self {
-            blk: VirtIOBlk::<VirtioBlkHal, T>::new(transport)
+            blk: VirtIOBlk::<VirtioHal, T>::new(transport)
                 .expect("failed to initialize virtio blk device"),
         }
     }
@@ -43,7 +50,7 @@ impl<T: Transport> VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     }
 }
 
-impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
+impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioHal, T> {
     fn name(&self) -> &str {
         "virtio_blk"
     }
@@ -106,7 +113,7 @@ impl<T: Transport> BlockDevice for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
     }
 }
 
-impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioBlkHal, T> {
+impl<T: Transport> Device for VirtIOBlkDiskDriver<VirtioHal, T> {
     #[allow(unused_variables)]
     fn ioctl(&self, request: u64, arg1: u64, arg2: u64) -> u64 {
         0

@@ -1,13 +1,11 @@
+use alloc::{boxed::Box, vec::Vec};
 use core::arch::asm;
 
 use spin::Once;
 
-use crate::print::CharSink;
-use crate::virtual_memory::PagingOptions;
-
-use crate::devices::discovery::DeviceDiscovery;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use crate::{
+    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, print::CharSink,
+};
 
 mod asm;
 mod context;
@@ -16,11 +14,10 @@ mod exceptions;
 pub mod gic;
 mod interrupt;
 mod mp;
-pub use exceptions::{dump_core_state, init_exceptions};
-
 pub use asm::*;
 pub use context::Context;
 use context::save_context;
+pub use exceptions::{dump_core_state, init_exceptions};
 pub use gic::timer_ticks;
 pub use interrupt::*;
 use mp::{
@@ -104,8 +101,16 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
-    fn get_address_space() -> u64 {
-        vmm::get_address_space()
+    fn get_kernel_address_space() -> u64 {
+        vmm::get_kernel_address_space()
+    }
+
+    fn get_user_address_space() -> u64 {
+        vmm::get_user_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
+        vmm::set_user_address_space(space)
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {

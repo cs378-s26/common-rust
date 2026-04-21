@@ -1,20 +1,24 @@
 use alloc::boxed::Box;
-use core::fmt::{
-    self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
-    UpperHex, Write,
-};
-use core::ptr;
-use flanterm::{
-    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+use core::{
+    fmt::{
+        self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result,
+        UpperExp, UpperHex, Write,
+    },
+    ptr,
 };
 
 use bitflags::bitflags;
-use limine::framebuffer::Framebuffer;
-use limine::request::FramebufferRequest;
+use flanterm::{
+    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+};
+use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
 use spin::Once;
 
-use crate::arch::{self, UnwindContext, UnwindContextTrait};
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    arch::{self, UnwindContext, UnwindContextTrait},
+    symbols::{lookup_location, lookup_symbol},
+    sync::{IntMutex, MutexLike},
+};
 
 #[derive(Clone, Copy)]
 pub struct Color(pub u8, pub u8, pub u8);
@@ -321,7 +325,24 @@ impl Display for StackTrace {
         let mut i = 0;
         while unsafe { context.valid() } {
             let addr = unsafe { context.return_address() };
-            writeln!(f, "#{}: {:#016x}", i, addr)?;
+
+            match lookup_symbol(addr) {
+                Some(symbol) => {
+                    let demangled = rustc_demangle::demangle(symbol.name);
+                    match lookup_location(addr.saturating_sub(1)).or(symbol.location) {
+                        Some(loc) => writeln!(
+                            f,
+                            "#{}: {:#016x} in {} at {}:{}:{}",
+                            i, addr, demangled, loc.file, loc.row, loc.col
+                        )?,
+                        None => writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?,
+                    }
+                }
+                None => {
+                    writeln!(f, "#{}: {:#016x}", i, addr)?;
+                }
+            }
+
             i += 1;
             context = unsafe { context.next() };
         }

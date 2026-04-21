@@ -1,5 +1,7 @@
-use crate::devices::Device;
 use alloc::string::String;
+pub mod virtio_net;
+
+use crate::devices::Device;
 
 #[derive(Debug)]
 pub enum NetworkError {

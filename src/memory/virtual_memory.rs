@@ -1,14 +1,20 @@
-use crate::{
-    arch::{Arch, ArchTrait},
-    physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
-    print::kprintln,
-    state::{CorePin, StateGuard},
-};
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
+
 use bitflags::bitflags;
 use intrusive_collections::{Bound, KeyAdapter, RBTree, RBTreeLink, intrusive_adapter};
 use limine::{memory_map::EntryType, request::ExecutableAddressRequest};
 use spin::{Mutex, Once};
+
+use crate::{
+    arch::{Arch, ArchTrait},
+    memory::{
+        physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+        virtual_memory_2::USERSPACE_END,
+    },
+    print::kprintln,
+    state::{CorePin, StateGuard},
+    thread::Thread,
+};
 
 bitflags! {
     pub struct PageFaultConditions: u64 {
@@ -104,7 +110,7 @@ pub fn init_virtual_memory_allocator() {
     for region in *REGIONS.get().unwrap() {
         // if you need to map over one of these, just change backing and options accordingly
         VirtualMemoryAllocation::new(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             Some(HHDM_OFFSET.get().unwrap() + region.base as usize),
             region.length as usize,
             None,
@@ -132,7 +138,7 @@ pub fn init_virtual_memory_allocator() {
         executable_start.virtual_base() + executable_length
     );
     VirtualMemoryAllocation::new(
-        Arch::get_address_space(),
+        Arch::get_kernel_address_space(),
         Some(executable_start.virtual_base() as usize),
         executable_length as usize,
         None,
@@ -141,7 +147,18 @@ pub fn init_virtual_memory_allocator() {
     );
 }
 
-pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
+pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {
+    if address < USERSPACE_END {
+        if let Some(process) = thread.process.get() {
+            process
+                .virtual_memory
+                .handle_page_fault(cause, address)
+                .unwrap();
+        } else {
+            panic!("*** PAGE FAULT AT {:x} when no process exists ***", address);
+        }
+        return;
+    }
     if !cause.contains(PageFaultConditions::PRESENT) {
         let mut vmes = VMES
             .get()
@@ -153,7 +170,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize) {
             drop(vmes);
             let frame = frame_alloc();
             Arch::virtual_map(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 address as u64 & !(Arch::PAGE_SIZE as u64 - 1),
                 frame as u64,
                 PagingOptions::PRESENT | PagingOptions::WRITABLE | PagingOptions::CACHEABLE,
@@ -202,6 +219,16 @@ impl VirtualMemoryAllocation {
             .lock();
 
         let mut chosen = if let Some(base) = start {
+            // For SHADOW allocations: if the region is already covered by an active entry nothing more to do.
+            if options.contains(PagingOptions::SHADOW) {
+                let cursor = vmes.active.upper_bound(Bound::Included(&base));
+                if let Some(entry) = cursor.get()
+                    && entry.base + entry.length >= base + length
+                {
+                    return None;
+                }
+            }
+
             // TODO there ought to be a better way to find the free region that contains this fixed region
             let mut cursor = vmes.active.upper_bound(Bound::Excluded(&base));
             let bottom = if let Some(entry) = cursor.get() {
@@ -357,16 +384,19 @@ impl Drop for VirtualMemoryAllocation {
 #[cfg(test)]
 mod test {
 
+    use alloc::{sync::Arc, vec::Vec};
+
+    use spin::{Mutex, barrier::Barrier};
+
     use super::kprintln;
-    use crate::arch::{Arch, ArchTrait};
-    use crate::physical_memory::HHDM_OFFSET;
-    use crate::physical_memory::{frame_alloc, frame_dealloc};
-    use crate::thread::spawn_thread;
-    use crate::virtual_memory::{PagingOptions, VirtualMemoryAllocation};
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
-    use spin::Mutex;
-    use spin::barrier::Barrier;
+    use crate::{
+        arch::{Arch, ArchTrait},
+        memory::{
+            physical_memory::{HHDM_OFFSET, frame_alloc, frame_dealloc},
+            virtual_memory::{PagingOptions, VirtualMemoryAllocation},
+        },
+        thread::spawn_thread,
+    };
 
     #[test_case]
     fn test_manual_page_mapping() {
@@ -379,12 +409,12 @@ mod test {
         // because of the different page tables for higher and lower half, but on x86 we can't map something that's
         // already mapped, so we just unmap first and make sure remapping works
         let vaddr: usize = 0x1000 + hhdm; // unsafe!
-        Arch::virtual_unmap_no_dealloc(Arch::get_address_space(), vaddr as u64);
+        Arch::virtual_unmap_no_dealloc(Arch::get_kernel_address_space(), vaddr as u64);
         let paddr: usize = frame_alloc();
 
         kprintln!("manually mapping vmem");
         Arch::virtual_map(
-            Arch::get_address_space(),
+            Arch::get_kernel_address_space(),
             vaddr as u64,
             paddr as u64,
             PagingOptions::PRESENT
@@ -401,7 +431,7 @@ mod test {
             assert!(unsafe { *((vaddr + i) as *mut u8) } == i as u8);
         }
         kprintln!("manually unmapping vmem");
-        Arch::virtual_unmap(Arch::get_address_space(), vaddr as u64);
+        Arch::virtual_unmap(Arch::get_kernel_address_space(), vaddr as u64);
         kprintln!("virtual memory mapping test complete");
     }
 
@@ -412,7 +442,7 @@ mod test {
         kprintln!("properly mapping vmem");
         let mmapped = (
             VirtualMemoryAllocation::new(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 None,
                 SIZE,
                 None,
@@ -424,7 +454,7 @@ mod test {
             )
             .unwrap(),
             VirtualMemoryAllocation::new(
-                Arch::get_address_space(),
+                Arch::get_kernel_address_space(),
                 None,
                 SIZE,
                 None,
@@ -470,7 +500,7 @@ mod test {
         for _ in 0..ITERATIONS {
             if vmas.is_empty() || rand(&mut seed).is_multiple_of(2) {
                 let vma = VirtualMemoryAllocation::new(
-                    Arch::get_address_space(),
+                    Arch::get_kernel_address_space(),
                     None,
                     Arch::PAGE_SIZE * rand(&mut seed) as usize,
                     None,
@@ -520,7 +550,7 @@ mod test {
                 for i in 0..ITERATIONS {
                     let size = Arch::PAGE_SIZE * (i + 1);
                     let mmapped = VirtualMemoryAllocation::new(
-                        Arch::get_address_space(),
+                        Arch::get_kernel_address_space(),
                         None,
                         size,
                         None,

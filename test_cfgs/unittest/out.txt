@@ -123,9 +123,6 @@ allocating 4-frame DMA region
 verifying multi-frame DMA region
 testing DMA new_bytes rounding
 === DMA region tests passed ===
-ext2 hello: world!
-ext2 updated: borld!
-ext2 entries verified: 100
 virtual memory mapping test started
 frame allocator sanity-checked
 manually mapping vmem

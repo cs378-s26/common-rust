@@ -1,13 +1,14 @@
+use std::{mem, path::PathBuf};
+
 use anyhow::{Error, Result};
 use gimli::{
     Abbreviation, Attribute, AttributeValue, ColumnType, DW_AT_MIPS_linkage_name,
-    DW_AT_abstract_origin, DW_AT_call_column, DW_AT_call_file, DW_AT_call_line, DW_AT_high_pc,
-    DW_AT_linkage_name, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_specification,
-    DW_TAG_inlined_subroutine, DW_TAG_subprogram, EntriesRaw, FileEntry, LineProgramHeader,
-    RangeListsOffset, Reader, UnitOffset, UnitRef,
+    DW_AT_abstract_origin, DW_AT_call_column, DW_AT_call_file, DW_AT_call_line, DW_AT_decl_column,
+    DW_AT_decl_file, DW_AT_decl_line, DW_AT_high_pc, DW_AT_linkage_name, DW_AT_low_pc, DW_AT_name,
+    DW_AT_ranges, DW_AT_specification, DW_TAG_inlined_subroutine, DW_TAG_subprogram,
+    DebugInfoOffset, Dwarf, EntriesRaw, FileEntry, LineProgramHeader, RangeListsOffset, Reader,
+    Unit, UnitOffset, UnitRef,
 };
-use gimli::{DebugInfoOffset, Dwarf, Unit};
-use std::{mem, path::PathBuf};
 
 type Range = std::ops::Range<u64>;
 
@@ -20,6 +21,7 @@ pub struct FunctionInfo {
     pub ranges: Vec<Range>,
     pub inlined: Vec<InlinedFunctionInfo>,
     pub name: Option<String>,
+    pub location: SourceLocation,
 }
 
 pub struct LineSequence {
@@ -323,10 +325,23 @@ impl FunctionInfo {
 
             let mut ranges: RangeAttributes<R> = RangeAttributes::default();
             let mut name = None;
+            let mut location: SourceLocation = SourceLocation::default();
 
             for spec in abbrev.attributes() {
                 let attr = &entries.read_attribute(*spec)?;
                 Self::parse_common_function_data(ctx, unit, attr, &mut ranges, &mut name)?;
+                match attr.name() {
+                    DW_AT_decl_file => {
+                        if let AttributeValue::FileIndex(fi) = attr.value()
+                            && (fi > 0 || unit.header.version() >= 5)
+                        {
+                            location.file = fi as usize;
+                        }
+                    }
+                    DW_AT_decl_line => location.row = attr.udata_value().unwrap_or(0),
+                    DW_AT_decl_column => location.col = attr.udata_value().unwrap_or(0),
+                    _ => {}
+                }
             }
 
             let ranges = ranges.to_vec(unit)?;
@@ -336,6 +351,7 @@ impl FunctionInfo {
                     ranges,
                     inlined: Self::parse_children(ctx, unit, &mut entries, depth)?,
                     name,
+                    location,
                 });
             }
         }
