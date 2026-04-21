@@ -80,7 +80,6 @@ pub fn init_event_handler() {
                     Event::Shootdown { .. } => {
                         panic!("Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown");
                     }
-                    _ => unreachable!(),
                 }
             }
             yield_thread(); // TODO block somehow
