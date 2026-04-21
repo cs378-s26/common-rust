@@ -1,4 +1,4 @@
-use crate::devices::device_discovery::DeviceDiscovery;
+use crate::devices::discovery::DeviceDiscovery;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -7,7 +7,6 @@ use core::{
     hint,
     sync::atomic::{AtomicUsize, Ordering},
 };
-
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
@@ -18,6 +17,7 @@ mod asm;
 mod context;
 mod cpuid;
 mod debug;
+mod devices;
 mod interrupt;
 mod mp;
 mod tables;
@@ -137,6 +137,10 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap_no_dealloc(space, vaddr)
+    }
+
     fn virtual_invalidate(vaddr: u64) {
         unsafe { flush(vaddr as usize) };
     }
@@ -176,10 +180,10 @@ impl ArchTrait for Arch {
         halt()
     }
 
-    fn parse_devices() {}
     fn create_arch_specific_drivers(
-        _system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 

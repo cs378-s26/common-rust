@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use crate::ramdisk::Disk;
+use crate::fs::ramdisk::Disk;
 use crate::sync::IntMutex;
 use crate::sync::MutexLike;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, sync::Weak};
@@ -724,11 +724,18 @@ impl<D: Disk> FNode<D> {
 #[cfg(test)]
 mod test {
     use crate::alloc::string::ToString;
-    use crate::ext2::Ext2;
-    use crate::print::{kprint, kprintln};
-    use crate::ramdisk::Ramdisk;
+    use crate::fs::ext2::Ext2;
+    use crate::fs::ramdisk::Ramdisk;
+    use crate::print::kprintln;
     use crate::sync::MutexLike;
     use alloc::sync::Arc;
+
+    fn nul_terminated_utf8(buf: &[u8]) -> &str {
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        core::str::from_utf8(&buf[..len])
+            .unwrap()
+            .trim_end_matches('\n')
+    }
 
     #[test_case]
     fn test_block_allocation() {
@@ -740,18 +747,9 @@ mod test {
         {
             let mut inode = hello.inode.lock();
             hello.read_block(0, &mut buffer, &inode);
-            match core::str::from_utf8(&buffer[..]) {
-                Ok(s) => {
-                    let mut iter = s.chars();
-                    while let Some(c) = iter.next()
-                        && c != '\0'
-                    {
-                        kprint!("{}", c)
-                    }
-                    kprintln!("");
-                }
-                Err(g) => kprintln!("dead {}", g),
-            };
+            let original = nul_terminated_utf8(&buffer);
+            assert_eq!(original, "world!");
+            kprintln!("ext2 hello: {}", original);
             buffer[0] = b'b';
             hello.write_block(
                 999,
@@ -761,22 +759,11 @@ mod test {
                 Some(fs.block_size * 1000),
                 0,
             );
-            kprintln!("trying to read now");
             hello.read_block(999, &mut buffer, &inode);
-            match core::str::from_utf8(&buffer[..]) {
-                Ok(s) => {
-                    let mut iter = s.chars();
-                    while let Some(c) = iter.next()
-                        && c != '\0'
-                    {
-                        kprint!("{}", c)
-                    }
-                    kprintln!("");
-                }
-                Err(g) => kprintln!("dead {}", g),
-            };
+            let updated = nul_terminated_utf8(&buffer);
+            assert_eq!(updated, "borld!");
+            kprintln!("ext2 updated: {}", updated);
         }
-        // kprintln!("{}", fs.alloc_block(0, None).unwrap());
     }
 
     #[test_case]
@@ -785,13 +772,13 @@ mod test {
         let fs = Arc::new(Ext2::new(disk).unwrap());
         let root = fs.get_root().upgrade().unwrap();
         for i in 0i32..100 {
-            kprintln!("WRITING: {}", i);
-            let _ = root.create_entry(&i.to_string(), 1, 0);
+            root.create_entry(&i.to_string(), 1, 0).unwrap();
         }
 
         for i in 0i32..100 {
-            kprintln!("READING: {}", i);
             assert!(root.search(&i.to_string()).is_some());
         }
+
+        kprintln!("ext2 entries verified: 100");
     }
 }
