@@ -212,12 +212,9 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                 .set(syscall_id);
             suspend_to_thread(IDLE.get().unwrap().clone());
         }
-        _ => panic!(
-            "Unhandled interrupt #{}: err={}, cr2={:x}",
-            context.id,
-            context.err,
-            unsafe { cr2() }
-        ),
+        _ => {
+            handle_device_interrupt(context.id as u8);
+        },
     }
     if from_user {
         unsafe { GS::swap() };
@@ -277,10 +274,10 @@ pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>)
 }
 
 //TODO: store a mapping of irq vector --> irq number
-fn handle_device_interrupt(irq_vec : u8) {
+fn handle_device_interrupt(irq_num : u8) {
     let handlers_list = HANDLERS.lock();
     let mut has_handled = false;
-    if let Some(true_list) = handlers_list.find(&irq_vec).get() {
+    if let Some(true_list) = handlers_list.find(&irq_num).get() {
         for handler in true_list.handlers.lock().iter() {
             let irq_handler = &handler.handler;
             if let Some(_) = irq_handler() {
@@ -288,5 +285,8 @@ fn handle_device_interrupt(irq_vec : u8) {
                 break;
             }
         }
+    }
+    if !has_handled {
+        panic!("Spurious interrupt on IRQ {}", irq_num);
     }
 }
