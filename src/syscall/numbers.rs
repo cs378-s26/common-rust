@@ -12,6 +12,8 @@ pub mod number {
     pub const PPOLL: u64 = 73;
     pub const NEWFSTATAT: u64 = 79;
     pub const CLONE: u64 = 220;
+    pub const EXIT: u64 = 93;
+    pub const GETPID: u64 = 172;
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -41,6 +43,8 @@ pub mod number {
     pub const NEWFSTATAT: u64 = 262;
     pub const UNLINKAT: u64 = 263;
     pub const PIPE2: u64 = 293;
+    pub const EXIT: u64 = 60;
+    pub const GETPID: u64 = 39;
 }
 
 // Constants for syscall translation via wrappers

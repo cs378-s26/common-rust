@@ -12,6 +12,7 @@ use crate::arch::{
     Arch, ContextTrait,
     x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
 };
+use crate::syscall::SyscallContext;
 
 /// Represents the general-purpose registers of an x86 CPU.
 #[repr(C)]
@@ -42,6 +43,45 @@ pub struct Context {
     pub rflags: RFlags,
     pub cs: u64,
     pub ss: u64,
+}
+
+impl SyscallContext for Context {
+    fn syscall_number(&self) -> u64 {
+        self.gp.rax
+    }
+
+    fn arg0(&self) -> u64 {
+        self.gp.rdi
+    }
+
+    fn arg1(&self) -> u64 {
+        self.gp.rsi
+    }
+
+    fn arg2(&self) -> u64 {
+        self.gp.rdx
+    }
+
+    fn arg3(&self) -> u64 {
+        self.gp.r10
+    }
+
+    fn arg4(&self) -> u64 {
+        self.gp.r8
+    }
+
+    fn arg5(&self) -> u64 {
+        self.gp.r9
+    }
+
+    fn set_return_value(&mut self, ret: u64) {
+        self.gp.rax = ret;
+    }
+
+    fn is_user_address(&self, ptr: u64) -> bool {
+        // TODO this is a pretty naive check, will need to be improved as we run more user syscalls with pointers
+        (ptr >> 63) & 1 == 0
+    }
 }
 
 impl const Default for Context {

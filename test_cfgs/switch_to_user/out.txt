@@ -1,2 +1,2 @@
 Starting Testing Code...
-67
+User thread exited successfully.

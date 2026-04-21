@@ -36,6 +36,7 @@ logos = { version = "0.16.1", default-features = false, features = ["export_deri
 fdt = "0.1.5"
 virtio-drivers = "0.13.0"
 zerocopy = { version = "0.8.40", features = ["derive"] }
+bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"
