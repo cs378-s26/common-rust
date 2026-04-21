@@ -67,10 +67,11 @@ pub fn run(
 
     // Virtio-net: user-mode networking, no TAP setup needed
     args.push("-device".into());
-    args.push(match target {
-        Target::X86_64 => "virtio-net,netdev=net0".into(),
-        Target::Aarch64 => "virtio-net-device,netdev=net0".into(),
-    });
+    args.push("virtio-net-device,netdev=net0".into());
+    // args.push(match target {
+    //     Target::X86_64 => "virtio-net,netdev=net0".into(),
+    //     Target::Aarch64 => "virtio-net-device,netdev=net0".into(),
+    // });
     args.push("-netdev".into());
     args.push("user,id=net0".into());
 

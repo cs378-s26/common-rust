@@ -15,6 +15,7 @@ use crate::{
         char::{CharDevice, uart_pl011::UartPl011Discovery},
         network::NetworkDevice,
         virtio::discovery::VirtioDiscovery,
+        discovery::pcie::PcieDiscovery,
     },
     sync::{IntMutex, MutexLike},
 };
@@ -62,6 +63,7 @@ pub fn create_drivers() -> Vec<Box<dyn DeviceDiscovery + Send + Sync>> {
     let mut drivers: Vec<Box<dyn DeviceDiscovery + Send + Sync>> = Vec::new();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
+    drivers.push(Box::new(PcieDiscovery));
     Arch::create_arch_specific_drivers(&mut drivers);
     drivers
 }

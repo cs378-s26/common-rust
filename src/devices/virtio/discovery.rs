@@ -9,6 +9,7 @@ use virtio_drivers::transport::{
         bus::{DeviceFunction, PciRoot},
     },
 };
+use crate::print::kprintln;
 
 use crate::devices::{
     block::virtio_blk::VirtIOBlkDiskDriver,
@@ -58,6 +59,8 @@ impl DeviceDiscovery for VirtioDiscovery {
                 },
             )
             .ok()?;
+            kprintln!("found virtio pcie device");
+            kprintln!("{:?}", transport.device_type());
 
             match transport.device_type() {
                 virtio_drivers::transport::DeviceType::Block => {
@@ -66,6 +69,7 @@ impl DeviceDiscovery for VirtioDiscovery {
                 }
                 virtio_drivers::transport::DeviceType::Network => {
                     let driver = VirtIONetDriver::<VirtioHal, _, 16>::new(transport);
+                    kprintln!("weee");
                     return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
                 }
                 _ => {}

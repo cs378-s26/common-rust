@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use limine::request::RsdpRequest;
 
 use crate::{
-    devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, pcie::init_pcie},
+    devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, pcie::init_pcie_from_mcfg},
     memory::{dma::MmioRegion, physical_memory::HHDM_OFFSET},
 };
 // use virtio_drivers::read_config;
@@ -283,7 +283,7 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
         }
     }
     // Parse PCI-E w/ the MCFG
-    matched_devices.extend(init_pcie(mcfg.clone()));
+    matched_devices.extend(init_pcie_from_mcfg(mcfg.clone()));
 
     Some(matched_devices)
 }
