@@ -13,17 +13,17 @@ pub use numbers::wrapper_constants::*;
 pub trait SyscallContext {
     // syscall number
     // x8 on ARM - rax on x86
-    fn syscall_number(&self) -> usize;
+    fn syscall_number(&self) -> u64;
 
     // max of 6 arguments to a unix sycall
-    fn arg0(&self) -> usize;
-    fn arg1(&self) -> usize;
-    fn arg2(&self) -> usize;
-    fn arg3(&self) -> usize;
-    fn arg4(&self) -> usize;
-    fn arg5(&self) -> usize;
+    fn arg0(&self) -> u64;
+    fn arg1(&self) -> u64;
+    fn arg2(&self) -> u64;
+    fn arg3(&self) -> u64;
+    fn arg4(&self) -> u64;
+    fn arg5(&self) -> u64;
 
-    fn get_arg(&self, n: usize) -> Option<usize> {
+    fn get_arg(&self, n: u64) -> Option<u64> {
         match n {
             0 => Some(self.arg0()),
             1 => Some(self.arg1()),
@@ -35,11 +35,11 @@ pub trait SyscallContext {
         }
     }
 
-    fn set_return_value(&self, ret: usize);
+    fn set_return_value(&mut self, ret: u64);
 
-    fn is_user_address(&self, ptr: usize) -> bool;
+    fn is_user_address(&self, ptr: u64) -> bool;
 
-    fn get_arg_ptr_safe(&self, n: usize) -> Option<usize> {
+    fn get_arg_ptr_safe(&self, n: u64) -> Option<u64> {
         let potential_pointer = self.get_arg(n)?;
         if self.is_user_address(potential_pointer) {
             Some(potential_pointer)
@@ -156,26 +156,26 @@ pub fn syscall_handler(ctx: &mut impl SyscallContext) {
 // functions that we must implement. These are the only ones used by Aarch64 and
 // represent modern supersets(?) (supercalls?) of the legacy systemcalls
 
-fn sys_read(_fd: usize, _buf: usize, _count: usize) {}
-fn sys_write(_fd: usize, _buf: usize, _count: usize) {}
-fn sys_openat(_dirfd: i32, _pathname: usize, _flags: usize, _mode: usize) {}
+fn sys_read(_fd: u64, _buf: u64, _count: u64) {}
+fn sys_write(_fd: u64, _buf: u64, _count: u64) {}
+fn sys_openat(_dirfd: i32, _pathname: u64, _flags: u64, _mode: u64) {}
 fn sys_close(_fd: i32) {}
-fn sys_clone(_flags: usize, _stack: usize, _parent_tid: usize, _child_tid: usize, _tls: usize) {}
-fn sys_pipe2(_pipefd: usize, _flags: i32) {}
-fn sys_newfstatat(_dirfd: i32, _pathname: usize, _statbuf: usize, _flags: i32) {}
-fn sys_ppoll(_fds: usize, _nfds: usize, _tmo_p: usize, _sigmask: usize) {}
-fn sys_faccessat(_dirfd: i32, _pathname: usize, _mode: i32) {}
+fn sys_clone(_flags: u64, _stack: u64, _parent_tid: u64, _child_tid: u64, _tls: u64) {}
+fn sys_pipe2(_pipefd: u64, _flags: i32) {}
+fn sys_newfstatat(_dirfd: i32, _pathname: u64, _statbuf: u64, _flags: i32) {}
+fn sys_ppoll(_fds: u64, _nfds: u64, _tmo_p: u64, _sigmask: u64) {}
+fn sys_faccessat(_dirfd: i32, _pathname: u64, _mode: i32) {}
 fn sys_pselect6(
     _nfds: i32,
-    _readfds: usize,
-    _writefds: usize,
-    _exceptfds: usize,
-    _timeout: usize,
-    _sigmask: usize,
+    _readfds: u64,
+    _writefds: u64,
+    _exceptfds: u64,
+    _timeout: u64,
+    _sigmask: u64,
 ) {
 }
-fn sys_mkdirat(_dirfd: i32, _pathname: usize, _mode: usize) {}
-fn sys_unlinkat(_dirfd: i32, _pathname: usize, _flags: i32) {}
+fn sys_mkdirat(_dirfd: i32, _pathname: u64, _mode: u64) {}
+fn sys_unlinkat(_dirfd: i32, _pathname: u64, _flags: i32) {}
 
 // Legacy x86_64 wrappers for compatibility
 
