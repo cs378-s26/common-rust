@@ -10,7 +10,6 @@ use crate::{
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
     thread::{CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread, yield_thread},
-    virtual_memory::{PageFaultConditions, handle_page_fault},
     thread::{ThreadQueue, ThreadQueueAdapter, this_thread}
 };
 
@@ -75,7 +74,7 @@ pub fn init_event_handler() {
                 let event = CUR_EVENT.read_for(&thread).lock().take().unwrap();
                 match event {
                     Event::PageFault { cause, address } => {
-                        handle_page_fault(cause, address);
+                        handle_page_fault(cause, address, &thread);
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                     Event::Shootdown { .. } => {
@@ -108,7 +107,6 @@ pub fn push_event(event: Event, core: CoreId, should_alloc : bool) {
         });
         queue.lock().push_back(node);
     } else {
-        // if the event is being pushed from a thread, we can allocate the event node on the stack
         CUR_EVENT.lock().replace(event);
         //this is O(1) even though the compiler doesn't know it
         //since there should never be any contention here
