@@ -10,10 +10,17 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    thread::{block_to_idle, preempt_to_idle, this_thread},
+    syscall::SyscallContext,
+    thread::{IDLE, block_to_idle, preempt_to_idle, suspend_to_thread, this_thread},
 };
 
 global_asm!(include_str!("exception.s"));
+
+// TODO: use bitflags or smth
+
+// TODO: do we need a core local stack for temporary interrupts?
+// context switching happens on a context switching stack. this can
+// act like a core local stack for us.
 
 // docs for all this here:
 // https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
@@ -48,22 +55,64 @@ struct ExceptionContext {
     _pad: u64, // padding to make the size a multiple of 16 bytes for alignment, see SAVE_REGS in exception.s
 }
 
+impl SyscallContext for ExceptionContext {
+    fn syscall_number(&self) -> u64 {
+        self.gpr.regs[8]
+    }
+
+    fn arg0(&self) -> u64 {
+        self.gpr.regs[0]
+    }
+    fn arg1(&self) -> u64 {
+        self.gpr.regs[1]
+    }
+    fn arg2(&self) -> u64 {
+        self.gpr.regs[2]
+    }
+    fn arg3(&self) -> u64 {
+        self.gpr.regs[3]
+    }
+    fn arg4(&self) -> u64 {
+        self.gpr.regs[4]
+    }
+    fn arg5(&self) -> u64 {
+        self.gpr.regs[5]
+    }
+
+    fn set_return_value(&mut self, ret: u64) {
+        self.gpr.regs[0] = ret;
+    }
+
+    fn is_user_address(&self, ptr: u64) -> bool {
+        (ptr >> 63) & 1 == 0
+    }
+}
+
 /// Prints verbose information about the exception and then panics.
 fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     if exception_class == SVC {
-        kprintln!("SVC");
-        exc.elr_el1 += 4;
-        exc.spsr_el1 &= !(1 << 7); // clear IRQ mask.
         // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
+        // system_call_handler(exc);
+        let syscall_id = exc.gpr.regs[8];
 
-        // uncomment this once the other prs are in
-        // syscall_handler(exc);
+        this_thread()
+            .process
+            .get()
+            .unwrap()
+            .exit_code
+            .set(syscall_id);
+        suspend_to_thread(IDLE.get().unwrap().clone());
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {
-        kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+        // TODO: iss bits for instruction abort as well
+        if exception_class == INSTRUCTION_ABORT_LOWER {
+            page_fault_handler(exc, exception_class);
+        } else {
+            kprintln!("Instruction abort at address {:#018x}", exc.elr_el1);
+        }
     } else if exception_class == DATA_ABORT || exception_class == DATA_ABORT_LOWER {
         page_fault_handler(exc, exception_class);
     } else {
@@ -156,11 +205,6 @@ extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     gic::eoi(intid);
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
-}
-
 // Usermode
 
 #[unsafe(no_mangle)]
@@ -170,17 +214,19 @@ extern "C" fn el0_sync(e: &mut ExceptionContext) {
 
 #[unsafe(no_mangle)]
 extern "C" fn el0_irq(e: &mut ExceptionContext) {
-    default_exception_handler(e);
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn el0_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    current_elx_irq(e);
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn unimplemented(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    kprintln!("Hit unimplemented exception vector!");
+
+    panic!(
+        "Exception on core {}!\n\n\
+        {}",
+        CORE_ID.get(),
+        e
+    );
 }
 
 //--------------------------------------------------------------------------------------------------

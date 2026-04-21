@@ -16,16 +16,18 @@ pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
+pub mod elf;
 pub mod event;
-// pub mod ext2;
 pub mod fs;
 pub mod local_storage;
 pub mod memory;
+pub mod modules;
 pub mod mp;
 pub mod panic;
 pub mod print;
 pub mod process;
 pub mod state;
+pub mod symbols;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
@@ -46,6 +48,7 @@ use memory::{
     physical_memory::{THE_HEAP, init_physical_memory_allocator},
     virtual_memory::init_virtual_memory_allocator,
 };
+use modules::load_modules_early;
 use spin::{Barrier, Once};
 
 use crate::{
@@ -116,6 +119,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     parse_kernel_cmdline();
     init_malloc((&raw mut THE_HEAP) as usize, 256 * 1024 * 1024);
     init_tty();
+
+    load_modules_early();
 
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {

@@ -39,7 +39,15 @@ impl ContextTrait for Context {
     }
 
     fn jump_to(&self) -> ! {
-        unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
+        unsafe {
+            jump_to_context(
+                &raw const self.gp,
+                self.sp,
+                self.spsr,
+                self.pc,
+                (self.spsr & 0b1111) == 0,
+            );
+        }
     }
 
     fn new_kthread<T>(
@@ -54,6 +62,15 @@ impl ContextTrait for Context {
         ctx.gp.regs[0] = data as u64;
         ctx.sp = slice_stack_ptr(stack) & !0xF;
         ctx
+    }
+
+    fn new_uthread(pc: u64, sp: u64) -> Self {
+        Context {
+            spsr: 0,
+            pc,
+            sp,
+            ..Default::default()
+        }
     }
 }
 
@@ -83,11 +100,21 @@ unsafe extern "C" fn jump_to_context(
     _sp: u64,
     _spsr: u64,
     _pc: u64,
+    _is_user: bool,
 ) -> ! {
     naked_asm!(
         // AAPCS64 call ABI:
-        // x0 = buf, x1 = sp, x2 = spsr, x3 = pc
+        // x0 = buf, x1 = sp, x2 = spsr, x3 = pc, x4 = is_user
+
+        // put the sp in the correct exception level sp depending on
+        // 'is_user'
+        "cmp x4, #1",
+        "b.eq 1f",
         "mov sp, x1",
+        "b 2f",
+        "1:",
+        "msr sp_el0, x1",
+        "2:",
         // set things up for eret
         "msr spsr_el1, x2",
         "msr elr_el1, x3",
@@ -190,7 +217,6 @@ pub unsafe fn save_context<T: FnOnce() -> !>(
     #[unsafe(naked)]
     unsafe extern "C" fn save_context_impl<T: FnOnce() -> !>(
         _stack: u64,
-
         _ctx: *mut MutexGuard<'static, Context>,
         _fwd: *mut T,
     ) {
