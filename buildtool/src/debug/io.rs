@@ -320,7 +320,10 @@ impl DebugModuleFileWriter {
                     .map(|f| self.strings.intern(f))
                     .unwrap_or(usize::MAX),
                 location: if info.is_some() {
-                    Self::translate_loc(&mut self.strings.lazy_intern_table(&info.unwrap().files), &func.location)
+                    Self::translate_loc(
+                        &mut self.strings.lazy_intern_table(&info.unwrap().files),
+                        &func.location,
+                    )
                 } else {
                     LocationEntry::NULL
                 },
