@@ -30,6 +30,11 @@ use crate::{
     sync::{IntSpinLock, MutexLike},
 };
 
+use alloc::collections::BTreeMap;
+use crate::fs::file::File;
+use crate::fs::vfs::{VNode, VFS};
+use crate::sync::IntMutex;
+
 pub struct Thread {
     // used for generally queuing threads somewhere
     pub link: LinkedListAtomicLink,
@@ -42,6 +47,8 @@ pub struct Thread {
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
     pub process: Once<Arc<Process>>,
+    pub fd_table: IntMutex<BTreeMap<i32, Arc<File>>>,
+    pub cwd: IntMutex<Option<Arc<dyn VNode>>>,
 }
 
 impl Thread {
@@ -55,6 +62,8 @@ impl Thread {
             tls: Pin::new(tls),
             tls_addr,
             process: Once::new(),
+            fd_table: IntMutex::new(BTreeMap::new()),
+            cwd: IntMutex::new(VFS.get_root()),
         });
 
         THIS_THREAD

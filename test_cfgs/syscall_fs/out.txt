@@ -1,0 +1,10 @@
+Starting Testing Code...
+Testing syscalls...
+openat O_CREAT passed, fd: 3
+write passed
+close passed
+openat read passed, fd: 3
+read passed: syscall write test
+close passed again
+All syscall tests passed!
+Syscall test complete.
