@@ -259,11 +259,16 @@ use alloc::sync::Arc;
 static HANDLERS : 
 IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
 
-pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
-    let gsi_num = crate::devices::discovery::acpi::get_gsi_for_irq(irq_num);
+fn route_irq_num(irq_num : u8, vec : u8) {
+    let override_ = crate::devices::discovery::acpi::get_gsi_for_irq(irq_num);
     //TODO: use MADT flags to determine trigger mode and polarity
     //for now, we'll just route IRQ to 0x67
-    super::ioapic::route_irq(gsi_num, 0x67, apic::get_lapic_id() as u32);
+    super::ioapic::route_irq(override_.irq_src, 
+        vec, apic::get_lapic_id() as u32, override_.trigger_mode, override_.polarity);
+} 
+
+pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+    route_irq_num(irq_num, 0x67);
     let handler = Arc::new(InterruptHandler { handler, link: LinkedListAtomicLink::new() });
     let mut handlers_list = HANDLERS.lock();
     let handlers_for_line = handlers_list.find_mut(&0x67);

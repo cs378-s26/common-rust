@@ -3,7 +3,7 @@ use spin::Once;
 use crate::arch::{Arch, ArchTrait};
 use crate::print::kprintln;
 use crate::memory::dma::MmioRegion;
-use crate::devices::discovery::{DeviceDiscovery, DeviceType, acpi::MadtEntry};
+use crate::devices::discovery::{DeviceDiscovery, DeviceType, acpi::MadtEntry, acpi::TriggerMode, acpi::Polarity};
 use alloc::vec;
 
 const IOREGSEL: usize = 0x00;
@@ -74,17 +74,29 @@ pub fn init_ioapic(phys_base: u64) {
 }
 
 /// Route an IRQ line to a CPU vector, delivered to `dest_apic_id` (physical mode).
-pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32) {
-    let lo: u32 = vector as u32; // bits[16]=0 (unmasked), delivery=fixed
+pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32, trigger_mode: TriggerMode, polarity: Polarity) {
+    let mut cur_lo : u32 = vector as u32;
+    match trigger_mode {
+        // see https://wiki.osdev.org/IOAPIC#IOREGSEL_and_IOWIN
+        TriggerMode::Edge => cur_lo &= !(1 << 15), // clear bit 15 for edge-triggered
+        TriggerMode::Level => cur_lo |= 1 << 15, // set bit 15 for level-triggered
+    }
+    match polarity {
+        Polarity::ActiveHigh => cur_lo &= !(1 << 13), // clear bit 13 for active-high
+        Polarity::ActiveLow => cur_lo |= 1 << 13, // set bit 13 for active-low
+    }
+    //cur_lo = ((cur_lo  >> 8) << 8) | (vector as u32); // set the vector in bits[7:0]
+    //let lo: u32 = vector as u32; // bits[16]=0 (unmasked), delivery=fixed
     let hi: u32 = (dest_apic_id & 0xFF) << 24; // destination APIC ID in bits[31:24]
 
     unsafe {
         write_reg(redir_hi(irq), hi);
-        write_reg(redir_lo(irq), lo); // write lo last — unmasks the entry
+        write_reg(redir_lo(irq), cur_lo); // write lo last — unmasks the entry
     }
 
     let read_lo = unsafe { read_reg(redir_lo(irq)) };
     let read_hi = unsafe { read_reg(redir_hi(irq)) };
+    /*
     kprintln!(
         "[IOAPIC] IRQ{} → vec={:#04x} dest_apic={} redir={:#010x}_{:#010x}",
         irq,
@@ -93,6 +105,7 @@ pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32) {
         read_hi,
         read_lo
     );
+    */
 }
 
 /// Mask (disable) an IRQ line.

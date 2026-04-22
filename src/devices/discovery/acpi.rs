@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 
+use derive_more::Debug;
 use limine::request::RsdpRequest;
 use alloc::collections::BTreeMap;
 use crate::sync::{IntSpinLock, MutexLike};
@@ -22,7 +23,7 @@ fn physical_to_virtual(addr: usize) -> usize {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct Rsdp {
     signature: [u8; 8],
     checksum: u8,
@@ -59,7 +60,7 @@ impl Rsdp {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct SDTHeader {
     signature: [u8; 4],
     length: u32,
@@ -73,7 +74,7 @@ struct SDTHeader {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct Madt {
     header: SDTHeader,
     local_apic_address: u32,
@@ -82,7 +83,7 @@ struct Madt {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct MadtEntryHeader {
     entry_type: u8,
     record_length: u8,
@@ -103,6 +104,27 @@ pub enum MadtEntry {
         flags: u16
     },
     Other(usize), // for now we only care about IO APIC entries, so we'll give a ptr to the rest
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TriggerMode {
+    Edge,
+    Level
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Polarity {
+    ActiveHigh,
+    ActiveLow
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InterruptOverride {
+    pub bus_src: u8,
+    pub irq_src: u8,
+    pub gsi: u32,
+    pub trigger_mode: TriggerMode,
+    pub polarity: Polarity
 }
 
 // TODO: Construct table from isa irq num --> GSI from MADT entries
@@ -184,14 +206,14 @@ impl Madt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Mcfg {
     header: SDTHeader,
     entries: Vec<McfgEntry>,
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct McfgEntry {
     pub base_address: u64,
     pub segment_group_number: u16,
@@ -238,7 +260,7 @@ impl Mcfg {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct Xsdt {
     header: SDTHeader,
     sdt_ptrs: usize,
@@ -289,13 +311,19 @@ impl Xsdt {
     }
 }
 
-static IOAPIC_OVERRIDE_GSI_MAP : IntSpinLock<BTreeMap<u8, u8>> = IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
+static IOAPIC_OVERRIDE_GSI_MAP : IntSpinLock<BTreeMap<u8, InterruptOverride>> = IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
 
-pub fn get_gsi_for_irq(irq_num : u8) -> u8 {
+pub fn get_gsi_for_irq(irq_num : u8) -> InterruptOverride {
     if let Some(gsi) = IOAPIC_OVERRIDE_GSI_MAP.lock().get(&irq_num) {
         *gsi
     } else {
-        irq_num
+        InterruptOverride {
+            bus_src: 0,
+            irq_src: irq_num,
+            gsi: irq_num as u32,
+            trigger_mode: TriggerMode::Edge,
+            polarity: Polarity::ActiveHigh
+        }
     }
 }
 
@@ -315,8 +343,19 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
             if let MadtEntry::ISOverride { bus_src, irq_src, gsi, flags } = entry {
-                kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
-                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(irq_src, gsi as u8);
+                //kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
+                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(irq_src, 
+                InterruptOverride {
+                    bus_src,
+                    irq_src,
+                    gsi,
+                    //Flags taken from https://wiki.osdev.org/MADT
+                    //We assume Edge triggered and Active High polarity, per 
+                    //https://wiki.osdev.org/IOAPIC
+                    trigger_mode: if flags & 0b11 == 0b11 { TriggerMode::Level } else { TriggerMode::Edge },
+                    polarity: if flags & 0b1000 != 0 { Polarity::ActiveLow } else { Polarity::ActiveHigh }
+                }
+                );
             }
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));
             if let Some(d) = device {
