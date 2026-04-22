@@ -1,6 +1,9 @@
 use alloc::vec::Vec;
 
 use limine::request::RsdpRequest;
+use alloc::collections::BTreeMap;
+use crate::sync::{IntSpinLock, MutexLike};
+use crate::print::kprintln;
 
 use crate::{
     devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, pcie::init_pcie},
@@ -93,6 +96,12 @@ pub enum MadtEntry {
         address: u32,
         global_system_interrupt_base: u32,
     },
+    ISOverride {
+        bus_src: u8,
+        irq_src: u8,
+        gsi: u32,
+        flags: u16
+    },
     Other(usize), // for now we only care about IO APIC entries, so we'll give a ptr to the rest
 }
 
@@ -149,6 +158,24 @@ impl Madt {
                         reserved: ioapic.reserved,
                         address: ioapic.address,
                         global_system_interrupt_base: ioapic.global_system_interrupt_base,
+                    }
+                }
+                2 => {
+                    #[repr(C, packed)]
+                    #[derive(Clone, Copy)]
+                    struct SourceOverrideEntry {
+                        header: MadtEntryHeader,
+                        bus_src: u8,
+                        irq_src: u8,
+                        gsi: u32,
+                        flags: u16
+                    }
+                    let override_ = unsafe { *(entry as *const SourceOverrideEntry) };
+                    MadtEntry::ISOverride {
+                        bus_src: override_.bus_src,
+                        irq_src: override_.irq_src,
+                        gsi: override_.gsi,
+                        flags: override_.flags
                     }
                 }
                 _ => MadtEntry::Other(entry as usize),
@@ -262,6 +289,16 @@ impl Xsdt {
     }
 }
 
+static IOAPIC_OVERRIDE_GSI_MAP : IntSpinLock<BTreeMap<u8, u8>> = IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
+
+pub fn get_gsi_for_irq(irq_num : u8) -> u8 {
+    if let Some(gsi) = IOAPIC_OVERRIDE_GSI_MAP.lock().get(&irq_num) {
+        *gsi
+    } else {
+        irq_num
+    }
+}
+
 // Currently ACPI is in this weird spot
 // I'm trying my hardest to avoid creating an AML interpreter
 // So basically this things' job is only to parse
@@ -277,6 +314,10 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     for driver in SYSTEM_DRIVERS.iter() {
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
+            if let MadtEntry::ISOverride { bus_src, irq_src, gsi, flags } = entry {
+                kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
+                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(irq_src, gsi as u8);
+            }
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));
             if let Some(d) = device {
                 matched_devices.extend(d);
