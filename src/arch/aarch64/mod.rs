@@ -61,6 +61,10 @@ impl ArchTrait for Arch {
         irq_is_enabled()
     }
 
+    fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+        panic!("Not implemented");
+    }
+
     fn sleep_core() {
         asm::sleep_core();
     }
