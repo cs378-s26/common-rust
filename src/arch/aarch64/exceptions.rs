@@ -10,7 +10,6 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    syscall::SyscallContext,
     thread::{block_to_idle, preempt_to_idle, this_thread},
 };
 

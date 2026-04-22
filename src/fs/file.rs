@@ -1,8 +1,10 @@
 use alloc::sync::Arc;
-use crate::fs::vfs::{VNode, FsError};
-use crate::sync::IntMutex;
-use crate::sync::MutexLike;
-a
+
+use crate::{
+    fs::vfs::{FsError, VNode},
+    sync::{IntMutex, MutexLike},
+};
+
 pub struct File {
     pub vnode: Arc<dyn VNode>,
     pub offset: IntMutex<usize>,
