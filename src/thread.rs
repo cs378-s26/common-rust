@@ -22,6 +22,7 @@ use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
+    event::Event,
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
@@ -168,6 +169,7 @@ thread_local! {
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
     pub PINNED_TO_CORE: AtomicBool = AtomicBool::new(false);
     pub CORE_PINNED_TO: AtomicUsize = AtomicUsize::new(usize::MAX);
+    pub CUR_EVENT: Mutex<Option<Event>> = Mutex::new(None);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
