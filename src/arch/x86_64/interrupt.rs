@@ -260,24 +260,28 @@ static HANDLERS :
 IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
 
 pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+    let gsi_num = crate::devices::discovery::acpi::get_gsi_for_irq(irq_num);
+    //TODO: use MADT flags to determine trigger mode and polarity
+    //for now, we'll just route IRQ to 0x67
+    super::ioapic::route_irq(gsi_num, 0x67, apic::get_lapic_id() as u32);
     let handler = Arc::new(InterruptHandler { handler, link: LinkedListAtomicLink::new() });
     let mut handlers_list = HANDLERS.lock();
-    let handlers_for_line = handlers_list.find_mut(&irq_num);
+    let handlers_for_line = handlers_list.find_mut(&0x67);
     if let Some(true_list) = handlers_for_line.get() {
         true_list.handlers.lock().push_back(handler);
     } else {
         let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
         new_list.push_back(handler);
-        let new_line = InterruptHandlersLine { irq: irq_num, handlers: IntMutex::new(new_list), link: RBTreeAtomicLink::new() };
+        let new_line = InterruptHandlersLine { irq: 0x67, handlers: IntMutex::new(new_list), link: RBTreeAtomicLink::new() };
         handlers_list.insert(Arc::new(new_line));
     }
 }
 
 //TODO: store a mapping of irq vector --> irq number
-fn handle_device_interrupt(irq_num : u8) {
+fn handle_device_interrupt(irq_vec : u8) {
     let handlers_list = HANDLERS.lock();
     let mut has_handled = false;
-    if let Some(true_list) = handlers_list.find(&irq_num).get() {
+    if let Some(true_list) = handlers_list.find(&irq_vec).get() {
         for handler in true_list.handlers.lock().iter() {
             let irq_handler = &handler.handler;
             if let Some(_) = irq_handler() {
@@ -287,6 +291,6 @@ fn handle_device_interrupt(irq_num : u8) {
         }
     }
     if !has_handled {
-        panic!("Spurious interrupt on IRQ {}", irq_num);
+        panic!("Spurious interrupt on IRQ {}", irq_vec);
     }
 }
