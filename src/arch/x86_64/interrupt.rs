@@ -1,21 +1,22 @@
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use core::{
     arch::naked_asm,
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use intrusive_collections::{
+    KeyAdapter, LinkedList, LinkedListAtomicLink, RBTree, RBTreeLink, intrusive_adapter,
+};
 use x86::controlregs::cr2;
-use intrusive_collections::{KeyAdapter, LinkedList, LinkedListAtomicLink, intrusive_adapter};
-use alloc::{vec, vec::Vec, boxed::Box, rc::Rc};
-use intrusive_collections::{RBTree, RBTreeLink};
-use crate::sync::{IntMutex, MutexLike, IntSpinLock};
-use crate::Once;
 use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
+    Once,
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
+    sync::{IntMutex, IntSpinLock, MutexLike},
     thread::{IDLE, suspend_to_thread, this_thread},
 };
 
@@ -214,35 +215,33 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         }
         _ => {
             handle_device_interrupt(context.id as u8);
-        },
+        }
     }
     if from_user {
         unsafe { GS::swap() };
     }
 }
 
-
 //this is hardcoded since apparently x86-64 has only 256 interrupt vectors
-static mut occupied_vectors: IntMutex<[bool; 256]> = 
-    IntMutex::new([false; 256]);
-static mut next_vector : IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
+static mut occupied_vectors: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
+static mut next_vector: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
 
 /*
-* Design: 
+* Design:
 */
 
 intrusive_adapter!(InterruptHandlerAdapter = Arc<InterruptHandler>: InterruptHandler { link => LinkedListAtomicLink });
 struct InterruptHandler {
-    handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>,
-    link : LinkedListAtomicLink,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    link: LinkedListAtomicLink,
 }
 
 use intrusive_collections::RBTreeAtomicLink;
 
 struct InterruptHandlersLine {
-    irq : u8,
-    handlers : IntMutex<LinkedList<InterruptHandlerAdapter>>,
-    link : RBTreeAtomicLink,
+    irq: u8,
+    handlers: IntMutex<LinkedList<InterruptHandlerAdapter>>,
+    link: RBTreeAtomicLink,
 }
 
 impl<'a> KeyAdapter<'a> for InterruptHandlersLineAdapter {
@@ -256,20 +255,28 @@ intrusive_adapter!(InterruptHandlersLineAdapter = Arc<InterruptHandlersLine>: In
 
 use alloc::sync::Arc;
 
-static HANDLERS : 
-IntMutex<RBTree<InterruptHandlersLineAdapter>> = IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
+static HANDLERS: IntMutex<RBTree<InterruptHandlersLineAdapter>> =
+    IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
 
-fn route_irq_num(irq_num : u8, vec : u8) {
+fn route_irq_num(irq_num: u8, vec: u8) {
     let override_ = crate::devices::discovery::acpi::get_gsi_for_irq(irq_num);
     //TODO: use MADT flags to determine trigger mode and polarity
     //for now, we'll just route IRQ to 0x67
-    super::ioapic::route_irq(override_.irq_src, 
-        vec, apic::get_lapic_id() as u32, override_.trigger_mode, override_.polarity);
-} 
+    super::ioapic::route_irq(
+        override_.irq_src,
+        vec,
+        apic::get_lapic_id() as u32,
+        override_.trigger_mode,
+        override_.polarity,
+    );
+}
 
-pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+pub fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
     route_irq_num(irq_num, 0x67);
-    let handler = Arc::new(InterruptHandler { handler, link: LinkedListAtomicLink::new() });
+    let handler = Arc::new(InterruptHandler {
+        handler,
+        link: LinkedListAtomicLink::new(),
+    });
     let mut handlers_list = HANDLERS.lock();
     let handlers_for_line = handlers_list.find_mut(&0x67);
     if let Some(true_list) = handlers_for_line.get() {
@@ -277,13 +284,17 @@ pub fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>)
     } else {
         let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
         new_list.push_back(handler);
-        let new_line = InterruptHandlersLine { irq: 0x67, handlers: IntMutex::new(new_list), link: RBTreeAtomicLink::new() };
+        let new_line = InterruptHandlersLine {
+            irq: 0x67,
+            handlers: IntMutex::new(new_list),
+            link: RBTreeAtomicLink::new(),
+        };
         handlers_list.insert(Arc::new(new_line));
     }
 }
 
 //TODO: store a mapping of irq vector --> irq number
-fn handle_device_interrupt(irq_vec : u8) {
+fn handle_device_interrupt(irq_vec: u8) {
     let handlers_list = HANDLERS.lock();
     let mut has_handled = false;
     if let Some(true_list) = handlers_list.find(&irq_vec).get() {

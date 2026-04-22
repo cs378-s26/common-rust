@@ -19,9 +19,9 @@ mod cpuid;
 mod debug;
 mod devices;
 mod interrupt;
+mod ioapic;
 mod mp;
 mod tables;
-mod ioapic;
 pub mod tsc;
 mod vmm;
 
@@ -94,7 +94,7 @@ impl ArchTrait for Arch {
         apic::send_ipi_all_except_self(IPI_WAKE);
     }
 
-    fn register_irq_handler(irq_num : u8, handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+    fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
         register_irq_handler(irq_num, handler);
     }
 

@@ -1,14 +1,13 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use derive_more::Debug;
 use limine::request::RsdpRequest;
-use alloc::collections::BTreeMap;
-use crate::sync::{IntSpinLock, MutexLike};
-use crate::print::kprintln;
 
 use crate::{
     devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, pcie::init_pcie},
     memory::{dma::MmioRegion, physical_memory::HHDM_OFFSET},
+    print::kprintln,
+    sync::{IntSpinLock, MutexLike},
 };
 // use virtio_drivers::read_config;
 
@@ -101,7 +100,7 @@ pub enum MadtEntry {
         bus_src: u8,
         irq_src: u8,
         gsi: u32,
-        flags: u16
+        flags: u16,
     },
     Other(usize), // for now we only care about IO APIC entries, so we'll give a ptr to the rest
 }
@@ -109,13 +108,13 @@ pub enum MadtEntry {
 #[derive(Debug, Clone, Copy)]
 pub enum TriggerMode {
     Edge,
-    Level
+    Level,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Polarity {
     ActiveHigh,
-    ActiveLow
+    ActiveLow,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -124,7 +123,7 @@ pub struct InterruptOverride {
     pub irq_src: u8,
     pub gsi: u32,
     pub trigger_mode: TriggerMode,
-    pub polarity: Polarity
+    pub polarity: Polarity,
 }
 
 // TODO: Construct table from isa irq num --> GSI from MADT entries
@@ -190,14 +189,14 @@ impl Madt {
                         bus_src: u8,
                         irq_src: u8,
                         gsi: u32,
-                        flags: u16
+                        flags: u16,
                     }
                     let override_ = unsafe { *(entry as *const SourceOverrideEntry) };
                     MadtEntry::ISOverride {
                         bus_src: override_.bus_src,
                         irq_src: override_.irq_src,
                         gsi: override_.gsi,
-                        flags: override_.flags
+                        flags: override_.flags,
                     }
                 }
                 _ => MadtEntry::Other(entry as usize),
@@ -311,9 +310,10 @@ impl Xsdt {
     }
 }
 
-static IOAPIC_OVERRIDE_GSI_MAP : IntSpinLock<BTreeMap<u8, InterruptOverride>> = IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
+static IOAPIC_OVERRIDE_GSI_MAP: IntSpinLock<BTreeMap<u8, InterruptOverride>> =
+    IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
 
-pub fn get_gsi_for_irq(irq_num : u8) -> InterruptOverride {
+pub fn get_gsi_for_irq(irq_num: u8) -> InterruptOverride {
     if let Some(gsi) = IOAPIC_OVERRIDE_GSI_MAP.lock().get(&irq_num) {
         *gsi
     } else {
@@ -322,7 +322,7 @@ pub fn get_gsi_for_irq(irq_num : u8) -> InterruptOverride {
             irq_src: irq_num,
             gsi: irq_num as u32,
             trigger_mode: TriggerMode::Edge,
-            polarity: Polarity::ActiveHigh
+            polarity: Polarity::ActiveHigh,
         }
     }
 }
@@ -342,19 +342,34 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     for driver in SYSTEM_DRIVERS.iter() {
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
-            if let MadtEntry::ISOverride { bus_src, irq_src, gsi, flags } = entry {
+            if let MadtEntry::ISOverride {
+                bus_src,
+                irq_src,
+                gsi,
+                flags,
+            } = entry
+            {
                 //kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
-                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(irq_src, 
-                InterruptOverride {
-                    bus_src,
+                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
                     irq_src,
-                    gsi,
-                    //Flags taken from https://wiki.osdev.org/MADT
-                    //We assume Edge triggered and Active High polarity, per 
-                    //https://wiki.osdev.org/IOAPIC
-                    trigger_mode: if flags & 0b11 == 0b11 { TriggerMode::Level } else { TriggerMode::Edge },
-                    polarity: if flags & 0b1000 != 0 { Polarity::ActiveLow } else { Polarity::ActiveHigh }
-                }
+                    InterruptOverride {
+                        bus_src,
+                        irq_src,
+                        gsi,
+                        //Flags taken from https://wiki.osdev.org/MADT
+                        //We assume Edge triggered and Active High polarity, per
+                        //https://wiki.osdev.org/IOAPIC
+                        trigger_mode: if flags & 0b11 == 0b11 {
+                            TriggerMode::Level
+                        } else {
+                            TriggerMode::Edge
+                        },
+                        polarity: if flags & 0b1000 != 0 {
+                            Polarity::ActiveLow
+                        } else {
+                            Polarity::ActiveHigh
+                        },
+                    },
                 );
             }
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));

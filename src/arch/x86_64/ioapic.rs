@@ -1,10 +1,16 @@
+use alloc::vec;
+
 use spin::Once;
 
-use crate::arch::{Arch, ArchTrait};
-use crate::print::kprintln;
-use crate::memory::dma::MmioRegion;
-use crate::devices::discovery::{DeviceDiscovery, DeviceType, acpi::MadtEntry, acpi::TriggerMode, acpi::Polarity};
-use alloc::vec;
+use crate::{
+    arch::{Arch, ArchTrait},
+    devices::discovery::{
+        DeviceDiscovery, DeviceType,
+        acpi::{MadtEntry, Polarity, TriggerMode},
+    },
+    memory::dma::MmioRegion,
+    print::kprintln,
+};
 
 const IOREGSEL: usize = 0x00;
 const IOWIN: usize = 0x10;
@@ -50,9 +56,7 @@ unsafe fn write_reg(reg: u8, val: u32) {
 /// Note: PCD (cache-disable) is not yet wired through the VMM, so QEMU is fine but real
 /// hardware would need write-combining or uncached mappings for correct MMIO behaviour.
 pub fn init_ioapic(phys_base: u64) {
-    IOAPIC.call_once(|| {
-        MmioRegion::new(phys_base as usize, 4096)
-    });
+    IOAPIC.call_once(|| MmioRegion::new(phys_base as usize, 4096));
 
     let ver = unsafe { read_reg(REG_VER) };
     let max_redir = ((ver >> 16) & 0xFF) as u8;
@@ -74,16 +78,22 @@ pub fn init_ioapic(phys_base: u64) {
 }
 
 /// Route an IRQ line to a CPU vector, delivered to `dest_apic_id` (physical mode).
-pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32, trigger_mode: TriggerMode, polarity: Polarity) {
-    let mut cur_lo : u32 = vector as u32;
+pub fn route_irq(
+    irq: u8,
+    vector: u8,
+    dest_apic_id: u32,
+    trigger_mode: TriggerMode,
+    polarity: Polarity,
+) {
+    let mut cur_lo: u32 = vector as u32;
     match trigger_mode {
         // see https://wiki.osdev.org/IOAPIC#IOREGSEL_and_IOWIN
         TriggerMode::Edge => cur_lo &= !(1 << 15), // clear bit 15 for edge-triggered
-        TriggerMode::Level => cur_lo |= 1 << 15, // set bit 15 for level-triggered
+        TriggerMode::Level => cur_lo |= 1 << 15,   // set bit 15 for level-triggered
     }
     match polarity {
         Polarity::ActiveHigh => cur_lo &= !(1 << 13), // clear bit 13 for active-high
-        Polarity::ActiveLow => cur_lo |= 1 << 13, // set bit 13 for active-low
+        Polarity::ActiveLow => cur_lo |= 1 << 13,     // set bit 13 for active-low
     }
     //cur_lo = ((cur_lo  >> 8) << 8) | (vector as u32); // set the vector in bits[7:0]
     //let lo: u32 = vector as u32; // bits[16]=0 (unmasked), delivery=fixed
@@ -94,9 +104,9 @@ pub fn route_irq(irq: u8, vector: u8, dest_apic_id: u32, trigger_mode: TriggerMo
         write_reg(redir_lo(irq), cur_lo); // write lo last — unmasks the entry
     }
 
+    /*
     let read_lo = unsafe { read_reg(redir_lo(irq)) };
     let read_hi = unsafe { read_reg(redir_hi(irq)) };
-    /*
     kprintln!(
         "[IOAPIC] IRQ{} → vec={:#04x} dest_apic={} redir={:#010x}_{:#010x}",
         irq,
@@ -119,9 +129,21 @@ impl DeviceDiscovery for discovery {
     fn name(&self) -> &'static str {
         "x86_64 IOAPIC discovery"
     }
-    fn am_i_this(&self, node: crate::devices::discovery::DeviceNode) -> Option<alloc::vec::Vec<crate::devices::discovery::DeviceType>> {
-        if let crate::devices::discovery::DeviceNode::MadtEntry(MadtEntry::IOApic { id, address, .. }) = node {
-            kprintln!("[IOAPIC discovery] found IOAPIC with id={} addr={:#x}", id, address);
+    fn am_i_this(
+        &self,
+        node: crate::devices::discovery::DeviceNode,
+    ) -> Option<alloc::vec::Vec<crate::devices::discovery::DeviceType>> {
+        if let crate::devices::discovery::DeviceNode::MadtEntry(MadtEntry::IOApic {
+            id,
+            address,
+            ..
+        }) = node
+        {
+            kprintln!(
+                "[IOAPIC discovery] found IOAPIC with id={} addr={:#x}",
+                id,
+                address
+            );
             init_ioapic(address as u64);
             Some(vec![crate::devices::discovery::DeviceType::Special])
         } else {
