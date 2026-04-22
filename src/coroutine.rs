@@ -153,8 +153,7 @@ pub fn init_coroutine_executor() {
     spawn_thread(|| GLOBAL_EXECUTOR.get().unwrap().run());
 }
 
-#[cfg(test)]
-mod test {
+crate::testing::unit_test!("", {
     use alloc::sync::Arc;
     use core::{
         future::Future,
@@ -163,29 +162,26 @@ mod test {
         task::{Context, Poll},
     };
 
-    use super::spawn_coroutine;
-    use crate::{print::kprintln, thread::yield_thread};
+    use crate::{coroutine::spawn_coroutine, print::kprintln, thread::yield_thread};
 
-    #[test_case]
-    fn test_coroutine_counter() {
-        const COUNT: u64 = 400;
-        let counter = Arc::new(AtomicU64::new(0));
+    // test coroutine counter
+    const COUNT: u64 = 400;
+    let counter = Arc::new(AtomicU64::new(0));
 
-        for _ in 0..COUNT {
-            let counter_clone = counter.clone();
-            spawn_coroutine(async move {
-                counter_clone.fetch_add(1, Ordering::SeqCst);
-            });
-        }
-
-        // Wait for all coroutines to finish.
-        while counter.load(Ordering::SeqCst) < COUNT {
-            yield_thread();
-        }
-
-        assert_eq!(counter.load(Ordering::SeqCst), COUNT);
-        kprintln!("Coroutine counter test passed: {}", COUNT);
+    for _ in 0..COUNT {
+        let counter_clone = counter.clone();
+        spawn_coroutine(async move {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
     }
+
+    // Wait for all coroutines to finish.
+    while counter.load(Ordering::SeqCst) < COUNT {
+        yield_thread();
+    }
+
+    assert_eq!(counter.load(Ordering::SeqCst), COUNT);
+    kprintln!("Coroutine counter test passed: {}", COUNT);
 
     struct IntFuture {
         value: u64,
@@ -226,18 +222,16 @@ mod test {
         );
     }
 
-    #[test_case]
-    fn test_future_polling() {
-        const TASKS: u64 = 112;
-        let counter = Arc::new(AtomicU64::new(0));
-        for _ in 0..TASKS {
-            spawn_coroutine(async_task(counter.clone()));
-        }
-        while counter.load(Ordering::SeqCst) < TASKS {
-            yield_thread();
-        }
-
-        assert_eq!(counter.load(Ordering::SeqCst), TASKS);
-        kprintln!("Coroutine future polling test passed.");
+    // test future polling
+    const TASKS: u64 = 112;
+    let counter = Arc::new(AtomicU64::new(0));
+    for _ in 0..TASKS {
+        spawn_coroutine(async_task(counter.clone()));
     }
-}
+    while counter.load(Ordering::SeqCst) < TASKS {
+        yield_thread();
+    }
+
+    assert_eq!(counter.load(Ordering::SeqCst), TASKS);
+    kprintln!("Coroutine future polling test passed.");
+});

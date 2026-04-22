@@ -11,38 +11,39 @@ pub macro test_output($text:literal) {
     ACTUAL.lock().push_str($text)
 }
 
+#[cfg(test)]
+#[test_case]
+pub struct UnitTestGuard {
+    expected: String,
+}
+
+#[cfg(test)]
+#[test_case]
+impl UnitTestGuard {
+    pub fn new(expected: &'static str) -> UnitTestGuard {
+        assert!(*ACTUAL.lock() == Into::<String>::into(""));
+        UnitTestGuard {
+            expected: expected.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[test_case]
+impl Drop for UnitTestGuard {
+    fn drop(&mut self) {
+        if self.expected != *ACTUAL.lock() {
+            panic!(
+                "\nExpected:\n{}\nActual:\n{}",
+                self.expected,
+                ACTUAL.lock()
+            );
+        }
+        *ACTUAL.lock() = "".into()
+    }
+}
+
 pub macro unit_test($expected:literal, $code:block) {
-    #[cfg(test)]
-    #[test_case]
-    struct UnitTestGuard {
-        expected: String,
-    }
-
-    #[cfg(test)]
-    #[test_case]
-    impl UnitTestGuard {
-        fn new(expected: &'static str) -> UnitTestGuard {
-            assert!(*ACTUAL.lock() == Into::<String>::into(""));
-            UnitTestGuard {
-                expected: expected.into(),
-            }
-        }
-    }
-
-    #[cfg(test)]
-    #[test_case]
-    impl Drop for UnitTestGuard {
-        fn drop(&mut self) {
-            if { self.expected != *ACTUAL.lock() } {
-                panic!(
-                    "\nExpected:\n{}\nActual:\n{}",
-                    self.expected,
-                    ACTUAL.lock()
-                );
-            }
-            *ACTUAL.lock() = "".into()
-        }
-    }
     #[cfg(test)]
     #[test_case]
     fn unit_test() {
