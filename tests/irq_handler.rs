@@ -17,31 +17,34 @@ kernel_common::integration_test!({
 
     kprintln!("Testing IRQ handler registration...");
 
-    Arch::register_irq_handler(8, Box::new(|| {
-        unsafe {
-            use x86::io::{inb, outb};
-            // Reading register C re-arms the RTC and reveals why it fired.
-            // Bit 6 (PF) is the Periodic Interrupt Flag; only count that.
-            outb(0x70, 0x0C);
-            let reg_c = inb(0x71);
-            if reg_c & 0x40 != 0 && !FIRED.load(Ordering::Relaxed) {
-                FIRED.store(true, Ordering::Relaxed);
-                kprintln!("Irq handler called!");
+    Arch::register_irq_handler(
+        8,
+        Box::new(|| {
+            unsafe {
+                use x86::io::{inb, outb};
+                // Reading register C re-arms the RTC and reveals why it fired.
+                // Bit 6 (PF) is the Periodic Interrupt Flag; only count that.
+                outb(0x70, 0x0C);
+                let reg_c = inb(0x71);
+                if reg_c & 0x40 != 0 && !FIRED.load(Ordering::Relaxed) {
+                    FIRED.store(true, Ordering::Relaxed);
+                    kprintln!("Irq handler called!");
+                }
             }
-        }
-        apic::eoi();
-        Some(())
-    }));
+            apic::eoi();
+            Some(())
+        }),
+    );
 
     // Enable RTC periodic interrupts via CMOS register B (IRQ 8).
     // The default rate is ~1024 Hz, so the interrupt fires almost immediately.
     unsafe {
         use x86::io::{inb, outb};
-        outb(0x70, 0x8B);           // select register B, NMI disabled
+        outb(0x70, 0x8B); // select register B, NMI disabled
         let prev = inb(0x71);
-        outb(0x70, 0x8B);           // re-select (CMOS index resets after each read/write)
-        outb(0x71, prev | 0x40);    // set PIE (periodic interrupt enable)
-        outb(0x70, 0x8C);           // read register C to clear any stale pending interrupt
+        outb(0x70, 0x8B); // re-select (CMOS index resets after each read/write)
+        outb(0x71, prev | 0x40); // set PIE (periodic interrupt enable)
+        outb(0x70, 0x8C); // read register C to clear any stale pending interrupt
         let _ = inb(0x71);
     }
 
