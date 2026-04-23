@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+
+jobs:
+    test:
+        runs-on: self-hosted
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Load environment variables
+              run: |
+                  direnv allow .
+                  direnv export gha > "$GITHUB_ENV"
+
+            - name: Run all tests
+              run: |
+                  cargo buildtool test --target x86-64
+                  cargo buildtool test --target aarch64
+
+            - name: Upload cached testing directory on failure
+              if: ${{ failure() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: buildtool-cache-testing
+                  path: buildtool-cache/testing
+                  if-no-files-found: warn

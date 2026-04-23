@@ -1,0 +1,31 @@
+{
+    "is_unittest": false,
+    "test_name": "timer",
+    "n_runs": 1,
+    "timeout_ms": 60000,
+    "expected_output_path": "test_cfgs/timer/out.txt",
+    "target": "aarch64",
+    "qemu_args": [
+        "-machine",
+        "virt,acpi=off",
+        "-bios",
+        "{PATH_TO_EFI}",
+        "-drive",
+        "file={PATH_TO_IMG},format=raw",
+        "-no-reboot",
+        "-d",
+        "int,cpu_reset",
+        "-D",
+        "qemu.log",
+        "-m",
+        "4G",
+        "-smp",
+        "4",
+        "-cpu",
+        "cortex-a72",
+        "-device",
+        "ramfb",
+        "-display",
+        "none"
+    ]
+}

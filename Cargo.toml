@@ -12,14 +12,20 @@ name = "kernel_common"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "kernel_common"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 atomic_enum = "0.3.0"
 bitflags = "2.10.0"
 derive_more = { version = "2.0.1", default-features = false, features = ["add_assign", "add", "constructor", "mul", "display", "debug"] }
 flanterm = { version = "0.1.0", path = "flanterm" }
-intrusive-collections = "0.10.0"
+intrusive-collections = { version = "0.10.0", features = ["nightly"] }
 limine = "0.5.0"
 lock_api = "0.4.14"
+rustc-demangle = { version = "0.1", default-features = false }
 seq-macro = "0.3.6"
 spin = "0.10.0"
 static_cell = "2.1.1"
@@ -27,12 +33,18 @@ talc = "4.4.3"
 uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
+<<<<<<< HEAD
 zerocopy = { version = "0.8.40", features = ["derive"] }
 tinywasm = { version = "0.8.0", default-features = false, features = ["parser"] }
+=======
+fdt = "0.1.5"
+virtio-drivers = "0.13.0"
+zerocopy = { version = "0.8.40", features = ["derive"] }
+>>>>>>> origin/main
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_64 = "0.15.4"
 x86 = "0.52.0"
+x86_64 = "0.15.4"
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]

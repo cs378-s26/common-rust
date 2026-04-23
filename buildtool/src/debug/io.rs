@@ -319,7 +319,14 @@ impl DebugModuleFileWriter {
                     .as_ref()
                     .map(|f| self.strings.intern(f))
                     .unwrap_or(usize::MAX),
-                location: LocationEntry::NULL,
+                location: if info.is_some() {
+                    Self::translate_loc(
+                        &mut self.strings.lazy_intern_table(&info.unwrap().files),
+                        &func.location,
+                    )
+                } else {
+                    LocationEntry::NULL
+                },
             });
 
             id

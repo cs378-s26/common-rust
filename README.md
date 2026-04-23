@@ -1,10 +1,4 @@
-# Rust Kernel Template
-
-## Extensions
-
-This builds on the common template with some extra features 
-- interrupts/preemption
-- blocking locks
+# CS 378 - Multicore Operating Systems - Rust Kernel
 
 ## Running
 
@@ -12,11 +6,12 @@ A utility program to launch the kernel is included in this template. You can use
 
 ```sh
 cargo buildtool image # build kernel image
-cargo buildtool qemu # runs qemu
+cargo buildtool qemu # runs qemu with an ext2 filesystem built from fs_dir
 cargo buildtool gdb # runs gdb, and attaches to qemu
 cargo buildtool clean # cleans the buildtool cache
 cargo buildtool help # help message
-cargo buildtool test # runs unit tests. QEMU flags specified in run_qemu_{arch_string}.sh
+cargo buildtool test # runs all tests. QEMU flags specified in run_qemu_{arch_string}.sh
+cargo buildtool qemu-test {path to .json} [--stdout] # runs the test specified by the .json file.
 ```
 
 The current buildtool supports both aarch64 & x86-64, though some qemu args may be funky depending on your system.
@@ -24,6 +19,7 @@ The current buildtool supports both aarch64 & x86-64, though some qemu args may 
 Use the `-k` flag to enable KVM, which is fairly close to real hardware as far as the processor is concerned. When running `gdb`, you **must**
 pass in `-k` if and only if the `qemu` instance was started with `-k`. Use `--help` for more options. You can configure the number of cores and
 amount of memory.
+Use `--filesystem-path` to choose the directory that gets packed into the cached ext2 filesystem attached to QEMU.
 
 **Note:** Your QEMU version **must** be new enough for compatibility with `ovmf.fd`, ideally at least 8.2 (the latest possible with Ubuntu 24.04). 
 
@@ -36,3 +32,7 @@ QEMU command is specified in `run_qemu_{arch_string}.sh`.
 - [ ] Support integration tests. Each test should define a qemu run script for each arch & expected serial output files.
 ### Misc
 - [ ] fix kernel symbol module generation
+
+## Further documentation
+
+For more information on the inner working of kernel subcomponents, see the `docs/` directory, which contains markdown files on various topics. The docs are not comprehensive, but they should give you a good starting point for understanding the kernel's design and implementation.

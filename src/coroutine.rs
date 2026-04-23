@@ -1,19 +1,16 @@
+use alloc::{boxed::Box, sync::Arc, task::Wake};
 use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
 };
 
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::task::Wake;
-
 use intrusive_collections::{LinkedList, LinkedListAtomicLink, intrusive_adapter};
 use spin::{Once, RwLock};
-// TODO: use a blocking RwLock.
 
+// TODO: use a blocking RwLock.
 use crate::{
-    sync::IntMutex,
+    sync::{IntMutex, MutexLike},
     thread::{spawn_thread, yield_thread},
 };
 
@@ -154,4 +151,93 @@ pub fn init_coroutine_queue() {
 
 pub fn init_coroutine_executor() {
     spawn_thread(|| GLOBAL_EXECUTOR.get().unwrap().run());
+}
+
+#[cfg(test)]
+mod test {
+    use alloc::sync::Arc;
+    use core::{
+        future::Future,
+        pin::Pin,
+        sync::atomic::{AtomicU64, Ordering},
+        task::{Context, Poll},
+    };
+
+    use super::spawn_coroutine;
+    use crate::{print::kprintln, thread::yield_thread};
+
+    #[test_case]
+    fn test_coroutine_counter() {
+        const COUNT: u64 = 400;
+        let counter = Arc::new(AtomicU64::new(0));
+
+        for _ in 0..COUNT {
+            let counter_clone = counter.clone();
+            spawn_coroutine(async move {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+
+        // Wait for all coroutines to finish.
+        while counter.load(Ordering::SeqCst) < COUNT {
+            yield_thread();
+        }
+
+        assert_eq!(counter.load(Ordering::SeqCst), COUNT);
+        kprintln!("Coroutine counter test passed: {}", COUNT);
+    }
+
+    struct IntFuture {
+        value: u64,
+        polls: u64,
+    }
+
+    impl Future for IntFuture {
+        type Output = u64;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            if self.polls > self.value {
+                // Pend this many times before ready.
+                Poll::Ready(self.value + 445)
+            } else {
+                self.get_mut().polls += 1;
+                cx.waker().wake_by_ref(); // Ready to be polled again.
+                Poll::Pending
+            }
+        }
+    }
+
+    async fn async_int(number: u64) -> u64 {
+        IntFuture {
+            value: number,
+            polls: 0,
+        }
+        .await
+    }
+
+    async fn async_task(counter: Arc<AtomicU64>) {
+        for i in 0..4 {
+            let n = async_int(i).await;
+            assert_eq!(n, i + 445);
+        }
+        kprintln!(
+            "Async task {} complete.",
+            counter.fetch_add(1, Ordering::SeqCst)
+        );
+    }
+
+    #[test_case]
+    fn test_future_polling() {
+        const TASKS: u64 = 112;
+        let counter = Arc::new(AtomicU64::new(0));
+        for _ in 0..TASKS {
+            spawn_coroutine(async_task(counter.clone()));
+        }
+        while counter.load(Ordering::SeqCst) < TASKS {
+            yield_thread();
+        }
+
+        assert_eq!(counter.load(Ordering::SeqCst), TASKS);
+        kprintln!("Coroutine future polling test passed.");
+    }
 }

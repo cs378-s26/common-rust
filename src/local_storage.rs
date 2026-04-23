@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use crate::heap::aligned_slice;
+use crate::memory::heap::aligned_slice;
 
 pub trait LocalStorageHandler {
     fn get_range() -> (*const c_void, *const c_void);

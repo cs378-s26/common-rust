@@ -15,250 +15,255 @@
 pub mod arch;
 pub mod cmdline;
 pub mod coroutine;
-pub mod ext2;
-pub mod heap;
+pub mod devices;
+pub mod elf;
+pub mod event;
+pub mod fs;
 pub mod local_storage;
+pub mod memory;
+pub mod modules;
 pub mod mp;
-pub mod physical_memory;
+pub mod panic;
 pub mod print;
-pub mod ramdisk;
+pub mod process;
+pub mod state;
+pub mod symbols;
 pub mod sync;
+pub mod syscall;
 pub mod thread;
-pub mod virtual_memory;
-
 extern crate alloc;
+use alloc::sync::Arc;
+use core::sync::atomic::Ordering;
 
-#[cfg(test)]
-mod test_runtime {
-    use alloc::sync::Arc;
-    use core::sync::atomic::Ordering;
-
-    use limine::BaseRevision;
-    use limine::firmware_type::FirmwareType;
-    use limine::request::{
+use limine::{
+    BaseRevision,
+    firmware_type::FirmwareType,
+    mp::Cpu,
+    request::{
         BootloaderInfoRequest, FirmwareTypeRequest, MpRequest, RequestsEndMarker,
         RequestsStartMarker,
-    };
-    use spin::{Barrier, Once};
-    use talc::Span;
+    },
+};
+use memory::{
+    physical_memory::{THE_HEAP, init_physical_memory_allocator},
+    virtual_memory::init_virtual_memory_allocator,
+};
+use modules::load_modules_early;
+use spin::{Barrier, Once};
 
-    use crate::arch::{Arch, ArchTrait, KernelEntryTrait};
-    use crate::cmdline::{self, get_cmdline_error, get_cmdline_text, parse_kernel_cmdline};
-    use crate::coroutine::{init_coroutine_executor, init_coroutine_queue};
-    use crate::heap::init_malloc;
-    use crate::mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table};
-    use crate::physical_memory::init_physical_memory_allocator;
-    use crate::print::{StackTrace, init_tty, kprintln};
-    use crate::thread::{init_threading, poll_tasks, set_up_idle, spawn_thread};
-    use crate::virtual_memory::init_virtual_memory_allocator;
+use crate::{
+    arch::{Arch, ArchTrait},
+    cmdline::parse_kernel_cmdline,
+    coroutine::{init_coroutine_executor, init_coroutine_queue},
+    devices::discovery::{create_drivers, discover_devices},
+    event::init_event_handler,
+    fs::{
+        fake::{FAKE, Fake},
+        vfs::VFS,
+    },
+    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    print::{StackTrace, init_tty, kprintln},
+    thread::{poll_tasks, set_up_idle, spawn_thread},
+};
 
-    // some sample limine requests, for no particular reason
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
-    static BASE_REVISION: BaseRevision = BaseRevision::with_revision(4);
+// some sample limine requests, for no particular reason
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static BASE_REVISION: BaseRevision = BaseRevision::with_revision(4);
 
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
-    static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::new();
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::new();
 
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
-    static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static FIRMWARE_TYPE_REQUEST: FirmwareTypeRequest = FirmwareTypeRequest::new();
 
-    #[used]
-    #[unsafe(link_section = ".limine_requests")]
-    static MP_REQUEST: MpRequest = MpRequest::new();
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static MP_REQUEST: MpRequest = MpRequest::new();
 
-    // ignore these
-    #[used]
-    #[unsafe(link_section = ".limine_requests_start")]
-    static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
+#[used]
+#[unsafe(link_section = ".limine_requests_start")]
+pub static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 
-    #[used]
-    #[unsafe(link_section = ".limine_requests_end")]
-    static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
+#[used]
+#[unsafe(link_section = ".limine_requests_end")]
+pub static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
-    // heap
-    // TODO: use virtual memory herez
-    static mut THE_HEAP: [u8; 256 * 1024 * 1024] = [0; _];
+pub trait KernelWorkTrait {
+    fn work() -> ();
+}
 
-    fn dump_boot_info() {
-        if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
-            kprintln!("bootloader: {} v{}", res.name(), res.version());
-        }
+pub struct KernelWork;
 
-        if let Some(res) = get_cmdline_text() {
-            kprintln!("cmdline: \"{}\"", res);
-        }
-
-        if let Some(err) = get_cmdline_error() {
-            match err {
-                cmdline::CmdlineError::NoResponse => {
-                    kprintln!("warn: no response received for cmdline request")
-                }
-                cmdline::CmdlineError::Utf8Error(err) => {
-                    kprintln!("warn: failed to convert cmdline to utf8: {}", err)
-                }
-                cmdline::CmdlineError::ParseError(err) => {
-                    kprintln!("warn: failed to parse cmdline: {}", err)
-                }
-            }
-        }
-
-        if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
-            kprintln!(
-                "firmware: {}",
-                match res.firmware_type() {
-                    FirmwareType::X86_BIOS => "bios",
-                    FirmwareType::UEFI_32 => "efi_32",
-                    FirmwareType::UEFI_64 => "efi_64",
-                    FirmwareType::SBI => "sbi",
-                    _ => "unknown",
-                }
-            );
-        }
-    }
-
-    static INIT_THREADING_BARRIER: Once<Barrier> = Once::new();
-    static MP_PREEMPT_ENTER_BARRIER: Once<Barrier> = Once::new();
-    static MAKE_TEST_THREAD: Once<()> = Once::new();
-
-    struct TestKernelEntry;
-
-    impl KernelEntryTrait for TestKernelEntry {
-        fn kernel_main() -> ! {
-            kernel_main()
-        }
-    }
-
-    pub fn kernel_main() -> ! {
-        // kprintln!("we are the MPCorelings! please feed us!");
-        let mp_res = MP_REQUEST
-            .get_response()
-            .expect("Expected to find MpResponse, found None.");
-        let core_count = mp_res.cpus().len();
-
-        INIT_THREADING_BARRIER
-            .call_once(|| {
-                kprintln!("hii~");
-                kprintln!("preparing common tasks on {}", CORE_ID.get());
-                kprintln!("there are {} cores total", core_count);
-                init_threading();
-                init_coroutine_queue();
-                Barrier::new(core_count)
-            })
-            .wait();
-
-        let idle = set_up_idle();
-
-        kprintln!("init tid: core={}, {}", CORE_ID.get(), idle.tid());
-
-        init_coroutine_executor();
-        kprintln!("Coroutine executor initialized.");
-
-        MP_PREEMPT_ENTER_BARRIER
-            .call_once(|| Barrier::new(core_count))
-            .wait();
-
-        MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst);
-
-        MAKE_TEST_THREAD.call_once(|| {
-            spawn_thread(move || {
-                crate::test_main();
-            })
-        });
-
-        Arch::set_irq_enabled(true);
-        kprintln!("Polling for tasks...");
-        poll_tasks();
-    }
-
-    #[unsafe(no_mangle)]
-    unsafe extern "C" fn system_main() -> ! {
-        assert!(BASE_REVISION.is_valid());
-
-        parse_kernel_cmdline();
-        init_tty();
-
-        // print some system info
-        if let Some(rev) = BASE_REVISION.loaded_revision() {
-            kprintln!("limine rev: {}", rev);
-        }
-
-        if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
-            kprintln!("bootloader: {} v{}", res.name(), res.version());
-        }
-
-        if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
-            kprintln!(
-                "fimrware: {}",
-                match res.firmware_type() {
-                    FirmwareType::X86_BIOS => "bios",
-                    FirmwareType::UEFI_32 => "uefi (32-bit)",
-                    FirmwareType::UEFI_64 => "uefi (64-bit)",
-                    FirmwareType::SBI => "sbi",
-                    _ => "unknown",
-                }
-            )
-        }
-
-        init_malloc(Span::from_slice(&raw mut THE_HEAP));
-
-        // note we don't need to do anything special here because rust doesn't have init_array
-        // if we wanted once-initialized data, we would either provide our custom mechanism,
-        // or just spam OnceCell
-
-        init_physical_memory_allocator();
-        init_virtual_memory_allocator();
-
-        // handle SSE/FSGSBASE/etc in initialize_mp
-        let mp_res = MP_REQUEST
-            .get_response()
-            .expect("Expected to find MpResponse, found None.");
-        init_cpu_local_table(mp_res.cpus().len());
-        Arch::initialize_mp::<TestKernelEntry>(&MP_REQUEST)
-    }
-
-    // workaround for rust-analyzer being stupid
-    #[inline(always)]
-    #[allow(dead_code)]
-    fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
-        match info.location() {
-            Some(location) => kprintln!(
-                "panic: {}\nat {}:{}:{}\n{}",
-                info.message(),
-                location.file(),
-                location.line(),
-                location.column(),
-                StackTrace::current()
-            ),
-            None => kprintln!(
-                "panic: {}\nat unknown location\n{}",
-                info.message(),
-                StackTrace::current()
-            ),
-        };
-
-        Arch::shutdown(10 as u16);
-        Arch::halt()
-    }
-
-    #[panic_handler]
-    fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-        rust_panic_impl(info);
-    }
-
-    // also copy-pasted from the tutorial
-    pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
-        let _barrier = Arc::new(Barrier::new(tests.len()));
-        kprintln!("Running tests...");
-        for test in tests {
-            test();
-        }
-        kprintln!("Done running tests.");
-        Arch::shutdown(0);
+impl KernelWorkTrait for KernelWork {
+    fn work() {
+        #[cfg(test)]
+        test_main();
+        #[cfg(not(test))]
+        kprintln!("entered kernel");
     }
 }
 
 #[cfg(test)]
-pub use test_runtime::{kernel_main, test_runner};
+#[unsafe(no_mangle)]
+unsafe extern "C" fn system_main() -> ! {
+    system_init::<KernelWork>()
+}
+
+pub fn system_init<Work: KernelWorkTrait>() -> ! {
+    assert!(BASE_REVISION.is_valid());
+
+    parse_kernel_cmdline();
+    init_malloc((&raw mut THE_HEAP) as usize, 256 * 1024 * 1024);
+    init_tty();
+
+    load_modules_early();
+
+    // print some system info
+    if let Some(rev) = BASE_REVISION.loaded_revision() {
+        kprintln!("limine rev: {}", rev);
+    }
+
+    if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
+        kprintln!("bootloader: {} v{}", res.name(), res.version());
+    }
+
+    if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {
+        kprintln!(
+            "fimrware: {}",
+            match res.firmware_type() {
+                FirmwareType::X86_BIOS => "bios",
+                FirmwareType::UEFI_32 => "uefi (32-bit)",
+                FirmwareType::UEFI_64 => "uefi (64-bit)",
+                FirmwareType::SBI => "sbi",
+                _ => "unknown",
+            }
+        )
+    }
+
+    init_physical_memory_allocator();
+    init_virtual_memory_allocator();
+    VirtualMemory::init();
+    let fake = Arc::clone(FAKE.call_once(Fake::new));
+    VFS.mount(fake);
+
+    // initialize all system drivers, then parse devices to initialize them
+    create_drivers();
+    kprintln!("Discovering devices...");
+    discover_devices();
+    kprintln!("Finished device discovery.");
+
+    // note we don't need to do anything special here because rust doesn't have init_array
+    // if we wanted once-initialized data, we would either provide our custom mechanism,
+    // or just spam OnceCell
+
+    // handle SSE/FSGSBASE/etc in initialize_mp
+    let resp = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    init_cpu_local_table(resp.cpus().len());
+    let mut bsp = None;
+    let mut core_id: u64 = 1;
+    for cpu in resp.cpus() {
+        if Arch::is_bsp(&MP_REQUEST, cpu) {
+            bsp = Some(cpu);
+        } else {
+            cpu.extra.store(core_id, Ordering::SeqCst);
+            core_id += 1;
+            cpu.goto_address.write(core_init::<Work>);
+        }
+    }
+    unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
+}
+
+/// wrapper around initalize core that goes to kernel main
+/// # Safety
+/// Should only be called from bootstrap processor during kernel initialization
+unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
+    unsafe { Arch::initialize_core(cpu) };
+    let mp_res = MP_REQUEST
+        .get_response()
+        .expect("Expected to find MpResponse, found None.");
+    let core_count = mp_res.cpus().len();
+
+    // runs an initialization routine once overall
+    // waits for this to complete before any core proceeds
+    macro one($code:block) {{
+        // needs to be in an extra block to avoid namespace collisions
+        static BARRIER: Once<Barrier> = Once::new();
+        BARRIER
+            .call_once(|| {
+                $code;
+                Barrier::new(core_count)
+            })
+            .wait();
+    }}
+
+    // runs an initialization routine on each core
+    // waits for this to complete before any core proceeds
+    macro all($code:block) {{
+        // needs to be in an extra block to avoid namespace collisions
+        static BARRIER: Once<Barrier> = Once::new();
+        $code;
+        BARRIER.call_once(|| Barrier::new(core_count)).wait();
+    }}
+
+    // this is where the magic happens
+    one!({ init_coroutine_queue() });
+    all!({ set_up_idle() });
+    all!({ init_coroutine_executor() });
+    all!({ init_event_handler() });
+    all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
+    one!({
+        spawn_thread(move || {
+            kprintln!("Starting Testing Code...");
+            Work::work();
+        })
+    });
+    all!({ Arch::set_irq_enabled(true) });
+    poll_tasks() // runs on all cores, never to return
+}
+
+// also copy-pasted from the tutorial
+pub fn test_runner(tests: &'static [&(dyn Fn() + Send + Sync)]) {
+    for test in tests {
+        test();
+    }
+    Arch::shutdown(0);
+}
+
+#[cfg(test)]
+#[panic_handler]
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    panic::rust_panic_impl(info);
+}
+
+pub macro integration_test($test:block) {
+    use kernel_common::{KernelWorkTrait, system_init};
+
+    #[cfg(test)]
+    pub struct KernelWork;
+
+    #[cfg(test)]
+    impl KernelWorkTrait for KernelWork {
+        fn work() {
+            #[cfg(test)]
+            $test;
+            Arch::shutdown(0);
+        }
+    }
+
+    #[cfg(test)]
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn system_main() -> ! {
+        system_init::<KernelWork>();
+    }
+
+    #[panic_handler]
+    fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+        kernel_common::panic::rust_panic_impl(info);
+    }
+}

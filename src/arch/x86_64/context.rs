@@ -4,13 +4,14 @@ use core::{
     ptr::{self},
 };
 
-use super::interrupt::InterruptContext;
-
 use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
-use crate::arch::{Arch, ContextTrait};
+use super::interrupt::InterruptContext;
+use crate::arch::{
+    Arch, ContextTrait,
+    x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
+};
 
 /// Represents the general-purpose registers of an x86 CPU.
 #[repr(C)]
@@ -65,7 +66,7 @@ impl const Default for Context {
                 r15: 0,
             },
             rip: Default::default(),
-            rflags: RFlags::from_bits_truncate(0x202), // bit 1 (reserved, must be set) + IF flag
+            rflags: RFlags::empty(),
             cs: Default::default(),
             ss: Default::default(),
         }
@@ -160,6 +161,9 @@ impl ContextTrait for Context {
         self.ss = SegmentSelector::new(GlobalDescriptorTable::DS, Ring::Ring0)
             .bits()
             .into();
+
+        // make sure IF is set
+        self.rflags.insert(RFlags::FLAGS_IF);
     }
 
     fn new_kthread<T>(
@@ -169,11 +173,27 @@ impl ContextTrait for Context {
     ) -> Self {
         let mut ctx = Self::default();
         ctx.setup_kthread_context();
-
         ctx.rip = function as usize as u64;
         ctx.gp.rdi = data as u64;
         ctx.gp.rsp = slice_stack_pointer(stack);
         ctx
+    }
+
+    fn new_uthread(_pc: u64, _sp: u64) -> Self {
+        Self {
+            rip: _pc,
+            gp: GPRegisters {
+                rsp: _sp,
+                ..Default::default()
+            },
+            cs: SegmentSelector::new(GlobalDescriptorTable::USER_CS, Ring::Ring3)
+                .bits()
+                .into(),
+            ss: SegmentSelector::new(GlobalDescriptorTable::USER_DS, Ring::Ring3)
+                .bits()
+                .into(),
+            rflags: RFlags::FLAGS_IF, // make sure IF is set
+        }
     }
 }
 

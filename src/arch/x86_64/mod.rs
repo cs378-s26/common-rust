@@ -1,15 +1,23 @@
-use core::cell::SyncUnsafeCell;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use core::{
+    cell::SyncUnsafeCell,
+    hint,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
+use crate::devices::discovery::DeviceDiscovery;
+
 pub mod apic;
 mod asm;
 mod context;
 mod cpuid;
 mod debug;
+mod devices;
 mod interrupt;
 mod mp;
 mod tables;
@@ -20,22 +28,37 @@ pub use asm::*;
 pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
+pub use irq_vector::IPI_WAKE;
 use mp::{
     get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
     set_thread_local_pointer,
 };
 pub use vmm::*;
-use x86::bits64::rflags::{self, RFlags};
-use x86::irq;
+use x86::{
+    bits64::rflags::{self, RFlags},
+    irq,
+    tlb::flush,
+};
 
-pub use crate::arch::{ArchTrait, UnwindContextTrait};
-use crate::mp::CoreId;
-use crate::print::CharSink;
-use crate::virtual_memory::PagingOptions;
+use crate::{
+    MP_REQUEST,
+    arch::{
+        ArchTrait, UnwindContextTrait, apic::send_ipi_all_except_self, irq_vector::TLB_SHOOTDOWN,
+    },
+    event::{Event::Shootdown, push_event},
+    memory::virtual_memory::PagingOptions,
+    mp::{CORE_ID, CoreId},
+    print::CharSink,
+    thread::yield_thread,
+};
 pub struct Arch;
 
 impl ArchTrait for Arch {
     type Context = Context;
+
+    fn page_size() -> usize {
+        Self::PAGE_SIZE
+    }
 
     fn is_bsp(req: &MpRequest, cpu: &Cpu) -> bool {
         let resp = req
@@ -60,6 +83,14 @@ impl ArchTrait for Arch {
 
     fn irq_is_enabled() -> bool {
         rflags::read().contains(RFlags::FLAGS_IF)
+    }
+
+    fn sleep_core() {
+        asm::sleep_core();
+    }
+
+    fn wake_other_cores() {
+        apic::send_ipi_all_except_self(IPI_WAKE);
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
@@ -92,8 +123,18 @@ impl ArchTrait for Arch {
 
     const PAGE_SIZE: usize = 4096;
 
-    fn get_address_space() -> u64 {
+    fn configure_vm() {}
+
+    fn get_kernel_address_space() -> u64 {
         get_address_space()
+    }
+
+    fn get_user_address_space() -> u64 {
+        get_address_space()
+    }
+
+    fn set_user_address_space(space: u64) {
+        set_address_space(space)
     }
 
     fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
@@ -104,12 +145,53 @@ impl ArchTrait for Arch {
         vunmap(space, vaddr)
     }
 
+    fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64> {
+        vunmap_no_dealloc(space, vaddr)
+    }
+
+    fn virtual_invalidate(vaddr: u64) {
+        unsafe { flush(vaddr as usize) };
+    }
+
+    fn shootdown_tlbs(space: u64, base: usize, length: usize) {
+        let num_cores = MP_REQUEST.get_response().unwrap().cpus().len(); // TODO replace with global variable
+        let latch = Arc::new(AtomicUsize::new(num_cores - 1)); // there had better be at least one lol
+        let me = CORE_ID.get();
+        for core in 0..num_cores {
+            if core != me.0 {
+                // vunmap already handles this core
+                push_event(
+                    Shootdown {
+                        space,
+                        base,
+                        length,
+                        latch: latch.clone(),
+                    },
+                    CoreId(core),
+                    true,
+                ); // TODO avoid sending this when not needed
+            }
+        }
+
+        send_ipi_all_except_self(TLB_SHOOTDOWN);
+        while latch.load(Ordering::Acquire) != 0 {
+            yield_thread(); // TODO block on this
+            hint::spin_loop();
+        }
+    }
+
     fn shutdown(err_code: u16) {
         debug::shutdown(err_code);
     }
 
     fn halt() -> ! {
         halt()
+    }
+
+    fn create_arch_specific_drivers(
+        system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
+    ) {
+        devices::create_arch_specific_drivers(system_drivers);
     }
 }
 
@@ -122,9 +204,11 @@ impl UnwindContextTrait for UnwindContext {
     fn from_ptr(ptr: *const u64) -> UnwindContext {
         UnwindContext { ptr }
     }
+
     fn get_ptr(&self) -> *const u64 {
         self.ptr
     }
+
     #[inline(always)]
     unsafe fn get() -> UnwindContext {
         UnwindContext {
@@ -161,6 +245,6 @@ impl CharSink for SerialCharSink {
     }
 }
 
-pub fn init_tty(cell: &Once<SerialCharSink>) {
-    cell.call_once(|| SerialCharSink::open(0x3f8));
+pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }

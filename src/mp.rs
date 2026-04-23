@@ -1,17 +1,15 @@
 extern crate alloc;
 
+use alloc::{boxed::Box, vec::Vec};
 use core::{cell::Cell, ffi::c_void};
 
-use alloc::vec::Vec;
 use atomic_enum::atomic_enum;
 use derive_more::{Debug, Display};
 use spin::Once;
 
-use alloc::boxed::Box;
-
 use crate::{
     arch::{Arch, ArchTrait},
-    local_storage::{LocalStorageHandler, impl_local_storage},
+    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
 };
 
 #[repr(transparent)]
@@ -19,6 +17,12 @@ use crate::{
 #[display("{_0}")]
 #[debug("CoreId({_0})")]
 pub struct CoreId(pub usize);
+
+impl CoreId {
+    pub fn is_bsp(&self) -> bool {
+        self.0 == 0
+    }
+}
 
 // core local stuff
 
@@ -70,8 +74,7 @@ impl<T> CoreLocal<T> {
 
 impl_local_storage!(CoreLocal, CoreLocalStorageHandler);
 
-// offset storage
-
+// stores the pointer to the start of each CPU's core-local section
 static OFFSET_ARRAY: Once<Vec<u64>> = Once::new();
 
 pub fn get_cpu_local_pointer_for(core: CoreId) -> u64 {
@@ -88,6 +91,12 @@ pub fn init_cpu_local_table(n_cores: usize) {
 
 core_local! {
     pub CORE_ID: Cell<CoreId> = Cell::new(CoreId(0));
+}
+
+impl<T: Send + Sync> CoreLocal<T> {
+    pub fn read_for(&self, core: CoreId) -> &T {
+        unsafe { &*((OFFSET_ARRAY.get().unwrap()[core.0] + self.offset()) as *const T) }
+    }
 }
 
 #[derive(PartialEq, Eq)]

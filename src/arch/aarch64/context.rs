@@ -4,8 +4,10 @@ use core::{
     ptr::{self},
 };
 
-use crate::arch::{Arch, ContextTrait};
 use spin::MutexGuard;
+
+use super::interrupt::InterruptContext;
+use crate::arch::{Arch, ContextTrait};
 
 const SPSR_MODE_EL1H: u64 = 0x5;
 const SPSR_DAIF_MASK: u64 = 0b1111 << 6;
@@ -33,11 +35,19 @@ fn slice_stack_ptr(stack: &[u8]) -> u64 {
 impl ContextTrait for Context {
     type Arch = Arch;
     fn setup_kthread_context(&mut self) {
-        self.spsr = SPSR_MODE_EL1H | SPSR_IRQ_MASK;
+        self.spsr = SPSR_MODE_EL1H;
     }
 
     fn jump_to(&self) -> ! {
-        unsafe { jump_to_context(&raw const self.gp, self.sp, self.spsr, self.pc) }
+        unsafe {
+            jump_to_context(
+                &raw const self.gp,
+                self.sp,
+                self.spsr,
+                self.pc,
+                (self.spsr & 0b1111) == 0,
+            );
+        }
     }
 
     fn new_kthread<T>(
@@ -53,6 +63,15 @@ impl ContextTrait for Context {
         ctx.sp = slice_stack_ptr(stack) & !0xF;
         ctx
     }
+
+    fn new_uthread(pc: u64, sp: u64) -> Self {
+        Context {
+            spsr: 0,
+            pc,
+            sp,
+            ..Default::default()
+        }
+    }
 }
 
 impl const Default for Context {
@@ -66,19 +85,58 @@ impl const Default for Context {
     }
 }
 
+impl Context {
+    pub fn save_from_interrupt(&mut self, ctx: &InterruptContext) {
+        self.gp = ctx.gpr;
+        self.sp = ctx.sp;
+        self.pc = ctx.pc;
+        self.spsr = ctx.spsr;
+    }
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn jump_to_context(
     _buf: *const GPRegisters,
     _sp: u64,
     _spsr: u64,
     _pc: u64,
+    _is_user: bool,
 ) -> ! {
     naked_asm!(
         // AAPCS64 call ABI:
-        // x0 = buf, x1 = sp, x2 = spsr, x3 = pc
-        "mov x16, x3",
+        // x0 = buf, x1 = sp, x2 = spsr, x3 = pc, x4 = is_user
+
+        // put the sp in the correct exception level sp depending on
+        // 'is_user'
+        "cmp x4, #1",
+        "b.eq 1f",
         "mov sp, x1",
+        "b 2f",
+        "1:",
+        "msr sp_el0, x1",
+        "2:",
+        // set things up for eret
+        "msr spsr_el1, x2",
+        "msr elr_el1, x3",
         // Restore callee-saved state + x0 argument register.
+        "ldr x1, [x0, #8]",
+        "ldr x2, [x0, #16]",
+        "ldr x3, [x0, #24]",
+        "ldr x4, [x0, #32]",
+        "ldr x5, [x0, #40]",
+        "ldr x6, [x0, #48]",
+        "ldr x7, [x0, #56]",
+        "ldr x8, [x0, #64]",
+        "ldr x9, [x0, #72]",
+        "ldr x10, [x0, #80]",
+        "ldr x11, [x0, #88]",
+        "ldr x12, [x0, #96]",
+        "ldr x13, [x0, #104]",
+        "ldr x14, [x0, #112]",
+        "ldr x15, [x0, #120]",
+        "ldr x16, [x0, #128]",
+        "ldr x17, [x0, #136]",
+        "ldr x18, [x0, #144]",
         "ldr x19, [x0, #152]",
         "ldr x20, [x0, #160]",
         "ldr x21, [x0, #168]",
@@ -92,9 +150,7 @@ unsafe extern "C" fn jump_to_context(
         "ldr x29, [x0, #232]",
         "ldr x30, [x0, #240]",
         "ldr x0, [x0, #0]",
-        // Restore interrupt mask state from SPSR before transferring control.
-        "msr daif, x2",
-        "br x16",
+        "eret"
     )
 }
 

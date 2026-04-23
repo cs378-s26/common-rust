@@ -1,24 +1,28 @@
-use core::arch::asm;
-
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use alloc::boxed::Box;
+use core::{
+    arch::asm,
+    sync::atomic::{AtomicU32, Ordering},
+};
+
 use limine::mp::Cpu;
 use spin::Once;
-use x86::msr::IA32_FS_BASE;
 use x86::{
     cpuid::CpuId,
-    msr::{IA32_GS_BASE, wrmsr},
+    msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
 };
 
-use crate::arch::x86_64::slice_stack_pointer;
-use crate::arch::x86_64::tables::{
-    GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable,
-};
-use crate::arch::{TIMER_INTERRUPT_VECTOR, apic, tsc};
-use crate::heap::aligned_slice;
 use crate::{
-    arch::x86_64::cpuid::Features,
+    arch::{
+        apic,
+        irq_vector::TIMER_INTERRUPT,
+        tsc,
+        x86_64::{
+            cpuid::Features,
+            slice_stack_pointer,
+            tables::{GlobalDescriptorTable, InterruptDescriptorTable, InterruptStackTable},
+        },
+    },
+    memory::heap::aligned_slice,
     mp::{CORE_ID, CoreId, core_local, get_cpu_local_pointer_for},
     print::{kprint, kprintln},
 };
@@ -36,6 +40,7 @@ core_local! {
 pub fn init_cpu_local_ptr(core_id: CoreId) {
     let ptr = get_cpu_local_pointer_for(core_id);
     unsafe { wrmsr(IA32_GS_BASE, ptr) };
+    unsafe { wrmsr(IA32_KERNEL_GSBASE, ptr) };
 }
 
 pub fn get_cpu_local_pointer() -> u64 {
@@ -71,17 +76,10 @@ pub unsafe fn get_thread_local_pointer() -> u64 {
 }
 
 pub unsafe fn initialize_core(cpu: &Cpu) {
-    // kprintln!("hello from x86::initialize_core");
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);
     init_cpu_local_ptr(id);
     CORE_ID.replace(id);
     LAPIC_ID.store(cpu.lapic_id, Ordering::Relaxed);
-    kprintln!(
-        "done init core {}, CLS base={:x}, GSBASE={:x}",
-        id,
-        get_cpu_local_pointer(),
-        get_cpu_local_pointer_for(id)
-    );
 
     let cpu_id = CpuId::new();
 
@@ -94,6 +92,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // stores the stacks we switch to when interrupts occur
     let ist = IST.call_once(|| InterruptStackTable {
         reserved0: 0,
+        // allocate stack for kernel -> user switch
         rsp0: 0,
         rsp1: 0,
         rsp2: 0,
@@ -120,8 +119,8 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // we need to re-load the core local, becase the FS/GSBASE registers are really just references
     // to the "cached" segment base registers, which gets reset on descriptor reloads
     init_cpu_local_ptr(id);
-    if !apic::enable_x2apic() {
-        panic!("Failed to enable x2APIC");
+    if !apic::enable_apic() {
+        panic!("Failed to enable APIC");
     }
     apic::init_lapic();
     apic::disable_pic();
@@ -129,9 +128,8 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     // Calibrate timers once on BSP, store frequencies for all cores
     static TIMER_CALIBRATION: Once<(u64, u64)> = Once::new();
     let (_tsc_freq, apic_freq) = *TIMER_CALIBRATION.call_once(|| {
-        kprintln!("[Core {}] Calibrating timers...", CORE_ID.get());
-
         let tsc_freq = tsc::calibrate_tsc_with_pit();
+
         kprintln!(
             "[Core {}] TSC frequency: {} MHz",
             CORE_ID.get(),
@@ -140,6 +138,7 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
         let apic_freq =
             apic::calibrate_apic_timer_with_tsc(tsc_freq).expect("Failed to calibrate APIC timer");
+
         kprintln!(
             "[Core {}] APIC timer frequency: {} MHz",
             CORE_ID.get(),
@@ -152,12 +151,6 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
     {
         let timer_hz = 500;
         let initial_count = (apic_freq / timer_hz) as u32;
-        apic::setup_timer(TIMER_INTERRUPT_VECTOR, initial_count, true);
-        kprintln!(
-            "[Core {}] Timer configured: {} Hz ({}ms intervals)",
-            CORE_ID.get(),
-            timer_hz,
-            1000 / timer_hz
-        );
+        apic::setup_timer(TIMER_INTERRUPT, initial_count, true);
     }
 }

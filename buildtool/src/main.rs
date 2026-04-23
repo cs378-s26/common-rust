@@ -2,156 +2,26 @@
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 #![feature(gen_blocks)]
 
-use anyhow::{Error, Result};
-use cargo_metadata::{Message, MetadataCommand};
+use std::fs;
+
+use anyhow::Result;
 use clap::{Parser, Subcommand};
-use debug::gen_debug_module;
-use fatfs::{FatType, FileSystem, FormatVolumeOptions, FsOptions, format_volume};
-use fscommon::StreamSlice;
-use gptman::{GPT, GPTPartitionEntry};
-use reqwest::blocking;
-use std::env::{current_dir, current_exe};
-use std::fs::{self, File};
-use std::io::{self, BufReader, Write};
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use tempfile::NamedTempFile;
-use uuid::Uuid;
 
 mod debug;
+mod gdb;
+mod image;
+mod qemu;
+mod qemu_test;
+mod test;
+mod util;
 
-const LIMINE_X86_URL: &str =
-    "https://github.com/limine-bootloader/limine/raw/refs/heads/v10.x-binary/BOOTX64.EFI";
-const LIMINE_AARCH64_URL: &str =
-    "https://codeberg.org/Limine/Limine/raw/tag/v10.5.1-binary/BOOTAA64.EFI";
-const OVMF_X86_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-x86_64.fd";
-const OVMF_AARCH64_URL: &str = "https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251126T024608Z/ovmf-code-aarch64.fd";
-const LIMINE_CONF: &str = "limine.conf";
+use crate::util::{Target, cache_dir};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug, Copy)]
-enum Target {
-    X86_64,
-    Aarch64,
-}
-
-impl Target {
-    fn name(self) -> &'static str {
-        match self {
-            Target::X86_64 => "x86_64",
-            Target::Aarch64 => "aarch64",
-        }
-    }
-
-    fn limine_url(self) -> &'static str {
-        match self {
-            Target::X86_64 => LIMINE_X86_URL,
-            Target::Aarch64 => LIMINE_AARCH64_URL,
-        }
-    }
-
-    fn ovmf_url(self) -> &'static str {
-        match self {
-            Target::X86_64 => OVMF_X86_URL,
-            Target::Aarch64 => OVMF_AARCH64_URL,
-        }
-    }
-
-    fn target_triple(self) -> &'static str {
-        match self {
-            Target::X86_64 => "x86_64-unknown-none",
-            Target::Aarch64 => "aarch64-unknown-none",
-        }
-    }
-
-    fn strip_tool(self) -> &'static str {
-        match self {
-            Target::X86_64 => "strip",
-            Target::Aarch64 => "aarch64-linux-gnu-strip",
-        }
-    }
-
-    fn limine_efi_path(self) -> &'static str {
-        match self {
-            Target::X86_64 => "efi/boot/BOOTX64.EFI",
-            Target::Aarch64 => "efi/boot/BOOTAA64.EFI",
-        }
-    }
-
-    fn qemu_machine(self) -> &'static str {
-        match self {
-            Target::X86_64 => "pc",
-            Target::Aarch64 => "virt",
-        }
-    }
-
-    fn qemu_display_args(self) -> &'static [&'static str] {
-        match self {
-            Target::X86_64 => &["-vga", "std"],
-            // "virt" machine on aarch64 does not support -vga; use a firmware framebuffer device.
-            Target::Aarch64 => &["-device", "ramfb"],
-        }
-    }
-
-    fn qemu_binary(self) -> &'static str {
-        match self {
-            Target::X86_64 => "qemu-system-x86_64",
-            Target::Aarch64 => "qemu-system-aarch64",
-        }
-    }
-
-    fn qemu_cpu_without_kvm(self) -> Option<&'static str> {
-        match self {
-            Target::X86_64 => None,
-            // QEMU may default to a 32-bit ARM CPU on "virt"; force a stable AArch64 model.
-            Target::Aarch64 => Some("cortex-a72"),
-        }
-    }
-
-    fn requires_c_toolchain_config(self) -> bool {
-        matches!(self, Target::Aarch64)
-    }
-}
-
-fn require_tool(name: &str) -> Result<()> {
-    let status = Command::new("which")
-        .arg(name)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|_| Error::msg("which command not available"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::msg(format!("{} not found in PATH", name)))
-    }
-}
-
-fn configure_c_toolchain(target: Target, cmd: &mut Command) -> Result<()> {
-    if !target.requires_c_toolchain_config() {
-        return Ok(());
-    }
-
-    let target_triple = target.target_triple();
-
-    require_tool("clang")?;
-    require_tool("ar")?;
-
-    let cc_key = format!("CC_{}", target_triple.replace('-', "_"));
-    let ar_key = format!("AR_{}", target_triple.replace('-', "_"));
-    let cflags_key = format!("CFLAGS_{}", target_triple.replace('-', "_"));
-
-    cmd.env(cc_key, "clang");
-    cmd.env(ar_key, "ar");
-    cmd.env(cflags_key, format!("--target={}", target_triple));
-    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -173,11 +43,18 @@ enum Commands {
         mem: u8,
         #[arg(short = 'r', long)]
         release: bool,
+        #[arg(short = 'f', long, default_value = "fs_path")]
+        filesystem_path: String,
     },
     QemuTest {
-        path_to_kernel: String,
-        #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
-        target: Target,
+        test_cfg_path: String,
+        #[arg(short = 'r', long)]
+        release: bool,
+        #[arg(
+            long,
+            help = "Stream serial output live to stdout and bypass cached test results"
+        )]
+        stdout: bool,
     },
     Gdb {
         #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
@@ -196,6 +73,7 @@ enum Commands {
     Clean,
 }
 
+<<<<<<< HEAD
 fn cache_dir() -> Result<PathBuf> {
     let root = current_dir()?.join("buildtool-cache");
     fs::create_dir_all(&root)?;
@@ -632,30 +510,32 @@ fn qemu_test(path_to_kernel: String, target: Target) -> Result<()> {
     }
 }
 
+=======
+>>>>>>> origin/main
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Image { target, release } => {
-            build_image(&build_kernel(release, target)?, release, target)?;
-        }
+        Commands::Image { target, release } => image::run(release, target)?,
         Commands::Qemu {
             target,
             kvm,
             cores,
             mem,
             release,
-        } => qemu(kvm, cores, mem, release, target)?,
+            filesystem_path,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
         Commands::Gdb {
             target,
             kvm,
             release,
-        } => gdb(kvm, release, target)?,
-        Commands::Test { release, target } => test_kernel(release, target)?,
+        } => gdb::run(kvm, release, target)?,
+        Commands::Test { release, target } => test::run_all(release, target)?,
         Commands::QemuTest {
-            path_to_kernel,
-            target,
-        } => qemu_test(path_to_kernel, target)?,
+            test_cfg_path,
+            release,
+            stdout,
+        } => qemu_test::run(test_cfg_path, release, stdout)?,
         Commands::Clean => {
             fs::remove_dir_all(cache_dir()?)?;
             cache_dir()?;

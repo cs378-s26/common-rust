@@ -1,23 +1,26 @@
 name: Main Lint Checks
 on:
-  push:
-    branches:
-      - main 
+    push:
+        branches:
+            - main
 jobs:
-  checks:
-    name: Run Lint Checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Run cargo fmt
-        run: cargo fmt --all -- --check
-      - name: Run cargo clippy (x86_64)
-        run: cargo clippy --target x86_64-unknown-none -Zbuild-std=core,alloc -- -D warnings
-      - name: Run cargo clippy (aarch64)
-        run: cargo clippy --target aarch64-unknown-none -Zbuild-std=core,alloc -- -D warnings
-      - name: Run cargo clippy (x86_64) (tests)
-        run: cargo clippy --tests --target x86_64-unknown-none -Zbuild-std=core,alloc -- -D warnings
-      - name: Run cargo clippy (aarch64) (tests)
-        run: cargo clippy --tests --target aarch64-unknown-none -Zbuild-std=core,alloc -- -D warnings
+    checks:
+        name: Run Lint Checks
+        runs-on: self-hosted
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Load environment variables
+              run: |
+                  direnv allow .
+                  direnv export gha > "$GITHUB_ENV"
+            - name: Run cargo fmt
+              run: cargo fmt --all -- --check
+            - name: Run cargo clippy (x86_64)
+              run: cargo clippy --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings
+            - name: Run cargo clippy (aarch64)
+              run: cargo clippy --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings
+            - name: Run cargo clippy (x86_64) (tests)
+              run: cargo clippy --tests --target x86_64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings
+            - name: Run cargo clippy (aarch64) (tests)
+              run: cargo clippy --tests --target aarch64-unknown-none -Zbuild-std=core,alloc -Zpanic-abort-tests -- -D warnings
