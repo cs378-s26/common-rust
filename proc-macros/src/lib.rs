@@ -288,7 +288,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     quote! {
         impl CmdlineParsable for #ident {
-            fn parse<'a>(&mut self, lexer: &mut crate::cmdline::CmdlineLexer<'a>) -> Result<(), crate::cmdline::CmdlineParseError<'a>> {
+            fn parse<'a>(&mut self, lexer: &mut crate::cmdline::CmdlineLexer<'a>) -> ::core::result::Result<(), crate::cmdline::CmdlineParseError<'a>> {
                 #body
             }
         }

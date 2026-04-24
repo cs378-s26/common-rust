@@ -9,15 +9,24 @@ pub use parse::*;
 use proc_macros::CmdlineParsable;
 use spin::Once;
 
+use crate::print::{FramebufferOptions, LogOptions, SerialOptions};
+
 #[derive(Clone, Copy)]
-pub struct KernelCmdline {}
+pub struct KernelCmdline {
+    pub logging: LogOptions,
+}
 
 impl CmdlineParsable for KernelCmdline {
     fn parse<'a>(&mut self, lexer: &mut CmdlineLexer<'a>) -> Result<(), CmdlineParseError<'a>> {
         lexer.parse_block(CmdlineTokenData::Eof, CmdlineTokenData::Comma, |lexer| {
             let tok = lexer.next_tok()?;
-            tok.unwrap_ident()?;
-            Err(tok.make_error(CmdlineErrorCode::UnknownField(&[])))
+            match tok.unwrap_ident()? {
+                "logging" => {
+                    lexer.expect(crate::cmdline::CmdlineTokenData::Colon)?;
+                    self.logging.parse(lexer)
+                }
+                _ => Err(tok.make_error(CmdlineErrorCode::UnknownFlag(&["logging"]))),
+            }
         })
     }
 }
@@ -28,7 +37,12 @@ impl CmdlineParsable for KernelCmdline {
 #[unsafe(link_section = ".limine_requests")]
 static CMDLINE_REQUEST: ExecutableCmdlineRequest = ExecutableCmdlineRequest::new();
 
-static DEFAULT_OPTIONS: KernelCmdline = KernelCmdline {};
+static DEFAULT_OPTIONS: KernelCmdline = KernelCmdline {
+    logging: LogOptions {
+        serial: SerialOptions { enable: true },
+        fb: FramebufferOptions { enable: true },
+    },
+};
 
 pub enum CmdlineError {
     NoResponse,
@@ -65,6 +79,8 @@ pub fn parse_kernel_cmdline() {
                 return;
             }
         };
+
+        CMDLINE_TEXT.call_once(|| res);
 
         match CmdlineLexer::parse(res, state) {
             Ok(_) => {}

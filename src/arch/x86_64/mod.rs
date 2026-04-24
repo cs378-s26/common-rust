@@ -193,6 +193,10 @@ impl ArchTrait for Arch {
     ) {
         devices::create_arch_specific_drivers(system_drivers);
     }
+
+    fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+        cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -243,8 +247,4 @@ impl CharSink for SerialCharSink {
     unsafe fn flush(&self) {
         // no-op
     }
-}
-
-pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
-    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }
