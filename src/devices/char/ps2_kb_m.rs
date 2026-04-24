@@ -4,6 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
 use crate::arch::apic;
+use crate::thread::{ThreadQueue, new_thread_queue};
 use alloc::boxed::Box;
 
 use crate::print::kprintln;
@@ -54,6 +55,43 @@ impl ScancodeQueue {
     }
 }
 
+use alloc::vec::Vec;
+//wait this doesn't work, it isn't O(1)
+struct KbReq<T : const u32> {
+    buf : Vec<u8>,
+    remaining : usize
+}
+
+impl KbReq {
+    fn new(len: usize) -> Self {
+        Self {
+            buf: Vec::new(),
+            remaining: len,
+        }
+    }
+    fn add_scancode(&mut self, scancode: u8) {
+        if self.remaining > 0 {
+            self.buf.push(scancode);
+            self.remaining -= 1;
+        }
+    }
+}
+
+static KEYBOARD_REQ_QUEUE: Mutex<Vec<KbReq>> = Mutex::new(Vec::new());
+static BLOCKED_READERS : Mutex<ThreadQueue> = Mutex::new(new_thread_queue());
+
+// Reads new keystrokes from keyboard. 
+fn add_kb_req(len : usize) -> Vec<u8> {
+
+}
+
+pub fn read(len: usize) -> Vec<u8> {
+
+}
+
+struct PS2Kb {
+
+}
 static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
 
 pub fn enqueue_scancode(scancode: u8) {
