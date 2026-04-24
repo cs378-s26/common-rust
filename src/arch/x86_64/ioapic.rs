@@ -95,8 +95,6 @@ pub fn route_irq(
         Polarity::ActiveHigh => cur_lo &= !(1 << 13), // clear bit 13 for active-high
         Polarity::ActiveLow => cur_lo |= 1 << 13,     // set bit 13 for active-low
     }
-    //cur_lo = ((cur_lo  >> 8) << 8) | (vector as u32); // set the vector in bits[7:0]
-    //let lo: u32 = vector as u32; // bits[16]=0 (unmasked), delivery=fixed
     let hi: u32 = (dest_apic_id & 0xFF) << 24; // destination APIC ID in bits[31:24]
 
     unsafe {

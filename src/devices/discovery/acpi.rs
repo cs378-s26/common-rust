@@ -126,6 +126,13 @@ pub struct InterruptOverride {
     pub polarity: Polarity,
 }
 
+/*
+* The LAPIC is not initialized when we do device discovery. Instead, get CPU -> LAPIC ID mapping 
+from the MADT
+*/
+pub static IOAPIC_CPU_TO_LAPIC : IntSpinLock<BTreeMap<u32, u32>> = IntSpinLock::new(BTreeMap::new()); 
+
+
 impl Madt {
     fn from_addr(addr: usize) -> Option<Self> {
         let mut madt = unsafe { *(addr as *mut Madt) };
@@ -160,6 +167,21 @@ impl Madt {
 
             current += length;
             Some(match unsafe { (*entry).entry_type } {
+                0 => {
+                    #[repr(C, packed)]
+                    #[derive(Clone, Copy)]
+                    struct LapicEntry {
+                        header: MadtEntryHeader,
+                        processor_id: u8,
+                        lapic_id: u8,
+                        flags: u32,
+                    }
+                    let lapic = unsafe { *(entry as *const LapicEntry) };
+                    IOAPIC_CPU_TO_LAPIC
+                        .lock()
+                        .insert(lapic.processor_id as u32, lapic.lapic_id as u32);
+                    MadtEntry::Other(entry as usize) // we don't actually care about LAPIC entries for device discovery, so we'll just give a ptr to it
+                }
                 1 => {
                     #[repr(C, packed)]
                     #[derive(Clone, Copy)]
@@ -196,6 +218,22 @@ impl Madt {
                         gsi: override_.gsi,
                         flags: override_.flags,
                     }
+                }
+                9 => {
+                    #[repr(C, packed)]
+                    #[derive(Clone, Copy)]
+                    struct LapicX2Entry {
+                        header: MadtEntryHeader,
+                        reserved: u16,
+                        processor_id: u32,
+                        lapic_id: u32,
+                        flags: u32,
+                    }
+                    let lapicx2 = unsafe { *(entry as *const LapicX2Entry) };
+                    IOAPIC_CPU_TO_LAPIC
+                        .lock()
+                        .insert(lapicx2.processor_id, lapicx2.lapic_id);
+                    MadtEntry::Other(entry as usize) // we don't actually care about LAPIC entries for device discovery, so we'll just give a ptr to it
                 }
                 _ => MadtEntry::Other(entry as usize),
             })
@@ -415,12 +453,6 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     let fadt_ = xsdt.parse_fadt();
     let mut matched_devices = Vec::new();
 
-    if let Some(fadt) = fadt_ {
-        //source: https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L261
-        let ps2_enabled = fadt.flags & (1 << 1) != 0;
-        kprintln!("PS2 enabled? {}", ps2_enabled);
-    }
-
     for driver in SYSTEM_DRIVERS.iter() {
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
@@ -464,5 +496,14 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     // Parse PCI-E w/ the MCFG
     matched_devices.extend(init_pcie(mcfg.clone()));
 
+    if let Some(fadt) = fadt_ {
+        //source: https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L261
+        let ps2_enabled = fadt.flags & (1 << 1) != 0;
+        //kprintln!("PS2 enabled? {}", ps2_enabled);
+        if ps2_enabled {
+            crate::devices::char::ps2_kb_m::init_ps2().ok()?;
+            //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
+        }
+    }
     Some(matched_devices)
 }

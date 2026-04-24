@@ -18,6 +18,7 @@ use crate::{
     mp::CORE_ID,
     sync::{IntMutex, IntSpinLock, MutexLike},
     thread::{IDLE, suspend_to_thread, this_thread},
+    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -263,15 +264,18 @@ fn route_irq_num(irq_num: u8, vec: u8) {
     //TODO: use MADT flags to determine trigger mode and polarity
     //for now, we'll just route IRQ to 0x67
     super::ioapic::route_irq(
-        override_.irq_src,
+        override_.gsi as u8,
         vec,
-        apic::get_lapic_id() as u32,
+        IOAPIC_CPU_TO_LAPIC.lock().get(&0).copied().unwrap(),
         override_.trigger_mode,
         override_.polarity,
     );
 }
 
+use crate::print::kprintln;
+
 pub fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
+    kprintln!("Routing IRQ{} to handler", irq_num);
     route_irq_num(irq_num, 0x67);
     let handler = Arc::new(InterruptHandler {
         handler,

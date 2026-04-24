@@ -96,6 +96,11 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+fn usual_main() {
+    kprintln!("Entered kernel");
+    loop {}
+}
+
 pub struct KernelWork;
 
 impl KernelWorkTrait for KernelWork {
@@ -103,7 +108,7 @@ impl KernelWorkTrait for KernelWork {
         #[cfg(test)]
         test_main();
         #[cfg(not(test))]
-        kprintln!("entered kernel");
+        usual_main();
     }
 }
 

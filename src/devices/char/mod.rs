@@ -2,6 +2,7 @@ use alloc::string::String;
 
 use crate::devices::Device;
 pub mod uart_pl011;
+pub mod ps2_kb_m;
 
 #[derive(Debug)]
 pub enum CharDeviceError {
