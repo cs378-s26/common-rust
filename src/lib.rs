@@ -210,7 +210,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         .get_response()
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
-    kprintln!("Meow 2");
+    //kprintln!("Meow 2");
 
     // runs an initialization routine once overall
     // waits for this to complete before any core proceeds
