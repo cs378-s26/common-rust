@@ -463,7 +463,7 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
                 flags,
             } = entry
             {
-                //kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
+                kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
                 IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
                     irq_src,
                     InterruptOverride {

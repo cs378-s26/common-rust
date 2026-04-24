@@ -205,10 +205,12 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 /// Should only be called from bootstrap processor during kernel initialization
 unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     unsafe { Arch::initialize_core(cpu) };
+    //kprintln!("Done initializing core BSP");
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
+    kprintln!("Meow 2");
 
     // runs an initialization routine once overall
     // waits for this to complete before any core proceeds
@@ -234,17 +236,24 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
 
     // this is where the magic happens
     one!({ init_coroutine_queue() });
+    kprintln!("Coroutines Initialized!");
     all!({ set_up_idle() });
+    kprintln!("Idle thread set up!");
     all!({ init_coroutine_executor() });
+    kprintln!("Coroutine executor initialized!");
     all!({ init_event_handler() });
+    kprintln!("Event handler initialized!");
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
+    kprintln!("Ready to preempt!");
     one!({
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
             Work::work();
         })
     });
+    kprintln!("Thread added!");
     all!({ Arch::set_irq_enabled(true) });
+    kprintln!("Interrupts enabled!");
     poll_tasks() // runs on all cores, never to return
 }
 
