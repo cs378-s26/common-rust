@@ -237,7 +237,7 @@ fn keyboard_irq_handler() -> Option<()> {
 /// https://docs.rs/ps2/latest/ps2/
 /// https://wiki.osdev.org/%228042%22_PS/2_Controller#Initialising_the_PS/2_Controller
 pub fn init_ps2() -> Result<(), &'static str> {
-    let mut ctrl = unsafe { Controller::new() };
+    /*let mut ctrl = unsafe { Controller::new() };
 
     ctrl.disable_keyboard()
         .map_err(|_| "disable_keyboard failed")?;
@@ -324,7 +324,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
         keyboard_works,
         mouse_works
     );
-    
+    */
     crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler));
 
     Ok(())

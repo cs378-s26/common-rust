@@ -225,6 +225,8 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
         $code;
+        kprintln!("pre purrrr {}", crate::mp::CORE_ID.get());
+
         BARRIER.call_once(|| {
             kprintln!("purrrr {}", crate::mp::CORE_ID.get());
             Barrier::new(core_count)}).wait();

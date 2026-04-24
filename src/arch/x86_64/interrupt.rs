@@ -140,6 +140,8 @@ pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
+    kprintln!("timer {}", CORE_ID.get());
+
     unsafe { crate::thread::preempt_to_idle(ctx) };
 }
 
