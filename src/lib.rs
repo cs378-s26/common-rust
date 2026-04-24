@@ -210,13 +210,18 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     macro one($code:block) {{
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
+
+        kprintln!("pre one! {}", crate::mp::CORE_ID.get());
+
         BARRIER
             .call_once(|| {
-                kprintln!("meow meow meow meow meow meow meow meow {}", crate::mp::CORE_ID.get());
+                kprintln!("one! barrier init {}", crate::mp::CORE_ID.get());
                 $code;
                 Barrier::new(core_count)
             })
             .wait();
+
+        kprintln!("post one! {}", crate::mp::CORE_ID.get());
     }}
 
     // runs an initialization routine on each core
@@ -225,11 +230,13 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
         $code;
-        kprintln!("pre purrrr {}", crate::mp::CORE_ID.get());
+        kprintln!("pre all! {}", crate::mp::CORE_ID.get());
 
         BARRIER.call_once(|| {
-            kprintln!("purrrr {}", crate::mp::CORE_ID.get());
+            kprintln!("all! barrier init {}", crate::mp::CORE_ID.get());
             Barrier::new(core_count)}).wait();
+
+        kprintln!("post all! {}", crate::mp::CORE_ID.get());
     }}
 
     // this is where the magic happens
