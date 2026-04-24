@@ -202,6 +202,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         .get_response()
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
+    //kprintln!("Core count: {}", core_count);
     //kprintln!("Meow 2");
 
     // runs an initialization routine once overall
@@ -224,16 +225,19 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
         $code;
-        BARRIER.call_once(|| Barrier::new(core_count)).wait();
+        BARRIER.call_once(|| {
+            kprintln!("purrrr {}", crate::mp::CORE_ID.get());
+            Barrier::new(core_count)}).wait();
     }}
 
     // this is where the magic happens
     one!({ init_coroutine_queue() });
-    kprintln!("Coroutines Initialized!");
+    //kprintln!("Coroutines Initialized!");
     all!({ set_up_idle() });
-    kprintln!("Idle thread set up!");
+    //kprintln!("Idle thread set up!");
     all!({ init_coroutine_executor() });
     kprintln!("Coroutine executor initialized!");
+    kprintln!("Core count: {}", core_count);
     all!({ init_event_handler() });
     kprintln!("Event handler initialized!");
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
