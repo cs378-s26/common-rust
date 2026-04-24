@@ -55,6 +55,7 @@ impl ScancodeQueue {
     }
 }
 
+/* 
 use alloc::vec::Vec;
 //wait this doesn't work, it isn't O(1)
 struct KbReq<T : const u32> {
@@ -101,7 +102,7 @@ pub fn enqueue_scancode(scancode: u8) {
 pub fn dequeue_scancode() -> Option<u8> {
     SCANCODE_QUEUE.pop()
 }
-
+*/
 /// Lookup table: Set 2 make code → (unshifted char, shifted char).
 /// 0 means no printable character for that code.
 #[rustfmt::skip]
@@ -224,7 +225,7 @@ fn keyboard_irq_handler() -> Option<()> {
         return None; // no data available; probably a spurious IRQ
     }
     let scancode: u8 = unsafe { x86::io::inb(0x60) };
-    enqueue_scancode(scancode);
+    //enqueue_scancode(scancode);
     if let Some(ch) = decode_scancode(scancode) {
         kprintln!("Got char: {}", ch);
     }
