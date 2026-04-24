@@ -126,8 +126,6 @@ pub struct InterruptOverride {
     pub polarity: Polarity,
 }
 
-// TODO: Construct table from isa irq num --> GSI from MADT entries
-
 impl Madt {
     fn from_addr(addr: usize) -> Option<Self> {
         let mut madt = unsafe { *(addr as *mut Madt) };
@@ -260,6 +258,66 @@ impl Mcfg {
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
+struct FADT {
+    //Copilot copied off of https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L236
+    sdtheader : SDTHeader,
+    facs : u32,
+    dsdt : u32,
+    reserved : u8,
+    preferred_pm_profile : u8,
+    sci_interrupt : u16,
+    smi_command_port : u32,
+    acpi_enable : u8,
+    acpi_disable : u8,
+    s4bios_req : u8,
+    pstate_control : u8,
+    pm1a_event_block : u32,
+    pm1b_event_block : u32,
+    pm1a_control_block : u32,
+    pm1b_control_block : u32,
+    pm2_control_block : u32,
+    pm_timer_block : u32,
+    gpe0_block : u32,
+    gpe1_block : u32,
+    pm1_event_length : u8,
+    pm1_control_length : u8,
+    pm2_control_length : u8,
+    pm_timer_length : u8,
+    gpe0_length : u8,
+    gpe1_length : u8,
+    gpe1_base : u8,
+    cst_control : u8,
+    c2_latency : u16,
+    c3_latency : u16,
+    flush_size : u16,
+    flush_stride : u16,
+    duty_offset : u8,
+    duty_width : u8,
+    day_alarm : u8,
+    month_alarm : u8,
+    year_alarm : u8,
+    flags : u32,
+}
+
+impl FADT {
+    fn from_addr(addr: usize) -> Option<Self> {
+        let fadt = unsafe { *(addr as *const FADT) };
+        if &fadt.sdtheader.signature != b"FACP" {
+            return None;
+        }
+        // checksum validation
+        let bytes =
+            unsafe { core::slice::from_raw_parts(addr as *const u8, fadt.sdtheader.length as usize) };
+        let checksum: u8 = bytes.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+        if checksum != 0 {
+            return None;
+        }
+        Some(fadt)
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct Xsdt {
     header: SDTHeader,
     sdt_ptrs: usize,
@@ -288,6 +346,15 @@ impl Xsdt {
             addr as usize
         })
     }
+    fn parse_fadt(&self) -> Option<FADT> {
+        for ptr in self.get_ptrs() {
+            let fadt = FADT::from_addr(physical_to_virtual(ptr));
+            if fadt.is_some() {
+                return fadt;
+            }
+        }
+        None
+    }
 
     fn parse_madt(&self) -> Option<Madt> {
         for ptr in self.get_ptrs() {
@@ -310,9 +377,17 @@ impl Xsdt {
     }
 }
 
+/*
+* List of overrides from ISQ IRQs to GSIs. 
+*/
 static IOAPIC_OVERRIDE_GSI_MAP: IntSpinLock<BTreeMap<u8, InterruptOverride>> =
     IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
 
+/*
+* Given an ISA IRQ number, return the GSI Number. Primarily used for programming
+the I/O APIC, though it might be useful for the GIC too. If there is no override,
+we assume the GSI is the same as the IRQ number, and that it's edge triggered and active high, per the ACPI spec.
+*/
 pub fn get_gsi_for_irq(irq_num: u8) -> InterruptOverride {
     if let Some(gsi) = IOAPIC_OVERRIDE_GSI_MAP.lock().get(&irq_num) {
         *gsi
@@ -337,7 +412,14 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     let xsdt = Rsdp::from_address(rsdp_ptr)?.get_xsdt()?;
     let madt = xsdt.parse_madt()?;
     let mcfg = xsdt.parse_mcfg()?;
+    let fadt_ = xsdt.parse_fadt();
     let mut matched_devices = Vec::new();
+
+    if let Some(fadt) = fadt_ {
+        //source: https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L261
+        let ps2_enabled = fadt.flags & (1 << 1) != 0;
+        kprintln!("PS2 enabled? {}", ps2_enabled);
+    }
 
     for driver in SYSTEM_DRIVERS.iter() {
         // Walk the Madt and see if anyone wants to claim any of the entries
