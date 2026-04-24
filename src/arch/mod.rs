@@ -10,12 +10,13 @@ mod aarch64;
 use alloc::{boxed::Box, vec::Vec};
 
 use limine::{mp::Cpu, request::MpRequest};
-use spin::MutexGuard;
+use spin::{MutexGuard, Once};
 
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 use crate::{
     devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+    print::CharSink,
 };
 
 pub trait UnwindContextTrait: Sized {
@@ -121,4 +122,6 @@ pub trait ArchTrait {
     fn create_arch_specific_drivers(
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );
+
+    fn init_tty(cell: &Once<Box<dyn CharSink>>);
 }
