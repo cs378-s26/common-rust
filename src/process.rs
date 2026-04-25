@@ -58,7 +58,6 @@ impl PidAllocator {
         assert!(self.used[pid], "double free of PID {}", pid);
         self.used.set(pid, false);
     }
-
 }
 
 pub fn init_pid_allocator() {
