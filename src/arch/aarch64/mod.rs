@@ -62,9 +62,9 @@ impl ArchTrait for Arch {
     }
 
     fn register_irq_handler(
-        irq_num: u8,
-        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
-        vec: Option<u8>,
+        _irq_num: u8,
+        _handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+        _vec: Option<u8>,
     ) {
         panic!("Not implemented");
     }
