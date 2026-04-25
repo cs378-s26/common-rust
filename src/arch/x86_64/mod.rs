@@ -10,7 +10,7 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
-use crate::devices::discovery::DeviceDiscovery;
+use crate::{arch::tsc::read_tsc, devices::discovery::DeviceDiscovery};
 
 pub mod apic;
 mod asm;
@@ -118,7 +118,7 @@ impl ArchTrait for Arch {
     }
 
     fn read_cycle_counter() -> u64 {
-        asm::read_cycle_counter()
+        read_tsc()
     }
 
     const PAGE_SIZE: usize = 4096;
