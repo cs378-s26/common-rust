@@ -32,7 +32,7 @@ pub mod sync;
 pub mod syscall;
 pub mod thread;
 extern crate alloc;
-use alloc::sync::Arc;
+use alloc::{string::String, sync::Arc};
 use core::sync::atomic::Ordering;
 
 use limine::{
@@ -89,7 +89,10 @@ pub trait KernelWorkTrait {
 
 fn usual_main() {
     kprintln!("Entered kernel");
-    loop {}
+    loop {
+        let received = devices::char::ps2_kb_m::read();
+        kprintln!("String: {}", (received as char));
+    }
 }
 
 pub struct KernelWork;

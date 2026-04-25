@@ -55,44 +55,91 @@ impl ScancodeQueue {
     }
 }
 
-/* 
+
 use alloc::vec::Vec;
-//wait this doesn't work, it isn't O(1)
-struct KbReq<T : const u32> {
+use crate::sync::{Promise, Semaphore};
+use intrusive_collections::{
+    LinkedList, LinkedListLink, RBTreeAtomicLink, intrusive_adapter,
+};
+//this is not a promise, since we may want to fill up the thing gradually
+struct KbReq {
     buf : Vec<u8>,
-    remaining : usize
+    remaining : usize,
+    waiter : Semaphore,
+    link : LinkedListLink
 }
+
+use alloc::rc::Rc;
+
+intrusive_adapter!(KbReqAdapter = Rc<KbReq>: KbReq {link => LinkedListLink});
 
 impl KbReq {
-    fn new(len: usize) -> Self {
+    fn new(len : usize) -> KbReq {
         Self {
-            buf: Vec::new(),
-            remaining: len,
+            buf : Vec::with_capacity(len + 1),
+            remaining : len,
+            waiter : Semaphore::new(0),
+            link : LinkedListLink::new()
         }
     }
-    fn add_scancode(&mut self, scancode: u8) {
-        if self.remaining > 0 {
-            self.buf.push(scancode);
-            self.remaining -= 1;
+
+    //Add a new scancode. Returns true if we're finished.
+    fn add_scancode(&mut self, ch : u8) -> bool {
+        self.buf.push(ch);
+        self.remaining -= 1;
+        if self.remaining == 0 {
+            self.waiter.up();
+            true
+        } else {
+            false
         }
     }
 }
 
-static KEYBOARD_REQ_QUEUE: Mutex<Vec<KbReq>> = Mutex::new(Vec::new());
-static BLOCKED_READERS : Mutex<ThreadQueue> = Mutex::new(new_thread_queue());
+use alloc::sync::Arc;
+use alloc::vec;
+
+static KEYBOARD_REQ_QUEUE: Mutex<Vec<Arc<Promise<char>>>> = Mutex::new(Vec::new());
 
 // Reads new keystrokes from keyboard. 
-fn add_kb_req(len : usize) -> Vec<u8> {
-
+pub fn read() -> char {
+    let req = Arc::new(Promise::new());
+    KEYBOARD_REQ_QUEUE.lock().insert(0, req.clone());
+    req.get()
 }
 
-pub fn read(len: usize) -> Vec<u8> {
-
+fn keyboard_irq_handler() -> Option<()> {
+    apic::eoi();
+    let scancode: u8 = unsafe { x86::io::inb(0x60) };
+    //enqueue_scancode(scancode);
+    if let Some(ch) = decode_scancode(scancode) {
+        let mut req_queue = KEYBOARD_REQ_QUEUE.lock();
+        if let Some(top ) = req_queue.last_mut() {
+            top.set(ch);
+            req_queue.pop();
+        }
+    }
+    Some(())
 }
 
 struct PS2Kb {
-
+    request_queue: Mutex<Vec<Arc<Promise<char>>>>
 }
+
+impl PS2Kb {
+    fn new() -> Self {
+        Self {
+            request_queue: Mutex::new(Vec::new())
+        }
+    }
+
+    pub fn read(&mut self) -> char {
+        let req = Arc::new(Promise::new());
+        self.request_queue.lock().insert(0, req.clone());
+        req.get()
+    }
+}
+
 static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
 
 pub fn enqueue_scancode(scancode: u8) {
@@ -102,7 +149,7 @@ pub fn enqueue_scancode(scancode: u8) {
 pub fn dequeue_scancode() -> Option<u8> {
     SCANCODE_QUEUE.pop()
 }
-*/
+
 /// Lookup table: Set 2 make code → (unshifted char, shifted char).
 /// 0 means no printable character for that code.
 #[rustfmt::skip]
@@ -229,16 +276,6 @@ pub fn try_get_data() -> Option<u8> {
 pub fn reset() {
     wait_until_ready();
     unsafe { x86::io::outb(0x64, 0xFE) };
-}
-
-fn keyboard_irq_handler() -> Option<()> {
-    apic::eoi();
-    let scancode: u8 = unsafe { x86::io::inb(0x60) };
-    //enqueue_scancode(scancode);
-    if let Some(ch) = decode_scancode(scancode) {
-        kprintln!("Got char: {}", ch);
-    }
-    Some(())
 }
 
 fn wait_until_response() {
