@@ -1,8 +1,15 @@
-use x86::io::{inb, outb};
+use x86::{
+    fence::lfence,
+    io::{inb, outb},
+    time::rdtsc,
+};
 
 #[inline]
 pub fn read_tsc() -> u64 {
-    unsafe { x86::time::rdtscp().0 }
+    unsafe {
+        lfence();
+        rdtsc()
+    }
 }
 
 fn pit_wait_ms(n_ms: u16) {
