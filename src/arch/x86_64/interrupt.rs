@@ -18,6 +18,9 @@ use crate::{
     mp::CORE_ID,
     sync::{IntMutex, MutexLike},
     thread::{IDLE, suspend_to_thread, this_thread},
+    event::{Event, push_event},
+    memory::virtual_memory::PageFaultConditions,
+    mp::CORE_ID,
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -182,7 +185,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
                     cause.insert(PageFaultConditions::FETCH);
                 }
                 push_event(
-                    PageFault {
+                    Event::PageFault {
                         cause,
                         address: unsafe { cr2() },
                     },
@@ -203,17 +206,8 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             unsafe { crate::thread::preempt_to_idle(context) };
         }
         SYSCALL => {
-            // TODO: general purpose syscall handler
-            // get rax
-            let syscall_id = context.regs[13];
-
-            this_thread()
-                .process
-                .get()
-                .unwrap()
-                .exit_code
-                .set(syscall_id);
-            suspend_to_thread(IDLE.get().unwrap().clone());
+            push_event(Event::Syscall, CORE_ID.get(), false);
+            unsafe { crate::thread::block_to_idle(context) };
         }
         _ => {
             handle_device_interrupt(context.id as u8);

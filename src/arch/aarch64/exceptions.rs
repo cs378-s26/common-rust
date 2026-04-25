@@ -10,8 +10,7 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    syscall::SyscallContext,
-    thread::{IDLE, block_to_idle, preempt_to_idle, suspend_to_thread, this_thread},
+    thread::{block_to_idle, preempt_to_idle},
 };
 
 global_asm!(include_str!("exception.s"));
@@ -55,55 +54,22 @@ struct ExceptionContext {
     _pad: u64, // padding to make the size a multiple of 16 bytes for alignment, see SAVE_REGS in exception.s
 }
 
-impl SyscallContext for ExceptionContext {
-    fn syscall_number(&self) -> u64 {
-        self.gpr.regs[8]
-    }
-
-    fn arg0(&self) -> u64 {
-        self.gpr.regs[0]
-    }
-    fn arg1(&self) -> u64 {
-        self.gpr.regs[1]
-    }
-    fn arg2(&self) -> u64 {
-        self.gpr.regs[2]
-    }
-    fn arg3(&self) -> u64 {
-        self.gpr.regs[3]
-    }
-    fn arg4(&self) -> u64 {
-        self.gpr.regs[4]
-    }
-    fn arg5(&self) -> u64 {
-        self.gpr.regs[5]
-    }
-
-    fn set_return_value(&mut self, ret: u64) {
-        self.gpr.regs[0] = ret;
-    }
-
-    fn is_user_address(&self, ptr: u64) -> bool {
-        (ptr >> 63) & 1 == 0
-    }
-}
-
 /// Prints verbose information about the exception and then panics.
 fn default_exception_handler(exc: &mut ExceptionContext) {
     let exception_class = (exc.esr_el1 >> 26) & 0b111111;
 
     if exception_class == SVC {
-        // TODO write an architecture agnostic system call trap_frame that ExceptionContext implements so system calls can be passed this and just work
         // system_call_handler(exc);
-        let syscall_id = exc.gpr.regs[8];
-
-        this_thread()
-            .process
-            .get()
-            .unwrap()
-            .exit_code
-            .set(syscall_id);
-        suspend_to_thread(IDLE.get().unwrap().clone());
+        push_event(Event::Syscall, CORE_ID.get(), false);
+        let interrupt_context = InterruptContext {
+            gpr: exc.gpr,
+            sp: exc.sp,
+            pc: exc.elr_el1,
+            spsr: exc.spsr_el1,
+        };
+        unsafe {
+            block_to_idle(&interrupt_context);
+        }
 
         return;
     } else if exception_class == INSTRUCTION_ABORT || exception_class == INSTRUCTION_ABORT_LOWER {

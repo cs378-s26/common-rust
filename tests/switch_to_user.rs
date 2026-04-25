@@ -23,7 +23,7 @@ kernel_common::integration_test!({
     VFS.set_root(fs.get_root().unwrap()).unwrap();
     VFS.mount(fs);
 
-    let process = Process::new();
+    let process = Process::new().expect("failed to create process");
     let root = VFS.get_root().unwrap();
     let node = root.lookup("init").unwrap();
     let start_address = ElfLoader::load(node, &process).expect("Failed to load ELF file.");
@@ -32,6 +32,10 @@ kernel_common::integration_test!({
         .mmap(None, 4096 * 4, false, None)
         .unwrap();
     spawn_user_thread(&process, start_address as usize, stack + 4096 * 4);
-    let holy_shit = process.exit_code.get();
-    kprintln!("{}", holy_shit);
+    let exit_code = process.exit_code.get();
+    if exit_code == 0 {
+        kprintln!("User thread exited successfully.");
+    } else {
+        kprintln!("User thread exited with code {}.", exit_code);
+    }
 });

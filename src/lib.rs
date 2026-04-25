@@ -65,6 +65,7 @@ use crate::{
     mp::{MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     state::{Irq, StateTrait},
+    process::init_pid_allocator,
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
@@ -173,6 +174,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
+    init_pid_allocator();
+
     VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
     VFS.mount(fake);

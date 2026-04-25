@@ -42,7 +42,7 @@ kernel_common::integration_test!({
 
     static DONE_COUNT: AtomicU64 = AtomicU64::new(0);
 
-    let process = Process::new();
+    let process = Process::new().expect("failed to create process");
     Process::run(process.clone(), move || {
         kprintln!("Inside process.");
         // Mount file system (stolen from ext2_vfs.rs).
