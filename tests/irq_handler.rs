@@ -34,6 +34,7 @@ kernel_common::integration_test!({
             apic::eoi();
             Some(())
         }),
+        None,
     );
 
     // Enable RTC periodic interrupts via CMOS register B (IRQ 8).
