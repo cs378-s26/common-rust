@@ -122,24 +122,6 @@ fn keyboard_irq_handler() -> Option<()> {
     Some(())
 }
 
-struct PS2Kb {
-    request_queue: Mutex<Vec<Arc<Promise<char>>>>
-}
-
-impl PS2Kb {
-    fn new() -> Self {
-        Self {
-            request_queue: Mutex::new(Vec::new())
-        }
-    }
-
-    pub fn read(&mut self) -> char {
-        let req = Arc::new(Promise::new());
-        self.request_queue.lock().insert(0, req.clone());
-        req.get()
-    }
-}
-
 static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
 
 pub fn enqueue_scancode(scancode: u8) {
@@ -368,7 +350,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
-        crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), None);
+        crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), Some(0x69));
         kprintln!("PS2 keyboard IRQ handler registered");
     }
     
