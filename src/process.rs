@@ -51,6 +51,7 @@ impl PidAllocator {
         None
     }
 
+    // TODO implement proper process cleanup and call this
     fn _free(&mut self, pid: u32) {
         let pid = pid as usize;
         assert!(pid >= 1 && pid <= MAX_PID);
@@ -58,12 +59,6 @@ impl PidAllocator {
         self.used.set(pid, false);
     }
 
-    fn _mark_used(&mut self, pid: u32) {
-        let pid = pid as usize;
-        assert!(pid <= MAX_PID);
-        assert!(!self.used[pid], "PID {} already in use", pid);
-        self.used.set(pid, true);
-    }
 }
 
 pub fn init_pid_allocator() {
@@ -73,7 +68,7 @@ pub fn init_pid_allocator() {
 pub struct Process {
     pub virtual_memory: VirtualMemory,
     pub exit_code: Promise<i32>,
-    pub pid: u32,
+    pid: u32,
 }
 
 impl Process {
