@@ -52,7 +52,12 @@ use modules::load_modules_early;
 use spin::{Barrier, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait}, cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline}, coroutine::{init_coroutine_executor, init_coroutine_queue}, devices::discovery::{create_drivers, discover_devices}, event::init_event_handler, fs::{
+    arch::{Arch, ArchTrait},
+    cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline},
+    coroutine::{init_coroutine_executor, init_coroutine_queue},
+    devices::discovery::{create_drivers, discover_devices},
+    event::init_event_handler,
+    fs::{
         fake::{FAKE, Fake},
         vfs::VFS,
     }, memory::{heap::init_malloc, virtual_memory_2::VirtualMemory}, mp::{MP_STAGE, MPStage, init_cpu_local_table}, print::{StackTrace, init_tty, kprintln}, state::{Irq, StateTrait}, thread::{poll_tasks, set_up_idle, spawn_thread}

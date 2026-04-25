@@ -1,8 +1,9 @@
-name: Main Lint Checks
+name: Lint Checks
 on:
     push:
         branches:
             - main
+    pull_request:
 jobs:
     checks:
         name: Run Lint Checks
