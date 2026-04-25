@@ -33,7 +33,10 @@ pub mod syscall;
 pub mod thread;
 extern crate alloc;
 use alloc::sync::Arc;
-use core::sync::atomic::Ordering;
+use core::{
+    hint::spin_loop,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 use limine::{
     BaseRevision,
@@ -49,7 +52,6 @@ use memory::{
     virtual_memory::init_virtual_memory_allocator,
 };
 use modules::load_modules_early;
-use spin::{Barrier, Once};
 
 use crate::{
     arch::{Arch, ArchTrait},
@@ -62,7 +64,7 @@ use crate::{
         vfs::VFS,
     },
     memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
-    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
@@ -195,6 +197,35 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
 }
 
+pub struct SpinBarrier {
+    count: AtomicUsize,
+    generation: AtomicUsize,
+}
+
+impl SpinBarrier {
+    pub const fn new() -> Self {
+        Self {
+            count: AtomicUsize::new(0),
+            generation: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn wait(&self, n_threads: usize) {
+        let _gen = self.generation.load(Ordering::Acquire);
+
+        let prev = self.count.fetch_add(1, Ordering::AcqRel);
+
+        if prev + 1 == n_threads {
+            self.count.store(0, Ordering::Release);
+            self.generation.fetch_add(1, Ordering::AcqRel);
+        } else {
+            while self.generation.load(Ordering::Acquire) == _gen {
+                spin_loop();
+            }
+        }
+    }
+}
+
 /// wrapper around initalize core that goes to kernel main
 /// # Safety
 /// Should only be called from bootstrap processor during kernel initialization
@@ -205,26 +236,36 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
 
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    kprintln!(
+        "[{} {}/{}] processor init done",
+        CORE_ID.get(),
+        COUNTER.fetch_add(1, Ordering::Relaxed) + 1,
+        core_count
+    );
+
     // runs an initialization routine once overall
     // waits for this to complete before any core proceeds
     macro one($code:block) {{
         // needs to be in an extra block to avoid namespace collisions
-        static BARRIER: Once<Barrier> = Once::new();
-        BARRIER
-            .call_once(|| {
-                $code;
-                Barrier::new(core_count)
-            })
-            .wait();
+        static BARRIER: SpinBarrier = SpinBarrier::new();
+        static ONCE: AtomicBool = AtomicBool::new(false);
+
+        if !ONCE.swap(true, Ordering::SeqCst) {
+            $code;
+        }
+
+        BARRIER.wait(core_count);
     }}
 
     // runs an initialization routine on each core
     // waits for this to complete before any core proceeds
     macro all($code:block) {{
         // needs to be in an extra block to avoid namespace collisions
-        static BARRIER: Once<Barrier> = Once::new();
+        static BARRIER: SpinBarrier = SpinBarrier::new();
         $code;
-        BARRIER.call_once(|| Barrier::new(core_count)).wait();
+        BARRIER.wait(core_count);
     }}
 
     // this is where the magic happens
