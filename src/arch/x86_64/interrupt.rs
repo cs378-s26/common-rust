@@ -13,14 +13,10 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 use super::apic;
 use crate::{
     devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
-    event::{Event::PageFault, push_event},
-    memory::virtual_memory::PageFaultConditions,
-    mp::CORE_ID,
-    sync::{IntMutex, MutexLike},
-    thread::{IDLE, suspend_to_thread, this_thread},
     event::{Event, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
+    sync::{IntMutex, MutexLike},
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
