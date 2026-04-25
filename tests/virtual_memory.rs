@@ -31,7 +31,7 @@ kernel_common::integration_test!({
 
     fn test01() {
         LATCH.fetch_add(1, Ordering::SeqCst);
-        let process = Process::new();
+        let process = Process::new().expect("failed to create process");
         Process::run(process.clone(), move || {
             let x = process
                 .virtual_memory
@@ -57,7 +57,7 @@ kernel_common::integration_test!({
 
     fn test02() {
         LATCH.fetch_add(1, Ordering::SeqCst);
-        let process = Process::new();
+        let process = Process::new().expect("failed to create process");
         Process::run(process.clone(), move || {
             let x = process
                 .virtual_memory
@@ -105,7 +105,7 @@ kernel_common::integration_test!({
 
     fn test03() {
         LATCH.fetch_add(1, Ordering::SeqCst);
-        let process = Process::new();
+        let process = Process::new().expect("failed to create process");
         Process::run(process.clone(), move || {
             let x = process
                 .virtual_memory
