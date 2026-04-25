@@ -10,7 +10,6 @@ use spin::Mutex;
 use crate::{
     arch::apic,
     print::kprintln,
-    thread::{ThreadQueue, new_thread_queue},
 };
 
 const QUEUE_CAP: usize = 256;
@@ -61,7 +60,7 @@ impl ScancodeQueue {
 
 use alloc::vec::Vec;
 
-use intrusive_collections::{LinkedList, LinkedListLink, RBTreeAtomicLink, intrusive_adapter};
+use intrusive_collections::{LinkedListLink, intrusive_adapter};
 
 use crate::sync::{Promise, Semaphore};
 //this is not a promise, since we may want to fill up the thing gradually
@@ -99,7 +98,7 @@ impl KbReq {
     }
 }
 
-use alloc::{sync::Arc, vec};
+use alloc::sync::Arc;
 
 static KEYBOARD_REQ_QUEUE: Mutex<Vec<Arc<Promise<char>>>> = Mutex::new(Vec::new());
 

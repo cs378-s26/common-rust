@@ -225,8 +225,8 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
 }
 
 //this is hardcoded since apparently x86-64 has only 256 interrupt vectors
-static mut occupied_vectors: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
-static mut next_vector: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
+static mut OCCUPIED_VECTORS: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
+static mut NEXT_VECTOR: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
 
 /*
 * Design:
@@ -280,7 +280,7 @@ pub fn register_irq_handler(
     handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     irq_vec: Option<u8>,
 ) {
-    let irq_vec_real = if let Some(vec) = irq_vec { vec } else { 0x67 };
+    let irq_vec_real = irq_vec.unwrap_or(0x67);
     kprintln!("Routing IRQ {} to handler", irq_num);
     route_irq_num(irq_num, irq_vec_real);
     let handler = Arc::new(InterruptHandler {
@@ -310,7 +310,7 @@ fn handle_device_interrupt(irq_vec: u8) {
     if let Some(true_list) = handlers_list.find(&irq_vec).get() {
         for handler in true_list.handlers.lock().iter() {
             let irq_handler = &handler.handler;
-            if let Some(_) = irq_handler() {
+            if irq_handler().is_some() {
                 has_handled = true;
                 break;
             }

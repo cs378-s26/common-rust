@@ -32,7 +32,7 @@ pub mod sync;
 pub mod syscall;
 pub mod thread;
 extern crate alloc;
-use alloc::{string::String, sync::Arc};
+use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 
 use limine::{
@@ -101,8 +101,8 @@ fn usual_main() {
     kprintln!("Entered kernel");
     loop {
         #[cfg(target_arch = "x86_64")]
-        if let (c) = devices::char::ps2_kb_m::read() {
-            kprintln!("String: {}", (c as char));
+        if let c = devices::char::ps2_kb_m::read() {
+            kprintln!("String: {}", { c });
         }
     }
 }
