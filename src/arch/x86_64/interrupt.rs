@@ -140,7 +140,7 @@ pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
-    kprintln!("timer {}", CORE_ID.get());
+    //kprintln!("timer {}", CORE_ID.get());
 
     unsafe { crate::thread::preempt_to_idle(ctx) };
 }
@@ -276,22 +276,23 @@ fn route_irq_num(irq_num: u8, vec: u8) {
 
 use crate::print::kprintln;
 
-pub fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
-    kprintln!("Routing IRQ{} to handler", irq_num);
-    route_irq_num(irq_num, 0x67);
+pub fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>, irq_vec: Option<u8>) {
+    let irq_vec_real = if let Some(vec) = irq_vec { vec } else { 0x67 };
+    kprintln!("Routing IRQ {} to handler", irq_num);
+    route_irq_num(irq_num, irq_vec_real);
     let handler = Arc::new(InterruptHandler {
         handler,
         link: LinkedListAtomicLink::new(),
     });
     let mut handlers_list = HANDLERS.lock();
-    let handlers_for_line = handlers_list.find_mut(&0x67);
+    let handlers_for_line = handlers_list.find_mut(&irq_vec_real);
     if let Some(true_list) = handlers_for_line.get() {
         true_list.handlers.lock().push_back(handler);
     } else {
         let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
         new_list.push_back(handler);
         let new_line = InterruptHandlersLine {
-            irq: 0x67,
+            irq: irq_vec_real,
             handlers: IntMutex::new(new_list),
             link: RBTreeAtomicLink::new(),
         };

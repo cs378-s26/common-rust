@@ -217,13 +217,22 @@ fn map_err(e: ControllerError) -> &'static str {
     }
 }
 
-fn keyboard_irq_handler() -> Option<()> {
-    apic::eoi();
-    kprintln!("IRQ handler called!");
+pub fn try_get_data() -> Option<u8> {
     let status = unsafe { x86::io::inb(0x64) };
     if status & 0x1 == 0 {
-        return None; // no data available; probably a spurious IRQ
+        None
+    } else {
+        Some(unsafe { x86::io::inb(0x60) })
     }
+}
+
+pub fn reset() {
+    wait_until_ready();
+    unsafe { x86::io::outb(0x64, 0xFE) };
+}
+
+fn keyboard_irq_handler() -> Option<()> {
+    apic::eoi();
     let scancode: u8 = unsafe { x86::io::inb(0x60) };
     //enqueue_scancode(scancode);
     if let Some(ch) = decode_scancode(scancode) {
@@ -232,12 +241,31 @@ fn keyboard_irq_handler() -> Option<()> {
     Some(())
 }
 
+fn wait_until_response() {
+    loop {
+        let status = unsafe { x86::io::inb(0x64) };
+        if status & 0x1 == 1 {
+            break;
+        }
+    }
+}
+
+fn wait_until_ready() {
+    loop {
+        let status = unsafe { x86::io::inb(0x64) };
+        if status & 0x2 == 0 {
+            break;
+        }
+    }
+}
+
+
 /// Initialize both PS/2 devices (keyboard + mouse) following the OSDev wiki sequence.
 /// Must be called once on the BSP before enabling IRQs.
 /// https://docs.rs/ps2/latest/ps2/
 /// https://wiki.osdev.org/%228042%22_PS/2_Controller#Initialising_the_PS/2_Controller
 pub fn init_ps2() -> Result<(), &'static str> {
-    /*let mut ctrl = unsafe { Controller::new() };
+    let mut ctrl = unsafe { Controller::new() };
 
     ctrl.disable_keyboard()
         .map_err(|_| "disable_keyboard failed")?;
@@ -287,25 +315,36 @@ pub fn init_ps2() -> Result<(), &'static str> {
     if keyboard_works {
         ctrl.enable_keyboard()
             .map_err(|_| "enable_keyboard failed")?;
+        /* 
         config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
         config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
+        */
+        //enable keyboard
+        unsafe { x86::io::outb(0x64, 0xAE) };
+        //enable interrupts
+        unsafe { x86::io::outb(0x64, 0x60)};
+        wait_until_ready();
+        unsafe { x86::io::outb(0x60, 0xff) };
+        ctrl.write_config(config).map_err(|_| "write_config (keyboard) failed")?;
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
         kprintln!("[PS2] keyboard reset+self-test: PASS");
         // QEMU auto-enables scanning after reset; treat failure as non-fatal.
-        /* 
+        
         match ctrl.keyboard().enable_scanning() {
             Ok(()) => kprintln!("[PS2] keyboard scanning enabled"),
             Err(_) => kprintln!("[PS2] enable_scanning: failed (non-fatal)"),
         }
-        */
+        crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), None);
+        kprintln!("PS2 keyboard IRQ handler registered");
     }
-
+    
     if mouse_works {
         ctrl.enable_mouse().map_err(|_| "enable_mouse failed")?;
         config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
         config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
+        ctrl.write_config(config).map_err(|_| "write_config (mouse) failed")?;
         ctrl.mouse()
             .reset_and_self_test()
             .map_err(|_| "mouse reset/self-test failed")?;
@@ -314,18 +353,26 @@ pub fn init_ps2() -> Result<(), &'static str> {
             Ok(()) => kprintln!("[PS2] mouse data reporting enabled"),
             Err(_) => kprintln!("[PS2] enable_data_reporting: failed (non-fatal)"),
         }
+        crate::arch::register_irq_handler(12, Box::new(|| {
+            apic::eoi();
+            kprintln!("Mouse IRQ handler called!");
+            Some(())    }), Some(0x68));
     }
 
     // Write final config  this enables IRQs for all working devices.
-    ctrl.write_config(config)
-        .map_err(|_| "write_config (final) failed")?;
     kprintln!(
         "[PS2] init complete (kbd={} mouse={})",
         keyboard_works,
         mouse_works
     );
-    */
-    crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler));
 
+    //manually enable keyboard interrupts
+    /* 
+        ctrl.keyboard()
+            .reset_and_self_test()
+            .map_err(|_| "keyboard reset/self-test failed")?;
+    */
+
+    //reset again?
     Ok(())
 }

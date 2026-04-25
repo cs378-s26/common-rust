@@ -102,7 +102,7 @@ pub fn route_irq(
         write_reg(redir_lo(irq), cur_lo); // write lo last — unmasks the entry
     }
 
-    /*
+    
     let read_lo = unsafe { read_reg(redir_lo(irq)) };
     let read_hi = unsafe { read_reg(redir_hi(irq)) };
     kprintln!(
@@ -113,7 +113,7 @@ pub fn route_irq(
         read_hi,
         read_lo
     );
-    */
+    
 }
 
 /// Mask (disable) an IRQ line.

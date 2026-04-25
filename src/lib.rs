@@ -211,17 +211,14 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
 
-        kprintln!("pre one! {}", crate::mp::CORE_ID.get());
 
         BARRIER
             .call_once(|| {
-                kprintln!("one! barrier init {}", crate::mp::CORE_ID.get());
                 $code;
                 Barrier::new(core_count)
             })
             .wait();
 
-        kprintln!("post one! {}", crate::mp::CORE_ID.get());
     }}
 
     // runs an initialization routine on each core
@@ -230,13 +227,10 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
         $code;
-        kprintln!("pre all! {}", crate::mp::CORE_ID.get());
 
         BARRIER.call_once(|| {
-            kprintln!("all! barrier init {}", crate::mp::CORE_ID.get());
             Barrier::new(core_count)}).wait();
 
-        kprintln!("post all! {}", crate::mp::CORE_ID.get());
     }}
 
     // this is where the magic happens
@@ -245,21 +239,16 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     all!({ set_up_idle() });
     //kprintln!("Idle thread set up!");
     all!({ init_coroutine_executor() });
-    kprintln!("Coroutine executor initialized!");
-    kprintln!("Core count: {}", core_count);
     all!({ init_event_handler() });
-    kprintln!("Event handler initialized!");
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
-    kprintln!("Ready to preempt!");
     one!({
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
             Work::work();
         })
     });
-    kprintln!("Thread added!");
     all!({ Arch::set_irq_enabled(true) });
-    kprintln!("Interrupts enabled!");
+    kprintln!("Interrupts enabled, polling tasks!");
     poll_tasks() // runs on all cores, never to return
 }
 

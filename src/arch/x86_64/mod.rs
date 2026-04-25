@@ -94,8 +94,8 @@ impl ArchTrait for Arch {
         apic::send_ipi_all_except_self(IPI_WAKE);
     }
 
-    fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>) {
-        register_irq_handler(irq_num, handler);
+    fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>, irq_vec: Option<u8>) {
+        register_irq_handler(irq_num, handler, irq_vec);
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(
