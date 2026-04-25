@@ -111,7 +111,6 @@ pub fn read() -> char {
 fn keyboard_irq_handler() -> Option<()> {
     apic::eoi();
     let scancode: u8 = unsafe { x86::io::inb(0x60) };
-    //enqueue_scancode(scancode);
     if let Some(ch) = decode_scancode(scancode) {
         let mut req_queue = KEYBOARD_REQ_QUEUE.lock();
         if let Some(top ) = req_queue.last_mut() {
@@ -246,12 +245,12 @@ fn map_err(e: ControllerError) -> &'static str {
     }
 }
 
-pub fn try_get_data() -> Option<u8> {
+pub fn try_get_data() -> Option<char> {
     let status = unsafe { x86::io::inb(0x64) };
     if status & 0x1 == 0 {
         None
     } else {
-        Some(unsafe { x86::io::inb(0x60) })
+        decode_scancode(unsafe {x86::io::inb(0x60)})
     }
 }
 
@@ -337,12 +336,13 @@ pub fn init_ps2() -> Result<(), &'static str> {
         config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
         config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
         ctrl.write_config(config).map_err(|_| "write_config (keyboard) failed")?;
+        /* 
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
         kprintln!("[PS2] keyboard reset+self-test: PASS");
+        */
         // QEMU auto-enables scanning after reset; treat failure as non-fatal.
-        
         match ctrl.keyboard().enable_scanning() {
             Ok(()) => kprintln!("[PS2] keyboard scanning enabled"),
             Err(_) => kprintln!("[PS2] enable_scanning: failed (non-fatal)"),

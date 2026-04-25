@@ -430,12 +430,13 @@ pub fn get_gsi_for_irq(irq_num: u8) -> InterruptOverride {
     if let Some(gsi) = IOAPIC_OVERRIDE_GSI_MAP.lock().get(&irq_num) {
         *gsi
     } else {
+        //OSDev says to default to ActiveHigh. On my laptop, ps/2 keyboard seems to want active low
         InterruptOverride {
             bus_src: 0,
             irq_src: irq_num,
             gsi: irq_num as u32,
             trigger_mode: TriggerMode::Edge,
-            polarity: Polarity::ActiveHigh,
+            polarity: Polarity::ActiveLow,
         }
     }
 }

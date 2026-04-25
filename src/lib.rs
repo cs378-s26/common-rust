@@ -95,8 +95,9 @@ pub trait KernelWorkTrait {
 fn usual_main() {
     kprintln!("Entered kernel");
     loop {
-        let received = devices::char::ps2_kb_m::read();
-        kprintln!("String: {}", (received as char));
+        if let (c) = devices::char::ps2_kb_m::read() {
+        kprintln!("String: {}", (c as char));
+        }
     }
 }
 
