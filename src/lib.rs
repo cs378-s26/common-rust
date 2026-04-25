@@ -64,8 +64,8 @@ use crate::{
     memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
     mp::{MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
-    state::{Irq, StateTrait},
     process::init_pid_allocator,
+    state::{Irq, StateTrait},
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
