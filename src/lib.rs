@@ -197,12 +197,15 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
 }
 
+// This is really janky - the spin crates Once<Barrier> has issues on real hardware
+// We replace this with a temporary implementation of a barrier for the sake of simplicity.
 pub struct SpinBarrier {
     count: AtomicUsize,
     generation: AtomicUsize,
 }
 
 impl SpinBarrier {
+    #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
             count: AtomicUsize::new(0),
