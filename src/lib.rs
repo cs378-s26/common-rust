@@ -60,7 +60,12 @@ use crate::{
     fs::{
         fake::{FAKE, Fake},
         vfs::VFS,
-    }, memory::{heap::init_malloc, virtual_memory_2::VirtualMemory}, mp::{MP_STAGE, MPStage, init_cpu_local_table}, print::{StackTrace, init_tty, kprintln}, state::{Irq, StateTrait}, thread::{poll_tasks, set_up_idle, spawn_thread}
+    },
+    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    print::{StackTrace, init_tty, kprintln},
+    state::{Irq, StateTrait},
+    thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
 // some sample limine requests, for no particular reason
@@ -96,7 +101,7 @@ fn usual_main() {
     kprintln!("Entered kernel");
     loop {
         if let (c) = devices::char::ps2_kb_m::read() {
-        kprintln!("String: {}", (c as char));
+            kprintln!("String: {}", (c as char));
         }
     }
 }
@@ -220,14 +225,12 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: Once<Barrier> = Once::new();
 
-
         BARRIER
             .call_once(|| {
                 $code;
                 Barrier::new(core_count)
             })
             .wait();
-
     }}
 
     // runs an initialization routine on each core
@@ -237,9 +240,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         static BARRIER: Once<Barrier> = Once::new();
         $code;
 
-        BARRIER.call_once(|| {
-            Barrier::new(core_count)}).wait();
-
+        BARRIER.call_once(|| Barrier::new(core_count)).wait();
     }}
 
     // this is where the magic happens

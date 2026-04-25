@@ -127,11 +127,10 @@ pub struct InterruptOverride {
 }
 
 /*
-* The LAPIC is not initialized when we do device discovery. Instead, get CPU -> LAPIC ID mapping 
+* The LAPIC is not initialized when we do device discovery. Instead, get CPU -> LAPIC ID mapping
 from the MADT
 */
-pub static IOAPIC_CPU_TO_LAPIC : IntSpinLock<BTreeMap<u32, u32>> = IntSpinLock::new(BTreeMap::new()); 
-
+pub static IOAPIC_CPU_TO_LAPIC: IntSpinLock<BTreeMap<u32, u32>> = IntSpinLock::new(BTreeMap::new());
 
 impl Madt {
     fn from_addr(addr: usize) -> Option<Self> {
@@ -298,43 +297,43 @@ impl Mcfg {
 #[derive(Clone, Copy)]
 struct FADT {
     //Copilot copied off of https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L236
-    sdtheader : SDTHeader,
-    facs : u32,
-    dsdt : u32,
-    reserved : u8,
-    preferred_pm_profile : u8,
-    sci_interrupt : u16,
-    smi_command_port : u32,
-    acpi_enable : u8,
-    acpi_disable : u8,
-    s4bios_req : u8,
-    pstate_control : u8,
-    pm1a_event_block : u32,
-    pm1b_event_block : u32,
-    pm1a_control_block : u32,
-    pm1b_control_block : u32,
-    pm2_control_block : u32,
-    pm_timer_block : u32,
-    gpe0_block : u32,
-    gpe1_block : u32,
-    pm1_event_length : u8,
-    pm1_control_length : u8,
-    pm2_control_length : u8,
-    pm_timer_length : u8,
-    gpe0_length : u8,
-    gpe1_length : u8,
-    gpe1_base : u8,
-    cst_control : u8,
-    c2_latency : u16,
-    c3_latency : u16,
-    flush_size : u16,
-    flush_stride : u16,
-    duty_offset : u8,
-    duty_width : u8,
-    day_alarm : u8,
-    month_alarm : u8,
-    year_alarm : u8,
-    flags : u32,
+    sdtheader: SDTHeader,
+    facs: u32,
+    dsdt: u32,
+    reserved: u8,
+    preferred_pm_profile: u8,
+    sci_interrupt: u16,
+    smi_command_port: u32,
+    acpi_enable: u8,
+    acpi_disable: u8,
+    s4bios_req: u8,
+    pstate_control: u8,
+    pm1a_event_block: u32,
+    pm1b_event_block: u32,
+    pm1a_control_block: u32,
+    pm1b_control_block: u32,
+    pm2_control_block: u32,
+    pm_timer_block: u32,
+    gpe0_block: u32,
+    gpe1_block: u32,
+    pm1_event_length: u8,
+    pm1_control_length: u8,
+    pm2_control_length: u8,
+    pm_timer_length: u8,
+    gpe0_length: u8,
+    gpe1_length: u8,
+    gpe1_base: u8,
+    cst_control: u8,
+    c2_latency: u16,
+    c3_latency: u16,
+    flush_size: u16,
+    flush_stride: u16,
+    duty_offset: u8,
+    duty_width: u8,
+    day_alarm: u8,
+    month_alarm: u8,
+    year_alarm: u8,
+    flags: u32,
 }
 
 impl FADT {
@@ -344,8 +343,9 @@ impl FADT {
             return None;
         }
         // checksum validation
-        let bytes =
-            unsafe { core::slice::from_raw_parts(addr as *const u8, fadt.sdtheader.length as usize) };
+        let bytes = unsafe {
+            core::slice::from_raw_parts(addr as *const u8, fadt.sdtheader.length as usize)
+        };
         let checksum: u8 = bytes.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
         if checksum != 0 {
             return None;
@@ -416,7 +416,7 @@ impl Xsdt {
 }
 
 /*
-* List of overrides from ISQ IRQs to GSIs. 
+* List of overrides from ISQ IRQs to GSIs.
 */
 static IOAPIC_OVERRIDE_GSI_MAP: IntSpinLock<BTreeMap<u8, InterruptOverride>> =
     IntSpinLock::new(BTreeMap::new()); // maps ISA IRQ num to GSI
@@ -464,7 +464,13 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
                 flags,
             } = entry
             {
-                kprintln!("[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}", bus_src, irq_src, gsi, flags);
+                kprintln!(
+                    "[ACPI] Found interrupt source override: bus_src={}, irq_src={}, gsi={}, flags={:#x}",
+                    bus_src,
+                    irq_src,
+                    gsi,
+                    flags
+                );
                 IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
                     irq_src,
                     InterruptOverride {
@@ -503,8 +509,8 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
         let ps2_enabled = fadt.flags & (1 << 1) != 0;
         kprintln!("PS2 enabled? {}", ps2_enabled);
         //if ps2_enabled {
-            crate::devices::char::ps2_kb_m::init_ps2().ok()?;
-            //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
+        crate::devices::char::ps2_kb_m::init_ps2().ok()?;
+        //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
         //}
     }
     Some(matched_devices)

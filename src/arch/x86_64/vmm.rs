@@ -9,10 +9,13 @@ use x86_64::{
     },
 };
 
-use crate::{arch::apic, memory::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
-    virtual_memory::PagingOptions,
-}}; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
+use crate::{
+    arch::apic,
+    memory::{
+        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        virtual_memory::PagingOptions,
+    },
+}; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
 
 // ChatGPT told me how to do this trait impl'ing
 pub struct FrameAllocatorWrapper {

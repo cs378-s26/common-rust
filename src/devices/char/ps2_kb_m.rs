@@ -1,13 +1,17 @@
-use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::boxed::Box;
+use core::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
-use crate::arch::apic;
-use crate::thread::{ThreadQueue, new_thread_queue};
-use alloc::boxed::Box;
 
-use crate::print::kprintln;
+use crate::{
+    arch::apic,
+    print::kprintln,
+    thread::{ThreadQueue, new_thread_queue},
+};
 
 const QUEUE_CAP: usize = 256;
 
@@ -55,18 +59,17 @@ impl ScancodeQueue {
     }
 }
 
-
 use alloc::vec::Vec;
+
+use intrusive_collections::{LinkedList, LinkedListLink, RBTreeAtomicLink, intrusive_adapter};
+
 use crate::sync::{Promise, Semaphore};
-use intrusive_collections::{
-    LinkedList, LinkedListLink, RBTreeAtomicLink, intrusive_adapter,
-};
 //this is not a promise, since we may want to fill up the thing gradually
 struct KbReq {
-    buf : Vec<u8>,
-    remaining : usize,
-    waiter : Semaphore,
-    link : LinkedListLink
+    buf: Vec<u8>,
+    remaining: usize,
+    waiter: Semaphore,
+    link: LinkedListLink,
 }
 
 use alloc::rc::Rc;
@@ -74,17 +77,17 @@ use alloc::rc::Rc;
 intrusive_adapter!(KbReqAdapter = Rc<KbReq>: KbReq {link => LinkedListLink});
 
 impl KbReq {
-    fn new(len : usize) -> KbReq {
+    fn new(len: usize) -> KbReq {
         Self {
-            buf : Vec::with_capacity(len + 1),
-            remaining : len,
-            waiter : Semaphore::new(0),
-            link : LinkedListLink::new()
+            buf: Vec::with_capacity(len + 1),
+            remaining: len,
+            waiter: Semaphore::new(0),
+            link: LinkedListLink::new(),
         }
     }
 
     //Add a new scancode. Returns true if we're finished.
-    fn add_scancode(&mut self, ch : u8) -> bool {
+    fn add_scancode(&mut self, ch: u8) -> bool {
         self.buf.push(ch);
         self.remaining -= 1;
         if self.remaining == 0 {
@@ -96,12 +99,11 @@ impl KbReq {
     }
 }
 
-use alloc::sync::Arc;
-use alloc::vec;
+use alloc::{sync::Arc, vec};
 
 static KEYBOARD_REQ_QUEUE: Mutex<Vec<Arc<Promise<char>>>> = Mutex::new(Vec::new());
 
-// Reads new keystrokes from keyboard. 
+// Reads new keystrokes from keyboard.
 pub fn read() -> char {
     let req = Arc::new(Promise::new());
     KEYBOARD_REQ_QUEUE.lock().insert(0, req.clone());
@@ -113,7 +115,7 @@ fn keyboard_irq_handler() -> Option<()> {
     let scancode: u8 = unsafe { x86::io::inb(0x60) };
     if let Some(ch) = decode_scancode(scancode) {
         let mut req_queue = KEYBOARD_REQ_QUEUE.lock();
-        if let Some(top ) = req_queue.last_mut() {
+        if let Some(top) = req_queue.last_mut() {
             top.set(ch);
             req_queue.pop();
         }
@@ -250,7 +252,7 @@ pub fn try_get_data() -> Option<char> {
     if status & 0x1 == 0 {
         None
     } else {
-        decode_scancode(unsafe {x86::io::inb(0x60)})
+        decode_scancode(unsafe { x86::io::inb(0x60) })
     }
 }
 
@@ -276,7 +278,6 @@ fn wait_until_ready() {
         }
     }
 }
-
 
 /// Initialize both PS/2 devices (keyboard + mouse) following the OSDev wiki sequence.
 /// Must be called once on the BSP before enabling IRQs.
@@ -335,8 +336,9 @@ pub fn init_ps2() -> Result<(), &'static str> {
             .map_err(|_| "enable_keyboard failed")?;
         config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
         config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
-        ctrl.write_config(config).map_err(|_| "write_config (keyboard) failed")?;
-        /* 
+        ctrl.write_config(config)
+            .map_err(|_| "write_config (keyboard) failed")?;
+        /*
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
@@ -353,9 +355,9 @@ pub fn init_ps2() -> Result<(), &'static str> {
         crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), Some(0x69));
         kprintln!("PS2 keyboard IRQ handler registered");
     }
-    
+
     //for some reason, enabling mouse makes keyboard stop working
-    /* 
+    /*
     if false {
         ctrl.enable_mouse().map_err(|_| "enable_mouse failed")?;
         config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
@@ -369,7 +371,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
             Ok(()) => kprintln!("[PS2] mouse data reporting enabled"),
             Err(_) => kprintln!("[PS2] enable_data_reporting: failed (non-fatal)"),
         }
-        /* 
+        /*
         crate::arch::register_irq_handler(12, Box::new(|| {
             apic::eoi();
             kprintln!("Mouse IRQ handler called!");

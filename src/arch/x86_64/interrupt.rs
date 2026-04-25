@@ -13,12 +13,12 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 use super::apic;
 use crate::{
     Once,
+    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     sync::{IntMutex, IntSpinLock, MutexLike},
     thread::{IDLE, suspend_to_thread, this_thread},
-    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -276,7 +276,11 @@ fn route_irq_num(irq_num: u8, vec: u8) {
 
 use crate::print::kprintln;
 
-pub fn register_irq_handler(irq_num: u8, handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>, irq_vec: Option<u8>) {
+pub fn register_irq_handler(
+    irq_num: u8,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    irq_vec: Option<u8>,
+) {
     let irq_vec_real = if let Some(vec) = irq_vec { vec } else { 0x67 };
     kprintln!("Routing IRQ {} to handler", irq_num);
     route_irq_num(irq_num, irq_vec_real);
