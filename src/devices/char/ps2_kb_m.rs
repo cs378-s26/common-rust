@@ -315,16 +315,8 @@ pub fn init_ps2() -> Result<(), &'static str> {
     if keyboard_works {
         ctrl.enable_keyboard()
             .map_err(|_| "enable_keyboard failed")?;
-        /* 
         config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
         config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
-        */
-        //enable keyboard
-        unsafe { x86::io::outb(0x64, 0xAE) };
-        //enable interrupts
-        unsafe { x86::io::outb(0x64, 0x60)};
-        wait_until_ready();
-        unsafe { x86::io::outb(0x60, 0xff) };
         ctrl.write_config(config).map_err(|_| "write_config (keyboard) failed")?;
         ctrl.keyboard()
             .reset_and_self_test()
@@ -336,11 +328,16 @@ pub fn init_ps2() -> Result<(), &'static str> {
             Ok(()) => kprintln!("[PS2] keyboard scanning enabled"),
             Err(_) => kprintln!("[PS2] enable_scanning: failed (non-fatal)"),
         }
+        ctrl.keyboard()
+            .reset_and_self_test()
+            .map_err(|_| "keyboard reset/self-test failed")?;
         crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), None);
         kprintln!("PS2 keyboard IRQ handler registered");
     }
     
-    if mouse_works {
+    //for some reason, enabling mouse makes keyboard stop working
+    /* 
+    if false {
         ctrl.enable_mouse().map_err(|_| "enable_mouse failed")?;
         config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
         config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
@@ -353,11 +350,14 @@ pub fn init_ps2() -> Result<(), &'static str> {
             Ok(()) => kprintln!("[PS2] mouse data reporting enabled"),
             Err(_) => kprintln!("[PS2] enable_data_reporting: failed (non-fatal)"),
         }
+        /* 
         crate::arch::register_irq_handler(12, Box::new(|| {
             apic::eoi();
             kprintln!("Mouse IRQ handler called!");
             Some(())    }), Some(0x68));
+        */
     }
+    */
 
     // Write final config  this enables IRQs for all working devices.
     kprintln!(
@@ -365,14 +365,6 @@ pub fn init_ps2() -> Result<(), &'static str> {
         keyboard_works,
         mouse_works
     );
-
-    //manually enable keyboard interrupts
-    /* 
-        ctrl.keyboard()
-            .reset_and_self_test()
-            .map_err(|_| "keyboard reset/self-test failed")?;
-    */
-
     //reset again?
     Ok(())
 }
