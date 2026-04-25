@@ -10,8 +10,7 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     print::kprintln,
-    syscall::SyscallContext,
-    thread::{block_to_idle, preempt_to_idle, this_thread},
+    thread::{block_to_idle, preempt_to_idle},
 };
 
 global_asm!(include_str!("exception.s"));
@@ -61,12 +60,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
 
     if exception_class == SVC {
         // system_call_handler(exc);
-        push_event(
-            Event::Syscall {
-                thread: this_thread(),
-            },
-            CORE_ID.get(),
-        );
+        push_event(Event::Syscall, CORE_ID.get(), false);
         let interrupt_context = InterruptContext {
             gpr: exc.gpr,
             sp: exc.sp,

@@ -11,8 +11,8 @@ use crate::{
     sync::{IntSpinLock, MutexLike},
     syscall::syscall_handler,
     thread::{
-        CUR_EVENT, CONTEXT, CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread,
-        yield_thread, this_thread, new_thread_queue
+        CONTEXT, CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, ThreadQueue,
+        make_thread, new_thread_queue, this_thread, yield_thread,
     },
 };
 
@@ -84,13 +84,14 @@ pub fn init_event_handler() {
                 let event = CUR_EVENT.read_for(&thread).lock().take().unwrap();
                 match event {
                     PageFault { cause, address } => {
-                        handle_page_fault(cause, address, (&thread));
-                        LOCAL_WORK_QUEUE.lock().push_back(&thread);
+                        handle_page_fault(cause, address, &thread);
+                        LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
                     Syscall => {
                         // Handle syscall event
                         let mut context = CONTEXT.read_for(&thread).lock();
                         syscall_handler(&thread, &mut *context);
+                        drop(context);
 
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }

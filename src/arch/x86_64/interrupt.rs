@@ -11,7 +11,6 @@ use crate::{
     event::{Event, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
-    thread::this_thread,
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -195,12 +194,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             unsafe { crate::thread::preempt_to_idle(context) };
         }
         SYSCALL => {
-            push_event(
-                Event::Syscall {
-                    thread: this_thread(),
-                },
-                CORE_ID.get(),
-            );
+            push_event(Event::Syscall, CORE_ID.get(), false);
             unsafe { crate::thread::block_to_idle(context) };
         }
         _ => panic!(
