@@ -100,6 +100,7 @@ pub trait KernelWorkTrait {
 fn usual_main() {
     kprintln!("Entered kernel");
     loop {
+        #[cfg(target_arch = "x86_64")]
         if let (c) = devices::char::ps2_kb_m::read() {
             kprintln!("String: {}", (c as char));
         }

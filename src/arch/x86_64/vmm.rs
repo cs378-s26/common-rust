@@ -123,7 +123,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
 }
 
 pub fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
-    super::apic::get_lapic_id();
+    apic::get_lapic_id();
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper = unsafe {
         OffsetPageTable::new(

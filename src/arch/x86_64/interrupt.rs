@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
+use alloc::boxed::Box;
 use core::{
     arch::naked_asm,
     sync::atomic::{AtomicU64, Ordering},
@@ -12,12 +12,11 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
-    Once,
     devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
     event::{Event::PageFault, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
-    sync::{IntMutex, IntSpinLock, MutexLike},
+    sync::{IntMutex, MutexLike},
     thread::{IDLE, suspend_to_thread, this_thread},
 };
 

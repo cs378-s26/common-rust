@@ -3,9 +3,8 @@ use alloc::vec;
 use spin::Once;
 
 use crate::{
-    arch::{Arch, ArchTrait},
     devices::discovery::{
-        DeviceDiscovery, DeviceType,
+        DeviceDiscovery,
         acpi::{MadtEntry, Polarity, TriggerMode},
     },
     memory::dma::MmioRegion,
@@ -120,8 +119,8 @@ pub fn mask_irq(irq: u8) {
     unsafe { write_reg(redir_lo(irq), lo | (1 << 16)) };
 }
 
-pub struct discovery {}
-impl DeviceDiscovery for discovery {
+pub struct Discovery {}
+impl DeviceDiscovery for Discovery {
     fn name(&self) -> &'static str {
         "x86_64 IOAPIC discovery"
     }
