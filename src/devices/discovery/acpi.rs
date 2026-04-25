@@ -509,9 +509,9 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
         let ps2_enabled = fadt.flags & (1 << 1) != 0;
         kprintln!("PS2 enabled? {}", ps2_enabled);
         if ps2_enabled {
-        #[cfg(target_arch = "x86_64")]
-        crate::devices::char::ps2_kb_m::init_ps2().ok()?;
-        //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
+            #[cfg(target_arch = "x86_64")]
+            crate::devices::char::ps2_kb_m::init_ps2().ok()?;
+            //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
         }
     }
     Some(matched_devices)
