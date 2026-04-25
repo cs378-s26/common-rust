@@ -53,7 +53,7 @@ use spin::{Barrier, Once};
 
 use crate::{
     arch::{Arch, ArchTrait},
-    cmdline::parse_kernel_cmdline,
+    cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline},
     coroutine::{init_coroutine_executor, init_coroutine_queue},
     devices::discovery::{create_drivers, discover_devices},
     event::init_event_handler,
@@ -130,6 +130,22 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     if let Some(res) = BOOTLOADER_INFO_REQUEST.get_response() {
         kprintln!("bootloader: {} v{}", res.name(), res.version());
+    }
+
+    if let Some(err) = get_cmdline_error() {
+        match err {
+            cmdline::CmdlineError::NoResponse => {
+                kprintln!("no response received for cmdline request")
+            }
+            cmdline::CmdlineError::Utf8Error(err) => {
+                kprintln!("failed to convert cmdline to utf8: {}", err)
+            }
+            cmdline::CmdlineError::ParseError(err) => kprintln!("failed to parse cmdline: {}", err),
+        }
+    }
+
+    if let Some(res) = get_cmdline_text() {
+        kprintln!("cmdline: \"{}\"", res);
     }
 
     if let Some(res) = FIRMWARE_TYPE_REQUEST.get_response() {

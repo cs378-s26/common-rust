@@ -11,8 +11,8 @@ use crate::{
     sync::{IntSpinLock, MutexLike},
     syscall::syscall_handler,
     thread::{
-        CONTEXT, CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread,
-        yield_thread,
+        CUR_EVENT, CONTEXT, CORE_PINNED_TO, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, make_thread,
+        yield_thread, this_thread, new_thread_queue
     },
 };
 
@@ -26,13 +26,12 @@ pub enum Event {
     PageFault {
         cause: PageFaultConditions,
         address: usize,
-        thread: Arc<Thread>,
     },
-    Syscall {
-        thread: Arc<Thread>,
-    },
+    Syscall,
 }
+
 pub struct EventNode {
+    //I would use an enum here but then mem alloc :(
     event: Event,
     link: LinkedListAtomicLink,
 }
@@ -41,15 +40,16 @@ intrusive_adapter!(pub EventAdapter = Box<EventNode>: EventNode { link => Linked
 
 core_local! {
     pub EVENT_QUEUE: IntSpinLock<LinkedList<EventAdapter>> = IntSpinLock::new(LinkedList::new(EventAdapter::NEW));
+    pub EVENT_THREAD_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
     pub EVENT_HANDLER: Once<Arc<Thread>> = Once::new();
 }
 
 pub fn init_event_handler() {
     let thread = make_thread(|| {
         loop {
-            while let Some(item) = { EVENT_QUEUE.lock().pop_front() } {
+            use Event::*;
+            if let Some(item) = { EVENT_QUEUE.lock().pop_front() } {
                 let EventNode { event, link: _ } = *item;
-                use Event::*;
                 match event {
                     Shootdown {
                         space: _,
@@ -64,24 +64,44 @@ pub fn init_event_handler() {
                         }
                         latch.fetch_sub(1, Ordering::Release);
                     }
-                    PageFault {
-                        cause,
-                        address,
-                        thread,
-                    } => {
-                        handle_page_fault(cause, address, &thread);
-                        LOCAL_WORK_QUEUE.lock().push_back(thread);
+                    PageFault { .. } => {
+                        panic!(
+                            "Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault"
+                        );
                     }
-                    Syscall { thread } => {
+                    Syscall => {
+                        panic!(
+                            "Syscall events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the syscall"
+                        );
+                    }
+                }
+            }
+            if let Some(thread) = { EVENT_THREAD_QUEUE.lock().pop_front() } {
+                // this is O(1) even though the compiler doesn't know it
+                // since there should never be any contention here
+                // also queue insertions do not require any memory allocations since
+                // we are using intrusive linked lists
+                let event = CUR_EVENT.read_for(&thread).lock().take().unwrap();
+                match event {
+                    PageFault { cause, address } => {
+                        handle_page_fault(cause, address, (&thread));
+                        LOCAL_WORK_QUEUE.lock().push_back(&thread);
+                    }
+                    Syscall => {
                         // Handle syscall event
                         let mut context = CONTEXT.read_for(&thread).lock();
                         syscall_handler(&thread, &mut *context);
 
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
+                    Shootdown { .. } => {
+                        panic!(
+                            "Shootdown events should never be pushed to the thread event queue, they should always be handled immediately by the thread that caused the shootdown"
+                        );
+                    }
                 }
+                yield_thread(); // TODO block somehow
             }
-            yield_thread(); // TODO block somehow
         }
     });
     PINNED_TO_CORE
@@ -94,11 +114,22 @@ pub fn init_event_handler() {
     LOCAL_WORK_QUEUE.lock().push_back(thread);
 }
 
-pub fn push_event(event: Event, core: CoreId) {
+pub fn push_event(event: Event, core: CoreId, should_alloc: bool) {
     let queue = EVENT_QUEUE.read_for(core);
-    let node = Box::new(EventNode {
-        event,
-        link: LinkedListAtomicLink::new(),
-    });
-    queue.lock().push_back(node);
+    if should_alloc {
+        // if the event is being pushed from an interrupt handler, we need to allocate the event node on the heap
+        // because the interrupt handler may be preempted by another thread that also tries to push an event, which would cause a double free if we used a stack allocated node
+        let node: Box<EventNode> = Box::new(EventNode {
+            event,
+            link: LinkedListAtomicLink::new(),
+        });
+        queue.lock().push_back(node);
+    } else {
+        CUR_EVENT.lock().replace(event);
+        //this is O(1) even though the compiler doesn't know it
+        //since there should never be any contention here
+        //also queue insertions do not require any memory allocations since
+        //we are using intrusive linked lists
+        EVENT_THREAD_QUEUE.lock().push_back(this_thread());
+    }
 }

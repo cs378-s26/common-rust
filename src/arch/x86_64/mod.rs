@@ -168,6 +168,7 @@ impl ArchTrait for Arch {
                         latch: latch.clone(),
                     },
                     CoreId(core),
+                    true,
                 ); // TODO avoid sending this when not needed
             }
         }
@@ -191,6 +192,10 @@ impl ArchTrait for Arch {
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
         devices::create_arch_specific_drivers(system_drivers);
+    }
+
+    fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+        cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
     }
 }
 
@@ -242,8 +247,4 @@ impl CharSink for SerialCharSink {
     unsafe fn flush(&self) {
         // no-op
     }
-}
-
-pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
-    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }

@@ -156,6 +156,10 @@ impl ArchTrait for Arch {
         // create drivers for devices that are specific to this architecture, for example aarch64's uart_pl011
         devices::create_arch_specific_drivers(system_drivers);
     }
+
+    fn init_tty(_cell: &Once<Box<dyn CharSink>>) {
+        // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -185,8 +189,4 @@ impl UnwindContextTrait for UnwindContext {
             ptr: fp as *const u64,
         }
     }
-}
-
-pub fn init_tty(_cell: &Once<Box<dyn CharSink>>) {
-    // no op for aarch64, serial is implemented via uart_pl011 so devices must be parsed
 }
