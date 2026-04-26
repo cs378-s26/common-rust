@@ -474,28 +474,27 @@ pub fn parse_acpi(is_start: bool) -> Option<Vec<DeviceType>> {
                     gsi,
                     flags
                 );
-                    IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
+                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
+                    irq_src,
+                    InterruptOverride {
+                        bus_src,
                         irq_src,
-                        InterruptOverride {
-                            bus_src,
-                            irq_src,
-                            gsi,
-                            //Flags taken from https://wiki.osdev.org/MADT
-                            //We assume Edge triggered and Active High polarity, per
-                            //https://wiki.osdev.org/IOAPIC
-                            trigger_mode: if flags & 0b11 == 0b11 {
-                                TriggerMode::Level
-                            } else {
-                                TriggerMode::Edge
-                            },
-                            polarity: if flags & 0b1000 != 0 {
-                                Polarity::ActiveLow
-                            } else {
-                                Polarity::ActiveHigh
-                            },
+                        gsi,
+                        //Flags taken from https://wiki.osdev.org/MADT
+                        //We assume Edge triggered and Active High polarity, per
+                        //https://wiki.osdev.org/IOAPIC
+                        trigger_mode: if flags & 0b11 == 0b11 {
+                            TriggerMode::Level
+                        } else {
+                            TriggerMode::Edge
                         },
-                    );
-                
+                        polarity: if flags & 0b1000 != 0 {
+                            Polarity::ActiveLow
+                        } else {
+                            Polarity::ActiveHigh
+                        },
+                    },
+                );
             }
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));
             if let Some(d) = device {

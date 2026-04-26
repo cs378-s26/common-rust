@@ -100,10 +100,11 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
-#[cfg(target_arch= "x86_64")]
+#[cfg(target_arch = "x86_64")]
 fn take_kb_input() {
     loop {
-        kprintln!("{}", devices::char::ps2_kb_m::read());
+        let c = crate::devices::char::ps2_kb_m::read();
+        kprintln!("Read character: {}", c);
     }
 }
 
