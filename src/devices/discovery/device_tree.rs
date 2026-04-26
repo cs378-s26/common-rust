@@ -13,7 +13,7 @@ use crate::{
 #[unsafe(link_section = ".limine_requests")]
 pub static DTB_REQUEST: DeviceTreeBlobRequest = DeviceTreeBlobRequest::new();
 
-pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
+pub fn parse_device_tree(is_start : bool) -> Option<Vec<DeviceType>> {
     // get dtb pointer
     let mut matched_devices = Vec::new();
     let resp = DTB_REQUEST.get_response()?;
@@ -25,6 +25,9 @@ pub fn parse_device_tree() -> Option<Vec<DeviceType>> {
     // Walk nodes outermost so the first matching discovery driver claims each node.
     for node in fdt.all_nodes() {
         for driver in SYSTEM_DRIVERS.iter() {
+            if driver.run_at_start() != is_start {
+                continue
+            }
             let matched_device = driver.am_i_this(DeviceNode::DTB(node));
             if let Some(devices) = matched_device {
                 matched_devices.extend(devices);

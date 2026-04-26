@@ -170,12 +170,10 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
     VFS.mount(fake);
-
-    // initialize all system drivers, then parse devices to initialize them
     create_drivers();
-    kprintln!("Discovering devices...");
-    discover_devices();
-    kprintln!("Finished device discovery.");
+    kprintln!("First round of device discovery...");
+    discover_devices(true);
+    kprintln!("Finished first round of device discovery.");
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -286,6 +284,12 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
             Work::work();
         })
     });
+    one!({
+        kprintln!("Starting second round of device discovery...");
+        discover_devices(false);
+        kprintln!("Finished second round of device discovery.");
+    }
+    );
     all!({ Arch::set_irq_enabled(true) });
     poll_tasks() // runs on all cores, never to return
 }
