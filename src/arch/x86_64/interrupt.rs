@@ -213,7 +213,7 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
 }
 
 //this is hardcoded since apparently x86-64 has only 256 interrupt vectors
-/* 
+/*
 static mut OCCUPIED_VECTORS: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
 static mut NEXT_VECTOR: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
 */

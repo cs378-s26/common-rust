@@ -1,8 +1,4 @@
-use alloc::{
-    vec::Vec,
-    sync::Arc,
-    boxed::Box
-};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicUsize, Ordering},
@@ -10,9 +6,8 @@ use core::{
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
-use crate::sync::Promise;
 
-use crate::{arch::apic, print::kprintln};
+use crate::{arch::apic, print::kprintln, sync::Promise};
 
 const QUEUE_CAP: usize = 256;
 
