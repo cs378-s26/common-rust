@@ -1,4 +1,8 @@
-use alloc::boxed::Box;
+use alloc::{
+    vec::Vec,
+    sync::Arc,
+    boxed::Box
+};
 use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicUsize, Ordering},
@@ -6,6 +10,7 @@ use core::{
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
+use crate::sync::Promise;
 
 use crate::{arch::apic, print::kprintln};
 
@@ -54,48 +59,6 @@ impl ScancodeQueue {
         Some(val)
     }
 }
-
-use alloc::vec::Vec;
-
-use intrusive_collections::{LinkedListLink, intrusive_adapter};
-
-use crate::sync::{Promise, Semaphore};
-//this is not a promise, since we may want to fill up the thing gradually
-struct KbReq {
-    buf: Vec<u8>,
-    remaining: usize,
-    waiter: Semaphore,
-    link: LinkedListLink,
-}
-
-use alloc::rc::Rc;
-
-intrusive_adapter!(KbReqAdapter = Rc<KbReq>: KbReq {link => LinkedListLink});
-
-impl KbReq {
-    fn new(len: usize) -> KbReq {
-        Self {
-            buf: Vec::with_capacity(len + 1),
-            remaining: len,
-            waiter: Semaphore::new(0),
-            link: LinkedListLink::new(),
-        }
-    }
-
-    //Add a new scancode. Returns true if we're finished.
-    fn add_scancode(&mut self, ch: u8) -> bool {
-        self.buf.push(ch);
-        self.remaining -= 1;
-        if self.remaining == 0 {
-            self.waiter.up();
-            true
-        } else {
-            false
-        }
-    }
-}
-
-use alloc::sync::Arc;
 
 static KEYBOARD_REQ_QUEUE: Mutex<Vec<Arc<Promise<char>>>> = Mutex::new(Vec::new());
 
@@ -255,15 +218,6 @@ pub fn try_get_data() -> Option<char> {
 pub fn reset() {
     wait_until_ready();
     unsafe { x86::io::outb(0x64, 0xFE) };
-}
-
-fn wait_until_response() {
-    loop {
-        let status = unsafe { x86::io::inb(0x64) };
-        if status & 0x1 == 1 {
-            break;
-        }
-    }
 }
 
 fn wait_until_ready() {
