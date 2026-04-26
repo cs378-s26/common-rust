@@ -286,7 +286,10 @@ pub fn parse_acpi(is_start : bool) -> Option<Vec<DeviceType>> {
         }
     }
     // Parse PCI-E w/ the MCFG
-    matched_devices.extend(init_pcie(mcfg.clone()));
-
+    // We save this for second round of device discovery
+    // TODO: this fact should be documented
+    if !is_start {
+        matched_devices.extend(init_pcie(mcfg.clone()));
+    }
     Some(matched_devices)
 }
