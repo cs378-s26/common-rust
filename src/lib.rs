@@ -98,14 +98,17 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+#[cfg(target_arch= "x86_64")]
+fn take_kb_input() {
+    loop {
+        kprintln!("{}", devices::char::ps2_kb_m::read());
+    }
+}
+
 fn usual_main() {
     kprintln!("Entered kernel");
-    loop {
-        #[cfg(target_arch = "x86_64")]
-        if let c = devices::char::ps2_kb_m::read() {
-            kprintln!("String: {}", { c });
-        }
-    }
+    #[cfg(target_arch = "x86_64")]
+    take_kb_input();
 }
 
 pub struct KernelWork;

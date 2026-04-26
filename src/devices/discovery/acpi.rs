@@ -295,7 +295,7 @@ impl Mcfg {
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
-struct FADT {
+struct Fadt {
     //Copilot copied off of https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L236
     sdtheader: SDTHeader,
     facs: u32,
@@ -336,9 +336,9 @@ struct FADT {
     flags: u32,
 }
 
-impl FADT {
+impl Fadt {
     fn from_addr(addr: usize) -> Option<Self> {
-        let fadt = unsafe { *(addr as *const FADT) };
+        let fadt = unsafe { *(addr as *const Fadt) };
         if &fadt.sdtheader.signature != b"FACP" {
             return None;
         }
@@ -384,9 +384,9 @@ impl Xsdt {
             addr as usize
         })
     }
-    fn parse_fadt(&self) -> Option<FADT> {
+    fn parse_fadt(&self) -> Option<Fadt> {
         for ptr in self.get_ptrs() {
-            let fadt = FADT::from_addr(physical_to_virtual(ptr));
+            let fadt = Fadt::from_addr(physical_to_virtual(ptr));
             if fadt.is_some() {
                 return fadt;
             }
