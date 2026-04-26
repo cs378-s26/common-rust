@@ -195,6 +195,11 @@ The current virtio block driver uses the `virtio_drivers` crate, which expects a
 
 So the device interface itself stays simple, but actual drivers still reach down into `dma.rs`, `physical_memory.rs`, and `virtual_memory.rs` when they need to talk to hardware.
 
+### Interrupts
+
+Devices can register interrupt handlers via `arch::register_irq_handler`. Interrupt handlers
+will run in interrupt context, and most return `None` if they cannot handle the interrupt.
+
 ### Architecture-Specific Control Paths
 
 Some discovered hardware is not exposed as a normal `BlockDevice` or `CharDevice`, but is still essential to the kernel.
@@ -222,6 +227,5 @@ The current device layer is useful, but deliberately incomplete.
 - `ioctl()` is a stub in the existing drivers.
 - There is no VFS or syscall integration yet, so devices are kernel-internal objects rather than user-visible files.
 - Discovery is tightly coupled to firmware parsing, not to hotplug or runtime bus enumeration.
-- Interrupt dispatch is not abstracted through the common device traits.
 
 That makes the current model best thought of as an early kernel driver framework: enough structure to discover hardware, map it safely, and expose typed operations to the rest of the kernel, but not yet a full device-management stack.
