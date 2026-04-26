@@ -368,7 +368,7 @@ pub macro kprint {
 
 pub macro kprintln {
     () => {{
-        $mod::kprint!("\n");
+        $crate::print::kprint!("\n");
     }},
     ($fmt:expr) => {{
         $crate::print::kprint!(concat!($fmt, "\n"));
