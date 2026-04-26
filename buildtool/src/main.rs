@@ -45,6 +45,8 @@ enum Commands {
         release: bool,
         #[arg(short = 'f', long, default_value = "fs_path")]
         filesystem_path: String,
+        #[arg(short = 'g', long, help = "Use virtio-gpu instead of default display")]
+        gpu: bool,
     },
     QemuTest {
         test_cfg_path: String,
@@ -85,7 +87,8 @@ fn main() -> Result<()> {
             mem,
             release,
             filesystem_path,
-        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
+            gpu,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path, gpu)?,
         Commands::Gdb {
             target,
             kvm,

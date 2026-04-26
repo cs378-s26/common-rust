@@ -1,6 +1,7 @@
 pub mod block;
 pub mod char;
 pub mod discovery;
+pub mod display;
 pub mod network;
 pub mod virtio;
 

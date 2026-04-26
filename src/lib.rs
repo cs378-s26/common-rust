@@ -104,7 +104,10 @@ impl KernelWorkTrait for KernelWork {
         #[cfg(test)]
         test_main();
         #[cfg(not(test))]
-        kprintln!("entered kernel");
+        {
+            kprintln!("entered kernel");
+            crate::devices::display::test_framebuffer();
+        }
     }
 }
 
