@@ -113,6 +113,10 @@ impl DeviceDiscovery for GicA15Discovery {
         None
     }
 
+    fn run_at_start(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &'static str {
         "cortex-a15-gic"
     }

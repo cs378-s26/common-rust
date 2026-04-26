@@ -73,6 +73,7 @@ Each discovery driver implements:
 ```rust
 pub trait DeviceDiscovery {
     fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>>;
+    fn run_at_start(&self) -> bool;
     fn name(&self) -> &'static str;
 }
 ```
@@ -129,7 +130,7 @@ The tests in `tests/virtio_blk.rs` show the current usage model clearly: they lo
 
 ### Boot Sequence
 
-Device discovery happens early in `system_init()` in `src/lib.rs`, after:
+There are two rounds of device discovery. The first happens early in `system_init()` in `src/lib.rs`, after:
 
 - heap initialization
 - TTY initialization
@@ -142,7 +143,15 @@ and before:
 - per-core initialization
 - scheduler handoff
 
-That ordering matters because discovery drivers already depend on memory-management services. They allocate virtual mappings, inspect firmware tables, and may allocate DMA-capable memory before the rest of the kernel is fully running.
+The second happens late in `core_init`, after 
+
+- APIC/GiC initialization
+- event handler initilization
+- idle thread initialization
+
+Drivers where `run_at_start` is true will run in the first phase, otherwise they run in the second phase.
+PCI devices are required to run in the second phase of device discovery. By default, drivers run in the
+second phase of initialization, which is what we recommend.
 
 ### Printing And Console Output
 

@@ -1,23 +1,8 @@
-use core::arch::{asm, naked_asm};
+use core::arch::naked_asm;
 
 use x86::irq;
 
 use crate::arch::{Arch, ArchTrait};
-pub fn read_cycle_counter() -> u64 {
-    let lo: u32;
-    let hi: u32;
-
-    unsafe {
-        asm!(
-            "rdtsc",
-            out("eax") lo,
-            out("edx") hi,
-            options(nomem, nostack, preserves_flags),
-        );
-    }
-
-    ((hi as u64) << 32) | (lo as u64)
-}
 
 pub fn halt() -> ! {
     unsafe {

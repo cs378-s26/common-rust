@@ -66,6 +66,7 @@ pub fn read() -> char {
 
 fn keyboard_irq_handler() -> Option<()> {
     apic::eoi();
+    kprintln!("Got keyboard IRQ!");
     let scancode: u8 = unsafe { x86::io::inb(0x60) };
     if let Some(ch) = decode_scancode(scancode) {
         let mut req_queue = KEYBOARD_REQ_QUEUE.lock();

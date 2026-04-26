@@ -74,6 +74,10 @@ impl DeviceDiscovery for VirtioDiscovery {
         None
     }
 
+    fn run_at_start(&self) -> bool {
+        false
+    }
+
     fn name(&self) -> &'static str {
         "virtio_discovery"
     }

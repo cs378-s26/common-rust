@@ -446,7 +446,7 @@ pub fn get_gsi_for_irq(irq_num: u8) -> InterruptOverride {
 // So basically this things' job is only to parse
 // IO-APIC/GIC + PCI via mcfg
 // To set up the IO-APIC w/ PCI we _need_ an AML interpreter, so we're just going to ...not
-pub fn parse_acpi() -> Option<Vec<DeviceType>> {
+pub fn parse_acpi(is_start: bool) -> Option<Vec<DeviceType>> {
     let rsdp_ptr = RSDP_REQUEST.get_response()?.address();
     let xsdt = Rsdp::from_address(rsdp_ptr)?.get_xsdt()?;
     let madt = xsdt.parse_madt()?;
@@ -455,6 +455,9 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
     let mut matched_devices = Vec::new();
 
     for driver in SYSTEM_DRIVERS.iter() {
+        if driver.run_at_start() != is_start {
+            continue;
+        }
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {
             if let MadtEntry::ISOverride {
@@ -471,27 +474,28 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
                     gsi,
                     flags
                 );
-                IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
-                    irq_src,
-                    InterruptOverride {
-                        bus_src,
+                    IOAPIC_OVERRIDE_GSI_MAP.lock().insert(
                         irq_src,
-                        gsi,
-                        //Flags taken from https://wiki.osdev.org/MADT
-                        //We assume Edge triggered and Active High polarity, per
-                        //https://wiki.osdev.org/IOAPIC
-                        trigger_mode: if flags & 0b11 == 0b11 {
-                            TriggerMode::Level
-                        } else {
-                            TriggerMode::Edge
+                        InterruptOverride {
+                            bus_src,
+                            irq_src,
+                            gsi,
+                            //Flags taken from https://wiki.osdev.org/MADT
+                            //We assume Edge triggered and Active High polarity, per
+                            //https://wiki.osdev.org/IOAPIC
+                            trigger_mode: if flags & 0b11 == 0b11 {
+                                TriggerMode::Level
+                            } else {
+                                TriggerMode::Edge
+                            },
+                            polarity: if flags & 0b1000 != 0 {
+                                Polarity::ActiveLow
+                            } else {
+                                Polarity::ActiveHigh
+                            },
                         },
-                        polarity: if flags & 0b1000 != 0 {
-                            Polarity::ActiveLow
-                        } else {
-                            Polarity::ActiveHigh
-                        },
-                    },
-                );
+                    );
+                
             }
             let device = driver.am_i_this(DeviceNode::MadtEntry(entry));
             if let Some(d) = device {
@@ -508,11 +512,13 @@ pub fn parse_acpi() -> Option<Vec<DeviceType>> {
         //source: https://elixir.bootlin.com/linux/v7.0.1/source/include/acpi/actbl.h#L261
         let ps2_enabled = fadt.flags & (1 << 1) != 0;
         kprintln!("PS2 enabled? {}", ps2_enabled);
-        if ps2_enabled {
+        if ps2_enabled && !is_start {
             #[cfg(target_arch = "x86_64")]
             crate::devices::char::ps2_kb_m::init_ps2().ok()?;
-            //matched_devices.push(DeviceType::Char(crate::devices::char::ps2_kb_m::init_ps2));
         }
+    }
+    if !is_start {
+        matched_devices.extend(init_pcie(mcfg.clone()));
     }
     Some(matched_devices)
 }

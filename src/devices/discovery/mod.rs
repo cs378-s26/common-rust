@@ -52,8 +52,16 @@ pub enum DeviceType {
 }
 
 pub trait DeviceDiscovery {
+    // TODO: document the responsibilities of the device
     // When a node matches, return all device handles it should contribute.
     fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>>;
+
+    // If this is true, then we run `am_i_this`/initialization for the device
+    // shortly after device discovery. This means that you do not have access
+    // to the lapic/gic, nor can you create threads
+    fn run_at_start(&self) -> bool {
+        false
+    }
 
     fn name(&self) -> &'static str;
 }
@@ -66,12 +74,12 @@ pub fn create_drivers() -> Vec<Box<dyn DeviceDiscovery + Send + Sync>> {
     drivers
 }
 
-pub fn discover_devices() {
+pub fn discover_devices(is_start: bool) {
     let mut devices = Vec::new();
-    if let Some(acpi_devices) = acpi::parse_acpi() {
+    if let Some(acpi_devices) = acpi::parse_acpi(is_start) {
         devices.extend(acpi_devices);
     }
-    if let Some(dtb_devices) = device_tree::parse_device_tree() {
+    if let Some(dtb_devices) = device_tree::parse_device_tree(is_start) {
         devices.extend(dtb_devices);
     }
 

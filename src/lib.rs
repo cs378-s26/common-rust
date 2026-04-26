@@ -33,7 +33,10 @@ pub mod syscall;
 pub mod thread;
 extern crate alloc;
 use alloc::sync::Arc;
-use core::sync::atomic::Ordering;
+use core::{
+    hint::spin_loop,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 use limine::{
     BaseRevision,
@@ -49,7 +52,6 @@ use memory::{
     virtual_memory::init_virtual_memory_allocator,
 };
 use modules::load_modules_early;
-use spin::{Barrier, Once};
 
 use crate::{
     arch::{Arch, ArchTrait},
@@ -62,7 +64,7 @@ use crate::{
         vfs::VFS,
     },
     memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
-    mp::{MP_STAGE, MPStage, init_cpu_local_table},
+    mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
     state::{Irq, StateTrait},
@@ -183,11 +185,10 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     let fake = Arc::clone(FAKE.call_once(Fake::new));
     VFS.mount(fake);
 
-    // initialize all system drivers, then parse devices to initialize them
     create_drivers();
-    kprintln!("Discovering devices...");
-    discover_devices();
-    kprintln!("Finished device discovery.");
+    kprintln!("First round of device discovery...");
+    discover_devices(true);
+    kprintln!("Finished first round of device discovery.");
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -212,6 +213,38 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     unsafe { core_init::<Work>(bsp.expect("Couldn't find the bootstrap processor")) }
 }
 
+// This is really janky - the spin crates Once<Barrier> has issues on real hardware
+// We replace this with a temporary implementation of a barrier for the sake of simplicity.
+pub struct SpinBarrier {
+    count: AtomicUsize,
+    generation: AtomicUsize,
+}
+
+impl SpinBarrier {
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self {
+            count: AtomicUsize::new(0),
+            generation: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn wait(&self, n_threads: usize) {
+        let _gen = self.generation.load(Ordering::Acquire);
+
+        let prev = self.count.fetch_add(1, Ordering::AcqRel);
+
+        if prev + 1 == n_threads {
+            self.count.store(0, Ordering::Release);
+            self.generation.fetch_add(1, Ordering::AcqRel);
+        } else {
+            while self.generation.load(Ordering::Acquire) == _gen {
+                spin_loop();
+            }
+        }
+    }
+}
+
 /// wrapper around initalize core that goes to kernel main
 /// # Safety
 /// Should only be called from bootstrap processor during kernel initialization
@@ -226,28 +259,36 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     //kprintln!("Core count: {}", core_count);
     //kprintln!("Meow 2");
 
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    kprintln!(
+        "[{} {}/{}] processor init done",
+        CORE_ID.get(),
+        COUNTER.fetch_add(1, Ordering::Relaxed) + 1,
+        core_count
+    );
+
     // runs an initialization routine once overall
     // waits for this to complete before any core proceeds
     macro one($code:block) {{
         // needs to be in an extra block to avoid namespace collisions
-        static BARRIER: Once<Barrier> = Once::new();
+        static BARRIER: SpinBarrier = SpinBarrier::new();
+        static ONCE: AtomicBool = AtomicBool::new(false);
 
-        BARRIER
-            .call_once(|| {
-                $code;
-                Barrier::new(core_count)
-            })
-            .wait();
+        if !ONCE.swap(true, Ordering::SeqCst) {
+            $code;
+        }
+
+        BARRIER.wait(core_count);
     }}
 
     // runs an initialization routine on each core
     // waits for this to complete before any core proceeds
     macro all($code:block) {{
         // needs to be in an extra block to avoid namespace collisions
-        static BARRIER: Once<Barrier> = Once::new();
+        static BARRIER: SpinBarrier = SpinBarrier::new();
         $code;
-
-        BARRIER.call_once(|| Barrier::new(core_count)).wait();
+        BARRIER.wait(core_count);
     }}
 
     // this is where the magic happens
@@ -258,6 +299,11 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     all!({ init_coroutine_executor() });
     all!({ init_event_handler() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
+    one!({
+        kprintln!("Starting second round of device discovery...");
+        discover_devices(false);
+        kprintln!("Finished second round of device discovery.");
+    });
     one!({
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
