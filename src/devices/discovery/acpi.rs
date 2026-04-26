@@ -102,7 +102,7 @@ pub enum MadtEntry {
         gsi: u32,
         flags: u16,
     },
-    Other(usize), // for now we only care about IO APIC entries, so we'll give a ptr to the rest
+    Other(usize),
 }
 
 #[derive(Debug, Clone, Copy)]

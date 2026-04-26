@@ -138,8 +138,6 @@ pub extern "C" fn timer_interrupt_handler(ctx: &InterruptContext) {
     TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     apic::eoi();
 
-    //kprintln!("timer {}", CORE_ID.get());
-
     unsafe { crate::thread::preempt_to_idle(ctx) };
 }
 
@@ -217,10 +215,6 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
 //this is hardcoded since apparently x86-64 has only 256 interrupt vectors
 static mut OCCUPIED_VECTORS: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
 static mut NEXT_VECTOR: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
-
-/*
-* Design:
-*/
 
 intrusive_adapter!(InterruptHandlerAdapter = Arc<InterruptHandler>: InterruptHandler { link => LinkedListAtomicLink });
 struct InterruptHandler {
