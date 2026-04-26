@@ -18,7 +18,6 @@ use crate::devices::{
 };
 
 pub struct VirtioDiscovery;
-use crate::print::kprintln;
 
 impl DeviceDiscovery for VirtioDiscovery {
     fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>> {
