@@ -503,8 +503,6 @@ pub fn parse_acpi(is_start: bool) -> Option<Vec<DeviceType>> {
             }
         }
     }
-    // Parse PCI-E w/ the MCFG
-    matched_devices.extend(init_pcie(mcfg.clone()));
 
     if let Some(fadt) = fadt_ {
         kprintln!("Found FADT!");
@@ -517,6 +515,7 @@ pub fn parse_acpi(is_start: bool) -> Option<Vec<DeviceType>> {
         }
     }
     if !is_start {
+        kprintln!("PCIE");
         matched_devices.extend(init_pcie(mcfg.clone()));
     }
     Some(matched_devices)
