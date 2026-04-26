@@ -20,8 +20,7 @@ kernel_common::integration_test!({
     let fs = Ext2::new_from_block_devices(&mut block_devices)
         .expect("ext2 filesystem not found on attached block devices");
     drop(block_devices);
-    VFS.set_root(fs.get_root().unwrap()).unwrap();
-    VFS.mount(fs);
+    VFS.mount(fs, &["/"]);
 
     let process = Process::new().expect("failed to create process");
     let root = VFS.get_root().unwrap();

@@ -167,7 +167,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
-    VFS.mount(fake);
+    VFS.mount(fake, &["/", "fake"]).unwrap();
 
     // initialize all system drivers, then parse devices to initialize them
     create_drivers();

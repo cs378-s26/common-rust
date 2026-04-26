@@ -50,9 +50,7 @@ kernel_common::integration_test!({
         let ext2 = Ext2::new_from_block_devices(&mut block_devices)
             .expect("ext2 filesystem not found on attached block devices");
         drop(block_devices);
-        let root = ext2.get_root().expect("failed to get ext2 root");
-        let _fs_id = VFS.mount(ext2.clone());
-        VFS.set_root(root.clone()).ok();
+        let _fs_id = VFS.mount(ext2.clone(), &["/"]);
         let root = VFS.get_root().expect("root not set");
         kprintln!("Mounted ext2 and set root.");
 
