@@ -2,6 +2,7 @@ pub mod block;
 pub mod char;
 pub mod discovery;
 pub mod network;
+pub mod usb;
 pub mod virtio;
 
 pub trait Device {

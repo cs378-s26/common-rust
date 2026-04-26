@@ -131,6 +131,7 @@ pub mod irq_vector {
     pub const TIMER_INTERRUPT: u8 = 0x20;
     pub const IPI_WAKE: u8 = 0x21;
     pub const TLB_SHOOTDOWN: u8 = 0x22;
+    pub const XHCI_INTERRUPT: u8 = 0x30;
     pub const SYSCALL: u8 = 0x80;
 }
 
@@ -198,6 +199,9 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         TLB_SHOOTDOWN => {
             apic::eoi();
             unsafe { crate::thread::preempt_to_idle(context) };
+        }
+        XHCI_INTERRUPT => {
+            crate::devices::usb::xhci::event::handle_interrupt();
         }
         SYSCALL => {
             push_event(Event::Syscall, CORE_ID.get(), false);

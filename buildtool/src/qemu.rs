@@ -17,6 +17,7 @@ pub fn run(
     release: bool,
     target: Target,
     filesystem_path: String,
+    usb: bool,
 ) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
@@ -73,6 +74,15 @@ pub fn run(
     });
     args.push("-netdev".into());
     args.push("user,id=net0".into());
+
+    if usb {
+        args.push("-device".into());
+        args.push("qemu-xhci".into());
+        args.push("-device".into());
+        args.push("usb-kbd".into());
+        args.push("-device".into());
+        args.push("usb-mouse".into());
+    }
 
     if kvm {
         args.push("-enable-kvm".into());

@@ -45,6 +45,9 @@ enum Commands {
         release: bool,
         #[arg(short = 'f', long, default_value = "fs_path")]
         filesystem_path: String,
+        /// Attach a virtual xHCI controller with a USB keyboard and mouse
+        #[arg(long)]
+        usb: bool,
     },
     QemuTest {
         test_cfg_path: String,
@@ -85,7 +88,8 @@ fn main() -> Result<()> {
             mem,
             release,
             filesystem_path,
-        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
+            usb,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path, usb)?,
         Commands::Gdb {
             target,
             kvm,
