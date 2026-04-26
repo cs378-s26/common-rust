@@ -52,7 +52,13 @@ pub enum DeviceType {
 }
 
 pub trait DeviceDiscovery {
-    // When a node matches, return all device handles it should contribute.
+    /*
+    * Invoked whenever a new device is found. If the driver supports `node`,
+    * then it should return driver objects corresponding to all functions that the device supports. 
+    * If the
+    * Driver does not support/implement the device, then `None` should
+    * be returned
+    */
     fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>>;
 
     fn name(&self) -> &'static str;
