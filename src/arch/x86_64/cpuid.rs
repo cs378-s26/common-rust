@@ -46,6 +46,12 @@ impl<'a> Display for Features<'a> {
             );
         }
 
+        if let Some(tsc) = self.0.get_tsc_info()
+            && let Some(freq) = tsc.tsc_frequency()
+        {
+            let _ = writeln!(f, "nominal tsc freq: {} MHz", freq);
+        }
+
         // TODO: svm, rdtscp
 
         Ok(())
