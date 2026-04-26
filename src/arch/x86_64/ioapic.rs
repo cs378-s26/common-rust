@@ -145,4 +145,8 @@ impl DeviceDiscovery for Discovery {
             None
         }
     }
+
+    fn run_at_start(&self) -> bool {
+        true
+    }
 }
