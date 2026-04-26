@@ -25,7 +25,10 @@ impl<T: Transport> DisplayDevice for VirtIOGpuDriver<T> {
 
     fn setup(&mut self) -> Result<DisplayInfo, DisplayError> {
         let (width, height) = self.gpu.resolution().map_err(|_| DisplayError::IoError)?;
-        let _ = self.gpu.setup_framebuffer().map_err(|_| DisplayError::IoError)?;
+        let _ = self
+            .gpu
+            .setup_framebuffer()
+            .map_err(|_| DisplayError::IoError)?;
 
         let info = DisplayInfo {
             width,
@@ -42,7 +45,9 @@ impl<T: Transport> DisplayDevice for VirtIOGpuDriver<T> {
     }
 
     fn get_framebuffer(&mut self) -> Result<&mut [u8], DisplayError> {
-        self.gpu.setup_framebuffer().map_err(|_| DisplayError::IoError)
+        self.gpu
+            .setup_framebuffer()
+            .map_err(|_| DisplayError::IoError)
     }
 
     fn flush(&mut self) -> Result<(), DisplayError> {

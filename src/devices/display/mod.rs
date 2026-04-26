@@ -40,9 +40,7 @@ pub trait DisplayDevice: Device {
 }
 
 pub fn test_framebuffer() {
-    use crate::devices::discovery::DISPLAY_DEVICES;
-    use crate::print::kprintln;
-    use crate::sync::MutexLike;
+    use crate::{devices::discovery::DISPLAY_DEVICES, print::kprintln, sync::MutexLike};
 
     kprintln!("[fb_test] Starting framebuffer test...");
 
@@ -65,7 +63,10 @@ pub fn test_framebuffer() {
 
     kprintln!(
         "[fb_test] Resolution: {}x{}, stride: {}, format: {:?}",
-        info.width, info.height, info.stride, info.format
+        info.width,
+        info.height,
+        info.stride,
+        info.format
     );
 
     let fb = match display.get_framebuffer() {

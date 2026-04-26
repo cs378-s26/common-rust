@@ -46,7 +46,9 @@ impl DeviceDiscovery for VirtioDiscovery {
                         }
                         virtio_drivers::transport::DeviceType::GPU => {
                             if let Ok(driver) = VirtIOGpuDriver::new(transport) {
-                                return Some(vec![discovery::DeviceType::Display(Box::new(driver))]);
+                                return Some(vec![discovery::DeviceType::Display(Box::new(
+                                    driver,
+                                ))]);
                             }
                         }
                         _ => {}
