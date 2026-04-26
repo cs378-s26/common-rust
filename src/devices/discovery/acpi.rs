@@ -265,7 +265,7 @@ impl Xsdt {
 // So basically this things' job is only to parse
 // IO-APIC/GIC + PCI via mcfg
 // To set up the IO-APIC w/ PCI we _need_ an AML interpreter, so we're just going to ...not
-pub fn parse_acpi(is_start : bool) -> Option<Vec<DeviceType>> {
+pub fn parse_acpi(is_start: bool) -> Option<Vec<DeviceType>> {
     let rsdp_ptr = RSDP_REQUEST.get_response()?.address();
     let xsdt = Rsdp::from_address(rsdp_ptr)?.get_xsdt()?;
     let madt = xsdt.parse_madt()?;
@@ -274,7 +274,7 @@ pub fn parse_acpi(is_start : bool) -> Option<Vec<DeviceType>> {
 
     for driver in SYSTEM_DRIVERS.iter() {
         if driver.run_at_start() != is_start {
-            continue
+            continue;
         }
         // Walk the Madt and see if anyone wants to claim any of the entries
         for entry in madt.iterate_entries() {

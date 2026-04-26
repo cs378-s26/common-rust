@@ -74,7 +74,7 @@ pub fn create_drivers() -> Vec<Box<dyn DeviceDiscovery + Send + Sync>> {
     drivers
 }
 
-pub fn discover_devices(is_start : bool) {
+pub fn discover_devices(is_start: bool) {
     let mut devices = Vec::new();
     if let Some(acpi_devices) = acpi::parse_acpi(is_start) {
         devices.extend(acpi_devices);

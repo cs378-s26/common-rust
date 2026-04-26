@@ -168,7 +168,7 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
     VFS.mount(fake);
-    
+
     create_drivers();
     kprintln!("First round of device discovery...");
     discover_devices(true);
@@ -239,8 +239,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         kprintln!("Starting second round of device discovery...");
         discover_devices(false);
         kprintln!("Finished second round of device discovery.");
-    }
-    );
+    });
     one!({
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
