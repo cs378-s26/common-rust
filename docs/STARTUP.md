@@ -33,7 +33,8 @@ unsafe extern "C" fn system_main() -> ! {
 
 ## system_init()
 
-This runs on the bootstrap processor (BSP) and is responsible for initializing a certain minimal subset of OS features, then writing `core_init()` as the entry point for the other processors, starting the other processors, and itself running `core_init()`.
+This runs on the bootstrap processor (BSP) and is responsible for initializing a certain minimal subset of OS features, then writing `core_init()` as the entry point for the other processors, starting the other processors, and itself running `core_init()`. Note that device discovery
+(and therefore, driver initialization) occurs in this stage, before the LAPIC is initialized. 
 
 ## core_init()
 
