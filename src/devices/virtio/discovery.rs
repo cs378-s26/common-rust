@@ -13,6 +13,7 @@ use virtio_drivers::transport::{
 use crate::devices::{
     block::virtio_blk::VirtIOBlkDiskDriver,
     discovery::{self, DeviceDiscovery, DeviceNode, DeviceType},
+    display::virtio_gpu::VirtIOGpuDriver,
     network::virtio_net::VirtIONetDriver,
     virtio::{KernelConfigurationAccess, VirtioHal},
 };
@@ -43,6 +44,13 @@ impl DeviceDiscovery for VirtioDiscovery {
                             let driver = VirtIONetDriver::<VirtioHal, _, 16>::new(transport);
                             return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
                         }
+                        virtio_drivers::transport::DeviceType::GPU => {
+                            if let Ok(driver) = VirtIOGpuDriver::new(transport) {
+                                return Some(vec![discovery::DeviceType::Display(Box::new(
+                                    driver,
+                                ))]);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -67,6 +75,11 @@ impl DeviceDiscovery for VirtioDiscovery {
                 virtio_drivers::transport::DeviceType::Network => {
                     let driver = VirtIONetDriver::<VirtioHal, _, 16>::new(transport);
                     return Some(vec![discovery::DeviceType::Network(Box::new(driver))]);
+                }
+                virtio_drivers::transport::DeviceType::GPU => {
+                    if let Ok(driver) = VirtIOGpuDriver::new(transport) {
+                        return Some(vec![discovery::DeviceType::Display(Box::new(driver))]);
+                    }
                 }
                 _ => {}
             }

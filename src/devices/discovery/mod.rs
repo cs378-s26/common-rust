@@ -13,6 +13,7 @@ use crate::{
     devices::{
         block::BlockDevice,
         char::{CharDevice, uart_pl011::UartPl011Discovery},
+        display::DisplayDevice,
         network::NetworkDevice,
         virtio::discovery::VirtioDiscovery,
     },
@@ -27,6 +28,9 @@ pub static CHAR_DEVICES: IntMutex<Vec<Box<dyn CharDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
 pub static NETWORK_DEVICES: IntMutex<Vec<Box<dyn NetworkDevice + Send + Sync>>> =
+    IntMutex::new(Vec::new());
+
+pub static DISPLAY_DEVICES: IntMutex<Vec<Box<dyn DisplayDevice + Send + Sync>>> =
     IntMutex::new(Vec::new());
 
 /// all implemented discovery drivers in the system.
@@ -48,6 +52,7 @@ pub enum DeviceType {
     Block(Box<dyn BlockDevice + Send + Sync>),
     Char(Box<dyn CharDevice + Send + Sync>),
     Network(Box<dyn NetworkDevice + Send + Sync>),
+    Display(Box<dyn DisplayDevice + Send + Sync>),
     Special, // these are special drivers that interop directly with the system and don't return anything.
 }
 
@@ -80,6 +85,7 @@ pub fn discover_devices() {
             DeviceType::Block(d) => BLOCK_DEVICES.lock().push(d),
             DeviceType::Char(d) => CHAR_DEVICES.lock().push(d),
             DeviceType::Network(d) => NETWORK_DEVICES.lock().push(d),
+            DeviceType::Display(d) => DISPLAY_DEVICES.lock().push(d),
             DeviceType::Special => {}
         }
     }

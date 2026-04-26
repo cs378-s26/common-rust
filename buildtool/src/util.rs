@@ -93,6 +93,13 @@ impl Target {
         }
     }
 
+    pub fn qemu_gpu_args(self) -> &'static [&'static str] {
+        match self {
+            Target::X86_64 => &["-device", "virtio-gpu-pci"],
+            Target::Aarch64 => &["-device", "virtio-gpu-device"],
+        }
+    }
+
     pub fn qemu_binary(self) -> &'static str {
         match self {
             Target::X86_64 => "qemu-system-x86_64",

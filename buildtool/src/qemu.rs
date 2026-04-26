@@ -17,6 +17,7 @@ pub fn run(
     release: bool,
     target: Target,
     filesystem_path: String,
+    gpu: bool,
 ) -> Result<()> {
     let path = build_image(&build_kernel(release, target)?, release, target)?;
 
@@ -58,12 +59,16 @@ pub fn run(
         format!("file:{}/serial.txt", path_to_string(&run_dir()?)?),
     ];
 
-    args.extend(
-        target
-            .qemu_display_args()
-            .iter()
-            .map(|arg| (*arg).to_string()),
-    );
+    if gpu {
+        args.extend(target.qemu_gpu_args().iter().map(|arg| (*arg).to_string()));
+    } else {
+        args.extend(
+            target
+                .qemu_display_args()
+                .iter()
+                .map(|arg| (*arg).to_string()),
+        );
+    }
 
     // Virtio-net: user-mode networking, no TAP setup needed
     args.push("-device".into());
