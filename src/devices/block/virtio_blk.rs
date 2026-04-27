@@ -21,6 +21,10 @@ pub struct VirtIOBlkDiskDriver<H: Hal, T: Transport> {
     blk: VirtIOBlk<H, T>,
 }
 
+// TODO: VERIFY THAT THIS IS THE CASE
+unsafe impl<H: Hal, T: Transport> Send for VirtIOBlkDiskDriver<H, T> {}
+unsafe impl<H: Hal, T: Transport> Sync for VirtIOBlkDiskDriver<H, T> {}
+
 impl<T: Transport> VirtIOBlkDiskDriver<VirtioHal, T> {
     pub fn new(transport: T) -> Self {
         Self {

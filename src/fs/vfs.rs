@@ -1,7 +1,10 @@
 use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    devices::Device,
+    sync::{IntMutex, MutexLike},
+};
 
 // TODO we probably don't want to cache on both the fs and the VFS level,
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
@@ -214,6 +217,11 @@ pub trait VNode: Send + Sync {
 
     // should only be implemented for directories
     fn create_child(&self, _name: &str, _inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
+        Err(FsError::NotImplemented)
+    }
+
+    // should only be implemented for devices
+    fn set_device(&self, _device: Arc<dyn Device>) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 

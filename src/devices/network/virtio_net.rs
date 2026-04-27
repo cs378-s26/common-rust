@@ -14,6 +14,10 @@ pub struct VirtIONetDriver<H: Hal, T: Transport, const QUEUE_SIZE: usize> {
     net: VirtIONet<H, T, QUEUE_SIZE>,
 }
 
+// TODO: VERIFY THAT THIS IS THE CASE
+unsafe impl<H: Hal, T: Transport, const Q: usize> Send for VirtIONetDriver<H, T, Q> {}
+unsafe impl<H: Hal, T: Transport, const Q: usize> Sync for VirtIONetDriver<H, T, Q> {}
+
 impl<T: Transport> VirtIONetDriver<VirtioHal, T, 16> {
     pub fn new(transport: T) -> Self {
         Self {
