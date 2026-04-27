@@ -296,20 +296,20 @@ pub fn register_irq_handler(
 * Register MSI-X Handler. This will also perform the necessary writes into the msix table
 */
 pub fn register_msix_handler(
-        msix_table: &crate::memory::dma::MmioRegion,
-        table_entry : u16,
-        table_off : u16,
-        irq_vec: Option<u8>,
-        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    msix_table: &crate::memory::dma::MmioRegion,
+    table_entry: u16,
+    table_off: u16,
+    irq_vec: Option<u8>,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
 ) {
     // Both of these are from https://stackoverflow.com/questions/57804511/question-about-message-signaled-interrupts-msi-on-x86-lapic-system?rq=1
     let msg_data = irq_vec.unwrap_or(0x67) as u32;
     let msg_addr = 0xFEE0_0000 | ((apic::get_lapic_id() as u32) << 12);
-    register_irq_handler(None, handler, irq_vec );
-    unsafe{msix_table.write::<u32>((table_off + (table_entry * 16)) as usize, msg_addr)};
-    unsafe{msix_table.write::<u32>((table_off + (table_entry * 16 + 4)) as usize, 0x0)};
-    unsafe{msix_table.write::<u32>((table_off + (table_entry * 16 + 8)) as usize, msg_data)};
-    unsafe{msix_table.write::<u32>((table_off + (table_entry * 16 + 12)) as usize, 0x0)};
+    register_irq_handler(None, handler, irq_vec);
+    unsafe { msix_table.write::<u32>((table_off + (table_entry * 16)) as usize, msg_addr) };
+    unsafe { msix_table.write::<u32>((table_off + (table_entry * 16 + 4)) as usize, 0x0) };
+    unsafe { msix_table.write::<u32>((table_off + (table_entry * 16 + 8)) as usize, msg_data) };
+    unsafe { msix_table.write::<u32>((table_off + (table_entry * 16 + 12)) as usize, 0x0) };
 }
 
 //TODO: store a mapping of irq vector --> irq number

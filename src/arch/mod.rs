@@ -11,12 +11,13 @@ use alloc::{boxed::Box, vec::Vec};
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::{MutexGuard, Once};
-use crate::memory::dma::MmioRegion;
 
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 use crate::{
-    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+    devices::discovery::DeviceDiscovery,
+    memory::{dma::MmioRegion, virtual_memory::PagingOptions},
+    mp::CoreId,
     print::CharSink,
 };
 
@@ -92,11 +93,11 @@ pub trait ArchTrait {
     );
 
     /*
-    *  Same interface as register_irq_handler. 
-    */
+     *  Same interface as register_irq_handler.
+     */
     fn register_msix_handler(
         msix_table: &MmioRegion,
-        table_off : u16,
+        table_off: u16,
         irq_vec: Option<u8>,
         handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     );

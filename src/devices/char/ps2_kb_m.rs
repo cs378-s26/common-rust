@@ -7,7 +7,7 @@ use core::{
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
 
-use crate::{arch::apic, ArchTrait, print::kprintln, sync::Promise};
+use crate::{ArchTrait, arch::apic, print::kprintln, sync::Promise};
 
 const QUEUE_CAP: usize = 256;
 

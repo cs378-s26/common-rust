@@ -103,10 +103,10 @@ impl ArchTrait for Arch {
     }
 
     fn register_msix_handler(
-            msix_table: &crate::memory::dma::MmioRegion,
-            table_off : u16,
-            irq_vec: Option<u8>,
-            handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+        msix_table: &crate::memory::dma::MmioRegion,
+        table_off: u16,
+        irq_vec: Option<u8>,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     ) {
         register_msix_handler(msix_table, 0, table_off, irq_vec, handler);
     }

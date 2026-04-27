@@ -4,8 +4,8 @@ use core::arch::asm;
 use spin::Once;
 
 use crate::{
-    devices::discovery::DeviceDiscovery, 
-    memory::{virtual_memory::PagingOptions, dma::MmioRegion}, 
+    devices::discovery::DeviceDiscovery,
+    memory::{dma::MmioRegion, virtual_memory::PagingOptions},
     print::CharSink,
 };
 
@@ -73,9 +73,9 @@ impl ArchTrait for Arch {
 
     fn register_msix_handler(
         _msix_table: &MmioRegion,
-        _table_off : u16,
+        _table_off: u16,
         _irq_vec: Option<u8>,
-        _handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>
+        _handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     ) {
         panic!("Not implemented");
     }

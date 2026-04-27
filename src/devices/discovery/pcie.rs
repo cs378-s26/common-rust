@@ -2,11 +2,11 @@ use alloc::{boxed::Box, vec::Vec};
 
 use spin::once::Once;
 
-use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mcfg};
-
-use crate::memory::dma::MmioRegion;
-
-use crate::{Arch, ArchTrait};
+use crate::{
+    Arch, ArchTrait,
+    devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mcfg},
+    memory::dma::MmioRegion,
+};
 
 pub static PCIE: Once<Pcie> = Once::new();
 
@@ -31,28 +31,38 @@ impl PcieFunction {
     }
 
     pub fn read_config_space(&self, offset: u16) -> Option<u32> {
-        PCIE.get().unwrap().read_config_space(self.bus, self.device, self.function, offset)
+        PCIE.get()
+            .unwrap()
+            .read_config_space(self.bus, self.device, self.function, offset)
     }
 
     pub fn write_config_space(&self, offset: u16, value: u32) -> Option<()> {
-        PCIE.get().unwrap().write_config_space(self.bus, self.device, self.function, offset, value)
+        PCIE.get()
+            .unwrap()
+            .write_config_space(self.bus, self.device, self.function, offset, value)
     }
 }
 
-pub fn map_bar(pcie_func : &mut PcieFunction, bar_num: u16) -> Option<MmioRegion> {
+pub fn map_bar(pcie_func: &mut PcieFunction, bar_num: u16) -> Option<MmioRegion> {
     let cur_bar = pcie_func.read_config_space(0x10 + bar_num * 4).unwrap();
     let is_mmio = cur_bar & 1 == 0;
     if is_mmio {
         let type_ = (cur_bar >> 1) & 0b11;
         if type_ == 2 {
             //64-bit address, so we take from the next BAR too
-            let next_bar = pcie_func.read_config_space(0x10 + (bar_num+1) * 4).unwrap();
+            let next_bar = pcie_func
+                .read_config_space(0x10 + (bar_num + 1) * 4)
+                .unwrap();
             let bar_addr = (cur_bar & 0xFFFFFFF0) as u64 | (((next_bar & 0xFFFFFFFF) as u64) << 32);
             //get size
             pcie_func.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
             pcie_func.write_config_space(0x10 + (bar_num + 1) * 4, 0xFFFF_FFFF);
-            let sz0 = (pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) as u64;
-            let sz1 = (pcie_func.read_config_space(0x10 + (bar_num + 1) * 4).unwrap() & 0xFFFFFFFF) as u64;
+            let sz0 =
+                (pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) as u64;
+            let sz1 = (pcie_func
+                .read_config_space(0x10 + (bar_num + 1) * 4)
+                .unwrap()
+                & 0xFFFFFFFF) as u64;
             let bar_size: usize = (!(sz0 | (sz1 << 32)) + 1) as usize;
             //restore BARs;
             pcie_func.write_config_space(0x10 + bar_num * 4, cur_bar);
@@ -61,10 +71,11 @@ pub fn map_bar(pcie_func : &mut PcieFunction, bar_num: u16) -> Option<MmioRegion
             let bar_region = MmioRegion::new(bar_addr as usize, bar_size);
             Some(bar_region)
         } else {
-            //we assume this is a 32-bit region. 
+            //we assume this is a 32-bit region.
             let bar_addr = cur_bar & 0xFFFFFFF0;
             pcie_func.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
-            let sz = (!(pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) + 1) as u64;
+            let sz = (!(pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) + 1)
+                as u64;
             pcie_func.write_config_space(0x10 + bar_num * 4, cur_bar);
             let bar_size = sz.max(0x10000);
             let bar_region = MmioRegion::new(bar_addr as usize, bar_size as usize);
@@ -99,7 +110,7 @@ fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
 * cap_offset is the offset in the PCI config space where the MSI-X capability is located
 * table_offset is the offset within the BAR where the MSI-X table is located
 */
-pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
+pub fn get_msix_table(pcie_func: &mut PcieFunction) -> Option<(u8, u16, u32)> {
     let msix_cap = find_msix_capability(pcie_func)?;
     let table_bir = (pcie_func.read_config_space(msix_cap + 0x4).unwrap() & 0x7) as u8;
     let table_offset = pcie_func.read_config_space(msix_cap + 0x4).unwrap() & !(0x7);
@@ -107,21 +118,21 @@ pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
 }
 
 /*
-* Registers an MSI-X handler for the given PCIe function. 
+* Registers an MSI-X handler for the given PCIe function.
 * handle --- Handle into the configuration space of the given device
 * bar_region: the MmioRegion corresponding to the BAR where the MSI-X table is located. This should be obtained via map_bar
 * cap_offset: the offset in the PCI config space where the MSI-X capability is located. This should be obtained via get_msix_table
 * table_offset: the offset within the BAR where the MSI-X table is located. This should be obtained via get_msix_table
-* irq_vec: the IRQ vector to use for this MSI-X handler. If None, we will choose an arbitrary free vector. 
+* irq_vec: the IRQ vector to use for this MSI-X handler. If None, we will choose an arbitrary free vector.
 * handler: the handler to register for this MSI-X interrupt
 */
 pub fn register_msix_handler(
-    handle : &mut PcieFunction,
-    bar_region : &MmioRegion,
-    table_offset : u32,
-    cap_offset : u16,
-    irq_vec : Option<u8>,
-    handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    handle: &mut PcieFunction,
+    bar_region: &MmioRegion,
+    table_offset: u32,
+    cap_offset: u16,
+    irq_vec: Option<u8>,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
 ) -> Option<()> {
     let mc_word = handle.read_config_space(cap_offset)?;
     Arch::register_msix_handler(bar_region, table_offset as u16, irq_vec, handler);
@@ -143,8 +154,9 @@ impl Pcie {
                         let vendor_id = (register_0 & 0xFFFF) as u16;
                         if vendor_id != 0xFFFF {
                             for driver in SYSTEM_DRIVERS.iter() {
-                                let matched_device =
-                                    driver.am_i_this(DeviceNode::Pcie(PcieFunction::new(bus, device, function)));
+                                let matched_device = driver.am_i_this(DeviceNode::Pcie(
+                                    PcieFunction::new(bus, device, function),
+                                ));
                                 if let Some(devices) = matched_device {
                                     matched_devices.extend(devices);
                                     break;
