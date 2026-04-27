@@ -1,10 +1,11 @@
-use alloc::sync::Arc;
+use alloc::{collections::BTreeMap, sync::Arc};
 extern crate bitvec;
 use bitvec::prelude::{BitVec, bitvec};
 use spin::Once;
 
 use crate::{
     arch::{Arch, ArchTrait},
+    fs::file::File,
     memory::virtual_memory_2::VirtualMemory,
     sync::{IntMutex, MutexLike, Promise},
     thread::{THIS_THREAD, spawn_thread},
@@ -70,10 +71,35 @@ pub fn init_pid_allocator() {
     PID_ALLOCATOR.call_once(|| IntMutex::new(PidAllocator::new()));
 }
 
+pub(crate) struct FdTable {
+    table: BTreeMap<i32, Arc<dyn File>>,
+}
+
+impl FdTable {
+    fn new() -> Self {
+        Self { table: BTreeMap::new() }
+    }
+
+    pub(crate) fn insert(&mut self, file: Arc<dyn File>) -> i32 {
+        let fd = (0..).find(|fd| !self.table.contains_key(fd)).unwrap();
+        self.table.insert(fd, file);
+        fd
+    }
+
+    pub(crate) fn get(&self, fd: i32) -> Option<Arc<dyn File>> {
+        self.table.get(&fd).cloned()
+    }
+
+    pub(crate) fn remove(&mut self, fd: i32) -> Option<Arc<dyn File>> {
+        self.table.remove(&fd)
+    }
+}
+
 pub struct Process {
     pub virtual_memory: VirtualMemory,
     pub exit_code: Promise<i32>,
     pub pid: u32,
+    pub(crate) fd_table: IntMutex<FdTable>,
 }
 
 impl Process {
@@ -83,6 +109,7 @@ impl Process {
             virtual_memory: VirtualMemory::new(),
             exit_code: Promise::new(),
             pid,
+            fd_table: IntMutex::new(FdTable::new()),
         }))
     }
 
