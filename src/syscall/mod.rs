@@ -1,11 +1,15 @@
 pub mod numbers;
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec, vec::Vec};
 
 pub use numbers::number;
 #[cfg(target_arch = "x86_64")]
 pub use numbers::wrapper_constants::*;
 
-use crate::thread::Thread;
+use crate::{sync::MutexLike, thread::Thread};
+
+const EBADF: i64 = -9;
+const EFAULT: i64 = -14;
+const EIO: i64 = -5;
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -59,16 +63,19 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
     match num {
         // Modern core ABI (Aarch64 uses these exclusively while x86_64 uses both because of legacy support)
         number::READ => {
-            sys_read(ctx.arg0(), ctx.arg1(), ctx.arg2());
+            let ret = sys_read(thread, ctx, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
         }
         number::WRITE => {
-            sys_write(ctx.arg0(), ctx.arg1(), ctx.arg2());
+            let ret = sys_write(thread, ctx, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
         }
         number::OPENAT => {
             sys_openat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2(), ctx.arg3());
         }
         number::CLOSE => {
-            sys_close(ctx.arg0() as i32);
+            let ret = sys_close(thread, ctx.arg0() as i32);
+            ctx.set_return_value(ret as u64);
         }
         number::CLONE => {
             sys_clone(ctx.arg0(), ctx.arg1(), ctx.arg2(), ctx.arg3(), ctx.arg4());
@@ -168,10 +175,55 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
 // functions that we must implement. These are the only ones used by Aarch64 and
 // represent modern supersets(?) (supercalls?) of the legacy systemcalls
 
-fn sys_read(_fd: u64, _buf: u64, _count: u64) {}
-fn sys_write(_fd: u64, _buf: u64, _count: u64) {}
+// Write kernel data into a user-space buffer.
+unsafe fn copy_to_user(dst_ptr: u64, src: &[u8]) {
+    unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr as *mut u8, src.len()); }
+}
+
+// Read user-space data into a kernel buffer.
+unsafe fn copy_from_user(src_ptr: u64, dst: &mut [u8]) {
+    unsafe { core::ptr::copy_nonoverlapping(src_ptr as *const u8, dst.as_mut_ptr(), dst.len()); }
+}
+
+fn sys_read(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, buf_ptr: u64, count: u64) -> i64 {
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    if !ctx.is_user_address(buf_ptr) {
+        return EFAULT;
+    }
+    let mut kernel_buf: Vec<u8> = vec![0u8; count as usize];
+    match file.read(&mut kernel_buf) {
+        Ok(n) => {
+            unsafe { copy_to_user(buf_ptr, &kernel_buf[..n]); }
+            n as i64
+        }
+        Err(_) => EIO,
+    }
+}
+
+fn sys_write(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, buf_ptr: u64, count: u64) -> i64 {
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    if !ctx.is_user_address(buf_ptr) {
+        return EFAULT;
+    }
+    let mut kernel_buf: Vec<u8> = vec![0u8; count as usize];
+    unsafe { copy_from_user(buf_ptr, &mut kernel_buf); }
+    match file.write(&kernel_buf) {
+        Ok(n) => n as i64,
+        Err(_) => EIO,
+    }
+}
+
 fn sys_openat(_dirfd: i32, _pathname: u64, _flags: u64, _mode: u64) {}
-fn sys_close(_fd: i32) {}
+fn sys_close(thread: &Arc<Thread>, fd: i32) -> i64 {
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().remove(fd) else { return EBADF; };
+    match file.close() {
+        Ok(()) => 0,
+        Err(_) => EIO,
+    }
+}
 fn sys_clone(_flags: u64, _stack: u64, _parent_tid: u64, _child_tid: u64, _tls: u64) {}
 fn sys_pipe2(_pipefd: u64, _flags: i32) {}
 fn sys_newfstatat(_dirfd: i32, _pathname: u64, _statbuf: u64, _flags: i32) {}
