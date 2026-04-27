@@ -27,8 +27,8 @@ pub enum FsError {
 
 // Shim between the different variants of devices and the VFS
 pub trait VFSDevice : Send + Sync {
-    fn read_unaligned(&mut self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError>;
-    fn write_unaligned(&mut self, offset: usize, buffer: &[u8]) -> Result<usize, FsError>;
+    fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError>;
+    fn write_unaligned(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError>;
 }
 
 pub struct VFS {
@@ -246,7 +246,7 @@ pub trait VNode: Send + Sync {
     }
 
     // should only be implemented for devices
-    fn set_device(&mut self, _: Arc<IntMutex<Box<dyn VFSDevice>>>) -> Result<(), FsError> {
+    fn set_device(&self, _: Arc<dyn VFSDevice>) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 

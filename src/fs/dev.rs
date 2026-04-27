@@ -1,7 +1,8 @@
 use alloc::{
     collections::btree_map::BTreeMap,
     sync::{Arc, Weak},
-    boxed::Box
+    boxed::Box,
+    string::{ToString, String}
 };
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -17,14 +18,16 @@ pub static DEV: Once<Arc<Dev>> = Once::new();
 pub struct Dev {
     self_ref: Once<Weak<Self>>,
     counter: AtomicUsize,
-    devices: IntMutex<BTreeMap<usize, Option<Arc<IntMutex<Box<dyn VFSDevice>>>>>>,
+    devices: IntMutex<BTreeMap<usize, Option<IntMutex<Arc<dyn VFSDevice>>>>>,
     fs_id: IntMutex<Option<usize>>,
 }
 
 pub struct DevINode {
     fs: Weak<Dev>,
     inumber: usize,
-    device: Option<Arc<IntMutex<Box<dyn VFSDevice>>>>
+    device: IntMutex<Option<Arc<dyn VFSDevice>>>,
+    //Devices can have children!
+    children: IntMutex<BTreeMap<String, Arc<dyn VNode>>>,
 }
 
 impl Dev {
@@ -33,26 +36,47 @@ impl Dev {
             counter: AtomicUsize::new(1),
             devices: IntMutex::new(BTreeMap::new()),
             fs_id: IntMutex::new(None),
-            self_ref: Once::new(),
+            self_ref: Once::new()
         });
         fs.self_ref.call_once(|| Arc::downgrade(&fs));
         fs
     }
 
-    fn alloc_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
-        let devices = self.devices.lock();
-        let device = devices.get(&inumber).ok_or(FsError::ReadError)?;
-        let cloned_device;
-        if let Some(device) = device {
-            cloned_device = Some(Arc::clone(device));
+    /* 
+    fn alloc_inode_with_device(&self, inumber: usize, device: Option<Arc<IntMutex<Box<dyn VFSDevice>>>>) -> Result<Arc<dyn VNode>, FsError> {
+        if let Some(device) = device.clone() {
+            self.devices.lock().insert(inumber, Some(device));
         } else {
-            cloned_device = None;
+            self.devices.lock().insert(inumber, None);
         }
         Ok(Arc::new(DevINode {
             fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
-            device: cloned_device,
+            device: device,
             inumber,
+            children: IntMutex::new(BTreeMap::new()),
         }))
+    }
+    */
+
+    fn alloc_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
+        let devices = self.devices.lock();
+        let device = devices.get(&inumber).ok_or(FsError::ReadError)?;
+        if let Some(device) = device {
+            let arc_dev = device.lock();
+            Ok(Arc::new(DevINode {
+                fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
+                device: IntMutex::new(Some(arc_dev.clone())),
+                inumber,
+                children: IntMutex::new(BTreeMap::new()),
+            }))
+        } else {
+            Ok(Arc::new(DevINode {
+                fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
+                device: IntMutex::new(None),
+                inumber,
+                children: IntMutex::new(BTreeMap::new()),
+            }))
+        }
     }
 }
 
@@ -91,18 +115,20 @@ impl VNode for DevINode {
         }
     }
 
-    fn create_child(&self, _: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
+    fn create_child(&self, fname: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
         if self.inumber != 0 || inode_type != INodeType::Other {
             return Err(FsError::InvalidOperation);
         }
         let fs = self.fs.upgrade().ok_or(FsError::ReadError)?;
         let inumber = fs.counter.fetch_add(1, Ordering::SeqCst);
         fs.devices.lock().insert(inumber, None);
-        fs.alloc_inode(inumber)
+        let vnode = fs.alloc_inode(inumber);
+        self.children.lock().insert(fname.to_string(), vnode.clone()?);
+        vnode
     }
 
-    fn set_device(&mut self, device: Arc<IntMutex<Box<dyn VFSDevice>>>) -> Result<(), FsError> {
-        self.device= Some(device.clone());
+    fn set_device(&self, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
+        self.device.lock().replace(device);
         Ok(())
     }
 
@@ -116,18 +142,16 @@ impl VNode for DevINode {
     }
 
     fn read_unaligned(&self, _offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
-        if let Some(device) = self.device.clone() {
-            let mut realdev = device.lock();
-            realdev.read_unaligned(_offset, buffer)
+        if let Some(device) = self.device.lock().as_ref() {
+            device.read_unaligned(_offset, buffer)
         } else {
             Err(FsError::InvalidOperation)
         }
     }
 
     fn write_unaligned(&self, _offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
-        if let Some(device) = self.device.clone() {
-            let mut realdev = device.lock();
-            realdev.write_unaligned(_offset, buffer)
+        if let Some(device) = self.device.lock().as_ref() {
+            device.write_unaligned(_offset, buffer)
         } else {
             Err(FsError::InvalidOperation)
         }
@@ -151,10 +175,10 @@ impl VNode for DevINode {
 /*
 * Allocates a device inode accessible by the user under `/dev/<fname>. `
 */
-pub fn allocate_device_inode(fname : &str, device : Arc<IntMutex<Box<dyn VFSDevice>>>) -> Result<(), FsError> {
+pub fn allocate_device_inode(fname : &str, device : Arc<dyn VFSDevice>) -> Result<(), FsError> {
     let dev = DEV.get().unwrap().clone();
     let root = dev.get_root()?;
-    let inode = root.create_child(fname, INodeType::Other)?;
+    let inode: Arc<dyn VNode> = root.create_child(fname, INodeType::Other)?;
     inode.set_device(device)?;
     Ok(())
 }
