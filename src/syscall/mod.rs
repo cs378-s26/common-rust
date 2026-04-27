@@ -5,11 +5,25 @@ pub use numbers::number;
 #[cfg(target_arch = "x86_64")]
 pub use numbers::wrapper_constants::*;
 
-use crate::{sync::MutexLike, thread::Thread};
+use crate::{
+    devices::discovery::NETWORK_DEVICES,
+    net::{
+        Ipv4Addr,
+        arp::{ARP_TABLE, build_arp_request},
+        ethernet::{EtherType, MacAddr, build_ethernet_frame},
+        ipv4::{Protocol, build_ipv4_packet},
+        socket::UdpSocket,
+        udp::{UDP_DEMUX, UdpSink, build_udp_packet},
+    },
+    sync::MutexLike,
+    thread::Thread,
+};
 
 const EBADF: i64 = -9;
 const EFAULT: i64 = -14;
 const EIO: i64 = -5;
+const EINVAL: i64 = -22;
+const ENOTSOCK: i64 = -88;
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -115,6 +129,30 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
         }
         number::GETPID => {
             ctx.set_return_value(thread.process.get().unwrap().get_pid() as u64);
+        }
+        number::SOCKET => {
+            let ret = sys_socket(thread, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
+        }
+        number::BIND => {
+            let ret = sys_bind(thread, ctx, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
+        }
+        number::SENDTO => {
+            let ret = sys_sendto(
+                thread, ctx,
+                ctx.arg0(), ctx.arg1(), ctx.arg2(),
+                ctx.arg3(), ctx.arg4(), ctx.arg5(),
+            );
+            ctx.set_return_value(ret as u64);
+        }
+        number::RECVFROM => {
+            let ret = sys_recvfrom(
+                thread, ctx,
+                ctx.arg0(), ctx.arg1(), ctx.arg2(),
+                ctx.arg3(), ctx.arg4(), ctx.arg5(),
+            );
+            ctx.set_return_value(ret as u64);
         }
 
         // x86_64 libraries will use these legacy system calls which ARM does not support any more
@@ -240,6 +278,190 @@ fn sys_pselect6(
 }
 fn sys_mkdirat(_dirfd: i32, _pathname: u64, _mode: u64) {}
 fn sys_unlinkat(_dirfd: i32, _pathname: u64, _flags: i32) {}
+
+fn sys_socket(thread: &Arc<Thread>, domain: u64, type_: u64, protocol: u64) -> i64 {
+    const AF_INET: u64 = 2;
+    const SOCK_DGRAM: u64 = 2;
+    const SOCK_TYPE_MASK: u64 = 0xf;
+
+    if domain != AF_INET {
+        return EINVAL;
+    }
+    if type_ & SOCK_TYPE_MASK != SOCK_DGRAM {
+        return EINVAL;
+    }
+    // 0 means "default for type" (UDP for SOCK_DGRAM); 17 is IPPROTO_UDP
+    if protocol != 0 && protocol != 17 {
+        return EINVAL;
+    }
+
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let socket = UdpSocket::new();
+    let fd = process.fd_table.lock().insert(socket);
+    fd as i64
+}
+
+fn sys_bind(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, sockaddr_ptr: u64, _addrlen: u64) -> i64 {
+    const AF_INET: u16 = 2;
+
+    if !ctx.is_user_address(sockaddr_ptr) {
+        return EFAULT;
+    }
+
+    // sockaddr_in: sin_family (2, native-endian) | sin_port (2, big-endian) | sin_addr (4, big-endian)
+    let mut buf = [0u8; 8];
+    unsafe { copy_from_user(sockaddr_ptr, &mut buf); }
+
+    let family = u16::from_ne_bytes([buf[0], buf[1]]);
+    if family != AF_INET {
+        return EINVAL;
+    }
+
+    let port = u16::from_be_bytes([buf[2], buf[3]]);
+    let ip = Ipv4Addr([buf[4], buf[5], buf[6], buf[7]]);
+
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+
+    let Ok(socket) = file.as_any_arc().downcast::<UdpSocket>() else { return ENOTSOCK; };
+
+    socket.bind(ip, port);
+    UDP_DEMUX.register(port, Arc::clone(&socket) as Arc<dyn UdpSink>);
+
+    0
+}
+
+fn sys_sendto(
+    thread: &Arc<Thread>,
+    ctx: &impl SyscallContext,
+    fd: u64,
+    buf_ptr: u64,
+    len: u64,
+    _flags: u64,
+    dest_addr_ptr: u64,
+    _addrlen: u64,
+) -> i64 {
+    const AF_INET: u16 = 2;
+    const BUF_SIZE: usize = 1536;
+
+    if !ctx.is_user_address(buf_ptr) || !ctx.is_user_address(dest_addr_ptr) {
+        return EFAULT;
+    }
+
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(socket) = file.as_any_arc().downcast::<UdpSocket>() else { return ENOTSOCK; };
+    let Some((src_ip, src_port)) = socket.local_addr() else { return EINVAL; };
+
+    // read dest sockaddr_in: family(2) | port(2, BE) | ip(4)
+    let mut addr_buf = [0u8; 8];
+    unsafe { copy_from_user(dest_addr_ptr, &mut addr_buf); }
+    if u16::from_ne_bytes([addr_buf[0], addr_buf[1]]) != AF_INET {
+        return EINVAL;
+    }
+    let dst_port = u16::from_be_bytes([addr_buf[2], addr_buf[3]]);
+    let dst_ip = Ipv4Addr([addr_buf[4], addr_buf[5], addr_buf[6], addr_buf[7]]);
+
+    // read payload from user
+    let count = len as usize;
+    let mut payload = alloc::vec![0u8; count];
+    unsafe { copy_from_user(buf_ptr, &mut payload); }
+
+    // get our MAC from the NIC
+    let our_mac = {
+        let devs = NETWORK_DEVICES.lock();
+        match devs.first() {
+            Some(nic) => nic.mac_address(),
+            None => return EIO,
+        }
+    };
+
+    // resolve dest MAC — try cache, otherwise send ARP request and block
+    let dst_mac = match ARP_TABLE.resolve(dst_ip) {
+        Some(mac) => mac,
+        None => {
+            let promise = ARP_TABLE.start_lookup(dst_ip);
+
+            let mut arp_buf = [0u8; 28];
+            let mut frame_buf = [0u8; BUF_SIZE];
+            let broadcast = MacAddr([0xff; 6]);
+            if let Ok(arp_len) = build_arp_request(our_mac, src_ip, dst_ip, &mut arp_buf) {
+                if let Ok(frame_len) = build_ethernet_frame(
+                    broadcast, our_mac, EtherType::Arp, &arp_buf[..arp_len], &mut frame_buf,
+                ) {
+                    let mut devs = NETWORK_DEVICES.lock();
+                    if let Some(nic) = devs.first_mut() {
+                        let _ = nic.send_packet(&frame_buf[..frame_len]);
+                    }
+                }
+            }
+
+            promise.get()
+        }
+    };
+
+    // build UDP → IPv4 → Ethernet and send
+    let mut udp_buf = [0u8; BUF_SIZE];
+    let mut ip_buf = [0u8; BUF_SIZE];
+    let mut frame_buf = [0u8; BUF_SIZE];
+
+    let Ok(udp_len) = build_udp_packet(src_ip, dst_ip, src_port, dst_port, &payload, &mut udp_buf)
+        else { return EIO; };
+    let Ok(ip_len) = build_ipv4_packet(src_ip, dst_ip, Protocol::Udp, &udp_buf[..udp_len], &mut ip_buf)
+        else { return EIO; };
+    let Ok(frame_len) = build_ethernet_frame(dst_mac, our_mac, EtherType::Ipv4, &ip_buf[..ip_len], &mut frame_buf)
+        else { return EIO; };
+
+    {
+        let mut devs = NETWORK_DEVICES.lock();
+        if let Some(nic) = devs.first_mut() {
+            let _ = nic.send_packet(&frame_buf[..frame_len]);
+        }
+    }
+
+    count as i64
+}
+
+fn sys_recvfrom(
+    thread: &Arc<Thread>,
+    ctx: &impl SyscallContext,
+    fd: u64,
+    buf_ptr: u64,
+    len: u64,
+    _flags: u64,
+    src_addr_ptr: u64,
+    addrlen_ptr: u64,
+) -> i64 {
+    if !ctx.is_user_address(buf_ptr) {
+        return EFAULT;
+    }
+
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(socket) = file.as_any_arc().downcast::<UdpSocket>() else { return ENOTSOCK; };
+
+    let datagram = socket.recv_datagram(); // blocks until a packet arrives
+
+    let n = datagram.data.len().min(len as usize);
+    unsafe { copy_to_user(buf_ptr, &datagram.data[..n]); }
+
+    // write source address back if the caller provided a non-null pointer
+    if src_addr_ptr != 0 && ctx.is_user_address(src_addr_ptr) {
+        // sockaddr_in: family(2, NE) | port(2, BE) | ip(4) | zero padding(8)
+        let mut addr_buf = [0u8; 16];
+        addr_buf[0..2].copy_from_slice(&2u16.to_ne_bytes()); // AF_INET
+        addr_buf[2..4].copy_from_slice(&datagram.src_port.to_be_bytes());
+        addr_buf[4..8].copy_from_slice(&datagram.src_ip.0);
+        unsafe { copy_to_user(src_addr_ptr, &addr_buf); }
+
+        // write the filled address length back if caller provided addrlen pointer
+        if addrlen_ptr != 0 && ctx.is_user_address(addrlen_ptr) {
+            unsafe { copy_to_user(addrlen_ptr, &16u32.to_ne_bytes()); }
+        }
+    }
+
+    n as i64
+}
 
 // Legacy x86_64 wrappers for compatibility
 
