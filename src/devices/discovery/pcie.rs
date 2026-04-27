@@ -93,6 +93,12 @@ fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
     }
 }
 
+/*
+* Returns (table_bir, cap_offset, table_offset) where
+* table_bir is the BAR index where the MSI-X table is located
+* cap_offset is the offset in the PCI config space where the MSI-X capability is located
+* table_offset is the offset within the BAR where the MSI-X table is located
+*/
 pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
     let msix_cap = find_msix_capability(pcie_func)?;
     let table_bir = (pcie_func.read_config_space(msix_cap + 0x4).unwrap() & 0x7) as u8;
@@ -100,6 +106,15 @@ pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
     Some((table_bir, msix_cap, table_offset))
 }
 
+/*
+* Registers an MSI-X handler for the given PCIe function. 
+* handle --- Handle into the configuration space of the given device
+* bar_region: the MmioRegion corresponding to the BAR where the MSI-X table is located. This should be obtained via map_bar
+* cap_offset: the offset in the PCI config space where the MSI-X capability is located. This should be obtained via get_msix_table
+* table_offset: the offset within the BAR where the MSI-X table is located. This should be obtained via get_msix_table
+* irq_vec: the IRQ vector to use for this MSI-X handler. If None, we will choose an arbitrary free vector. 
+* handler: the handler to register for this MSI-X interrupt
+*/
 pub fn register_msix_handler(
     handle : &mut PcieFunction,
     bar_region : &MmioRegion,
