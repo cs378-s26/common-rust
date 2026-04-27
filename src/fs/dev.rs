@@ -171,7 +171,7 @@ impl VNode for DevINode {
 * Allocates a device inode accessible by the user under `/dev/<fname>. `
 */
 pub fn allocate_device_inode(fname: &str, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
-    let dev = DEV.get().unwrap().clone();
+    let dev: Arc<Dev> = DEV.get().unwrap().clone();
     let root = dev.get_root()?;
     let inode: Arc<dyn VNode> = root.create_child(fname, INodeType::Other)?;
     inode.set_device(device)?;
