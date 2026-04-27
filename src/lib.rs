@@ -23,6 +23,7 @@ pub mod local_storage;
 pub mod memory;
 pub mod modules;
 pub mod mp;
+pub mod net;
 pub mod panic;
 pub mod print;
 pub mod process;
