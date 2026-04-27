@@ -304,7 +304,7 @@ pub fn register_msix_handler(
 ) {
     // Both of these are from https://stackoverflow.com/questions/57804511/question-about-message-signaled-interrupts-msi-on-x86-lapic-system?rq=1
     let msg_data = irq_vec.unwrap_or(0x67) as u32;
-    let msg_addr = 0xFEE0_0000 | ((apic::get_lapic_id() as u32) << 12);
+    let msg_addr = 0xFEE0_0000 | (apic::get_lapic_id() << 12);
     register_irq_handler(None, handler, irq_vec);
     unsafe { msix_table.write::<u32>((table_off + (table_entry * 16)) as usize, msg_addr) };
     unsafe { msix_table.write::<u32>((table_off + (table_entry * 16 + 4)) as usize, 0x0) };

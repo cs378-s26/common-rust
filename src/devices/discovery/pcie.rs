@@ -22,12 +22,11 @@ pub struct PcieFunction {
 
 impl PcieFunction {
     fn new(bus: u8, device: u8, function: u8) -> Self {
-        let func = Self {
+        Self {
             bus,
             device,
             function,
-        };
-        func
+        }
     }
 
     pub fn read_config_space(&self, offset: u16) -> Option<u32> {
@@ -72,16 +71,15 @@ pub fn map_bar(pcie_func: &mut PcieFunction, bar_num: u16) -> Option<MmioRegion>
             let next_bar = pcie_func
                 .read_config_space(0x10 + (bar_num + 1) * 4)
                 .unwrap();
-            let bar_addr = (cur_bar & 0xFFFFFFF0) as u64 | (((next_bar & 0xFFFFFFFF) as u64) << 32);
+            let bar_addr = (cur_bar & 0xFFFFFFF0) as u64 | ((next_bar as u64) << 32);
             //get size
             pcie_func.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
             pcie_func.write_config_space(0x10 + (bar_num + 1) * 4, 0xFFFF_FFFF);
             let sz0 =
                 (pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) as u64;
-            let sz1 = (pcie_func
+            let sz1 = pcie_func
                 .read_config_space(0x10 + (bar_num + 1) * 4)
-                .unwrap()
-                & 0xFFFFFFFF) as u64;
+                .unwrap() as u64;
             let bar_size: usize = (!(sz0 | (sz1 << 32)) + 1) as usize;
             //restore BARs;
             pcie_func.write_config_space(0x10 + bar_num * 4, cur_bar);
