@@ -1,10 +1,12 @@
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 use spin::once::Once;
 
 use crate::devices::discovery::{DeviceNode, DeviceType, SYSTEM_DRIVERS, acpi::Mcfg};
 
 use crate::memory::dma::MmioRegion;
+
+use crate::{Arch, ArchTrait};
 
 pub static PCIE: Once<Pcie> = Once::new();
 
@@ -72,6 +74,44 @@ pub fn map_bar(pcie_func : &mut PcieFunction, bar_num: u16) -> Option<MmioRegion
         //i/o space, we ignore for now
         None
     }
+}
+
+const PCI_CAP_MSIX: u8 = 0x11;
+
+fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
+    let mut offset = (pcie_func.read_config_space(0x34).unwrap() & 0xff) as u16;
+    loop {
+        if offset == 0 {
+            return None;
+        }
+        let cap: u32 = pcie_func.read_config_space(offset).unwrap();
+        let cap_id = (cap & 0xFF) as u8;
+        if cap_id == PCI_CAP_MSIX {
+            return Some(offset);
+        }
+        offset = ((cap >> 8) & 0xFF) as u16;
+    }
+}
+
+pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
+    let msix_cap = find_msix_capability(pcie_func)?;
+    let table_bir = (pcie_func.read_config_space(msix_cap + 0x4).unwrap() & 0x7) as u8;
+    let table_offset = pcie_func.read_config_space(msix_cap + 0x4).unwrap() & !(0x7);
+    Some((table_bir, msix_cap, table_offset))
+}
+
+pub fn register_msix_handler(
+    handle : &mut PcieFunction,
+    bar_region : &MmioRegion,
+    table_offset : u32,
+    cap_offset : u16,
+    irq_vec : Option<u8>,
+    handler : Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+) -> Option<()> {
+    let mc_word = handle.read_config_space(cap_offset)?;
+    Arch::register_msix_handler(bar_region, table_offset as u16, irq_vec, handler);
+    let new_mc_word = (mc_word | 0x8000_0000) & !0x4000_0000;
+    handle.write_config_space(cap_offset, new_mc_word)
 }
 
 impl Pcie {
