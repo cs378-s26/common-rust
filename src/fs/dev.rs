@@ -42,22 +42,6 @@ impl Dev {
         fs
     }
 
-    /*
-    fn alloc_inode_with_device(&self, inumber: usize, device: Option<Arc<IntMutex<Box<dyn VFSDevice>>>>) -> Result<Arc<dyn VNode>, FsError> {
-        if let Some(device) = device.clone() {
-            self.devices.lock().insert(inumber, Some(device));
-        } else {
-            self.devices.lock().insert(inumber, None);
-        }
-        Ok(Arc::new(DevINode {
-            fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
-            device: device,
-            inumber,
-            children: IntMutex::new(BTreeMap::new()),
-        }))
-    }
-    */
-
     fn alloc_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
         let devices = self.devices.lock();
         let device = devices.get(&inumber).ok_or(FsError::ReadError)?;
