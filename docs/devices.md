@@ -235,3 +235,8 @@ That makes the current model best thought of as an early kernel driver framework
 Initialization for PCI-E devices is required to run in round 2 of device discovery. On initialization, an instance
 of `PcieFunction` will be passed to `i_am_this`. Several helper functions are provided in crate 
 `devices::discovery::pcie`. 
+
+### MSI-X Interrupts
+
+Register MSI-X Interrupt handlers using `get_msix_table` and `register_msix_handler`. We split MSI-X interrupt
+registration into two functions in case the user already allocated the BAR that the MSI-X table is in. 
