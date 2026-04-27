@@ -1,0 +1,6 @@
+Starting Testing Code...
+registered /dev/null_test
+found /dev/null_test via VFS
+read check passed
+write check passed
+devfs integration test passed

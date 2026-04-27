@@ -18,7 +18,8 @@ pub static DEV: Once<Arc<Dev>> = Once::new();
 pub struct Dev {
     self_ref: Once<Weak<Self>>,
     counter: AtomicUsize,
-    devices: IntMutex<BTreeMap<usize, Option<IntMutex<Arc<dyn VFSDevice>>>>>,
+    devices: IntMutex<BTreeMap<usize, Arc<dyn VFSDevice>>>,
+    root: Once<Arc<dyn VNode>>,
     fs_id: IntMutex<Option<usize>>,
 }
 
@@ -37,6 +38,7 @@ impl Dev {
             devices: IntMutex::new(BTreeMap::new()),
             fs_id: IntMutex::new(None),
             self_ref: Once::new(),
+            root: Once::new(),
         });
         fs.self_ref.call_once(|| Arc::downgrade(&fs));
         fs
@@ -44,9 +46,9 @@ impl Dev {
 
     fn alloc_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
         let devices = self.devices.lock();
-        let device = devices.get(&inumber).ok_or(FsError::ReadError)?;
+        let device = devices.get(&inumber);
         if let Some(device) = device {
-            let arc_dev = device.lock();
+            let arc_dev = device;
             Ok(Arc::new(DevINode {
                 fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
                 device: IntMutex::new(Some(arc_dev.clone())),
@@ -70,7 +72,16 @@ impl Filesystem for Dev {
     }
 
     fn get_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
-        if inumber == 0 || self.devices.lock().contains_key(&inumber) {
+        if inumber == 0 {
+            if let Some(root) = self.root.get() {
+                return Ok(root.clone());
+            } else {
+                let root = self.alloc_inode(0)?;
+                self.root.call_once(|| root.clone());
+                return Ok(root);
+            }
+        }
+        if self.devices.lock().contains_key(&inumber) {
             self.alloc_inode(inumber)
         } else {
             Err(FsError::NotFound)
@@ -105,7 +116,6 @@ impl VNode for DevINode {
         }
         let fs = self.fs.upgrade().ok_or(FsError::ReadError)?;
         let inumber = fs.counter.fetch_add(1, Ordering::SeqCst);
-        fs.devices.lock().insert(inumber, None);
         let vnode = fs.alloc_inode(inumber);
         self.children
             .lock()
@@ -123,6 +133,8 @@ impl VNode for DevINode {
     }
 
     fn set_device(&self, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
+        let fs = self.fs.upgrade().ok_or(FsError::ReadError)?;
+        fs.devices.lock().insert(self.inumber, device.clone());
         self.device.lock().replace(device);
         Ok(())
     }
