@@ -127,6 +127,15 @@ impl VNode for DevINode {
         vnode
     }
 
+    fn lookup(&self, name: &str) -> Result<Arc<dyn VNode>, FsError> {
+        let children = self.children.lock();
+        if let Some(child) = children.get(name) {
+            Ok(Arc::clone(child))
+        } else {
+            Err(FsError::NotFound)
+        }
+    }
+
     fn set_device(&self, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
         self.device.lock().replace(device);
         Ok(())
