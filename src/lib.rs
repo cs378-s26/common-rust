@@ -60,6 +60,7 @@ use crate::{
     devices::discovery::{create_drivers, discover_devices},
     event::init_event_handler,
     fs::{
+        dev::{DEV, Dev},
         fake::{FAKE, Fake},
         vfs::VFS,
     },
@@ -184,7 +185,9 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
-    VFS.mount(fake);
+    VFS.mount(fake, &["/", "fake"]).unwrap();
+    let dev = Arc::clone(DEV.call_once(Dev::new));
+    VFS.mount(dev, &["/", "dev"]).unwrap();
 
     create_drivers();
     kprintln!("First round of device discovery...");

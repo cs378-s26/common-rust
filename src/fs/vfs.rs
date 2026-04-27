@@ -1,13 +1,18 @@
-use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc};
+use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    devices::Device,
+    sync::{IntMutex, MutexLike},
+};
 
 // TODO we probably don't want to cache on both the fs and the VFS level,
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsError {
+    PathMalformed,
+    MountAlreadyExists,
     NotFound,
     AlreadyExists,
     NoSpace,
@@ -24,31 +29,65 @@ pub struct VFS {
     filesystems: IntMutex<BTreeMap<usize, Arc<dyn Filesystem>>>,
     inode_cache: IntMutex<INodeCache>,
     filesystem_id_counter: AtomicUsize,
-    root: IntMutex<Option<Arc<dyn VNode>>>,
+    mount_list: IntMutex<Vec<(Vec<&'static str>, usize)>>,
 }
 
 pub static VFS: VFS = VFS {
     filesystems: IntMutex::new(BTreeMap::new()),
     inode_cache: IntMutex::new(BTreeMap::new()),
     filesystem_id_counter: AtomicUsize::new(0),
-    root: IntMutex::new(None),
+    mount_list: IntMutex::new(Vec::new()),
 };
 
 impl VFS {
     // not a great mount yet, but this can be improved later for proper traversal.
-    pub fn mount(&self, filesystem: Arc<dyn Filesystem>) -> usize {
+    pub fn mount(
+        &self,
+        filesystem: Arc<dyn Filesystem>,
+        path: &[&'static str],
+    ) -> Result<usize, FsError> {
+        // Lock everything down
+        let mut mount_list = self.mount_list.lock();
         let mut inode_cache = self.inode_cache.lock();
         let mut filesystems = self.filesystems.lock();
         let filesystem_id = self.filesystem_id_counter.fetch_add(1, Ordering::SeqCst);
+
+        // Do not mount here if something already exists
+        if self.find_mount(path, &mount_list).is_some() {
+            return Err(FsError::MountAlreadyExists);
+        }
+
+        // Create the mount
+        let mut mount = (Vec::new(), filesystem_id);
+        for p in path {
+            mount.0.push(*p);
+        }
+        mount_list.push(mount);
         filesystem.set_filesystem_id(Some(filesystem_id));
         filesystems.insert(filesystem_id, filesystem);
         inode_cache.insert(filesystem_id, BTreeMap::new());
-        filesystem_id
+        Ok(filesystem_id)
     }
 
     pub fn unmount(&self, filesystem_id: usize) {
+        // Lock everything down
+        let mut mount_list = self.mount_list.lock();
         let mut inode_cache = self.inode_cache.lock();
         let mut filesystems = self.filesystems.lock();
+        let mut mount_index = None;
+
+        // Delete the mount
+        for i in 0..mount_list.len() {
+            if mount_list[i].1 == filesystem_id {
+                mount_index = Some(i);
+                break;
+            }
+        }
+        if let Some(index) = mount_index {
+            mount_list.swap_remove(index);
+        } else {
+            panic!("This should never happen");
+        }
         if let Some(fs) = filesystems.remove(&filesystem_id) {
             fs.set_filesystem_id(None);
         }
@@ -74,20 +113,57 @@ impl VFS {
     }
 
     pub fn get_root(&self) -> Option<Arc<dyn VNode>> {
-        let root = self.root.lock();
-        if let Some(root) = &*root {
-            return Some(Arc::clone(root));
+        let mount_list = self.mount_list.lock();
+        let filesystems = self.filesystems.lock();
+        let fs_index = self.find_mount(&["/"], &mount_list)?;
+        let fs = filesystems.get(&fs_index)?;
+        let root = fs.get_root();
+        if let Ok(root) = root {
+            return Some(Arc::clone(&root));
         }
         None
     }
 
-    pub fn set_root(&self, inode: Arc<dyn VNode>) -> Result<(), FsError> {
-        let mut root = self.root.lock();
-        if root.is_some() {
-            return Err(FsError::AlreadyExists);
+    // This isn't a full path traversing algorithm. All it does is use
+    // the current full path to traverse a mount point if it is
+    // possible.
+    pub fn partial_lookup(
+        &self,
+        node: &Arc<dyn VNode>,
+        path: &[&'static str],
+    ) -> Result<Arc<dyn VNode>, FsError> {
+        let mount_list = self.mount_list.lock();
+        let filesystems = self.filesystems.lock();
+        let mount = self.find_mount(path, &mount_list);
+        if let Some(fs_index) = mount {
+            let fs = filesystems.get(&fs_index).ok_or(FsError::NotFound)?;
+            return fs.get_root();
         }
-        *root = Some(inode);
-        Ok(())
+        node.lookup(path.last().ok_or(FsError::PathMalformed)?)
+    }
+
+    fn find_mount(
+        &self,
+        path: &[&'static str],
+        mount_list: &Vec<(Vec<&'static str>, usize)>,
+    ) -> Option<usize> {
+        for mount in mount_list.iter() {
+            if mount.0.len() != path.len() {
+                continue;
+            }
+            let mut equals = true;
+            for (i, p) in path.iter().enumerate() {
+                if *p != mount.0[i] {
+                    equals = false;
+                    break;
+                }
+            }
+            if !equals {
+                continue;
+            }
+            return Some(mount.1);
+        }
+        None
     }
 }
 
@@ -160,6 +236,11 @@ pub trait VNode: Send + Sync {
 
     // should only be implemented for directories
     fn create_child(&self, _name: &str, _inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
+        Err(FsError::NotImplemented)
+    }
+
+    // should only be implemented for devices
+    fn set_device(&self, _device: Arc<dyn Device>) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 
