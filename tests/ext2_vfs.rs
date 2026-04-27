@@ -12,7 +12,7 @@ kernel_common::integration_test!({
         devices::discovery::BLOCK_DEVICES,
         fs::{
             ext2::Ext2,
-            vfs::{Filesystem, INodeType, VFS, VNode},
+            vfs::{INodeType, VFS, VNode},
         },
         print::kprintln,
         sync::MutexLike,

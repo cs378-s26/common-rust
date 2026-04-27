@@ -11,6 +11,7 @@ type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsError {
+    PathMalformed,
     MountAlreadyExists,
     NotFound,
     AlreadyExists,
@@ -121,6 +122,24 @@ impl VFS {
             return Some(Arc::clone(&root));
         }
         None
+    }
+
+    // This isn't a full path traversing algorithm. All it does is use
+    // the current full path to traverse a mount point if it is
+    // possible.
+    pub fn partial_lookup(
+        &self,
+        node: &Arc<dyn VNode>,
+        path: &[&'static str],
+    ) -> Result<Arc<dyn VNode>, FsError> {
+        let mount_list = self.mount_list.lock();
+        let filesystems = self.filesystems.lock();
+        let mount = self.find_mount(path, &mount_list);
+        if let Some(fs_index) = mount {
+            let fs = filesystems.get(&fs_index).ok_or(FsError::NotFound)?;
+            return fs.get_root();
+        }
+        node.lookup(path.last().ok_or(FsError::PathMalformed)?)
     }
 
     fn find_mount(
