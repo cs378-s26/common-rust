@@ -43,6 +43,21 @@ impl PcieFunction {
     }
 }
 
+pub fn enable_bus_mastering(pcie_func: &mut PcieFunction) -> Option<()> {
+    let command_reg = pcie_func.read_config_space(0x04)?;
+    pcie_func.write_config_space(0x04, command_reg | 0x4)
+}
+
+pub fn enable_interrupts(pcie_func: &mut PcieFunction) -> Option<()> {
+    let command_reg = pcie_func.read_config_space(0x04)?;
+    pcie_func.write_config_space(0x04, command_reg | 0x1)
+}
+
+pub fn enable_mem_space(pcie_func: &mut PcieFunction) -> Option<()> {
+    let command_reg = pcie_func.read_config_space(0x04)?;
+    pcie_func.write_config_space(0x04, command_reg | 0x2)
+}
+
 /*
 * Maps `bar_num` BAR to an MmioRegion. Returns None if the BAR is an I/O BAR, or if there was an error reading the config space.
 * Do not try to map the same bar of the same configuration space twice. 
