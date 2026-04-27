@@ -7,8 +7,13 @@ use core::{
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
 
-use crate::{arch::apic, print::kprintln, sync::Promise, fs::vfs::{VFSDevice, FsError}};
-use crate::{Arch, ArchTrait};
+use crate::{
+    Arch, ArchTrait,
+    arch::apic,
+    fs::vfs::{FsError, VFSDevice},
+    print::kprintln,
+    sync::Promise,
+};
 
 const QUEUE_CAP: usize = 256;
 
@@ -57,7 +62,7 @@ impl ScancodeQueue {
 }
 
 struct Ps2Keyboard {
-    keyboard_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>
+    keyboard_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>,
 }
 
 unsafe impl Send for Ps2Keyboard {}
@@ -67,15 +72,17 @@ impl Ps2Keyboard {
     pub fn new() -> Self {
         let keyboard_req_queue = Arc::new(Mutex::new(Vec::new()));
         let kb = keyboard_req_queue.clone();
-        Arch::register_irq_handler(1, Box::new(move || {
-            Self::keyboard_irq_handler(keyboard_req_queue.clone())
-        }), Some(0x69));
+        Arch::register_irq_handler(
+            1,
+            Box::new(move || Self::keyboard_irq_handler(keyboard_req_queue.clone())),
+            Some(0x69),
+        );
         Self {
-            keyboard_req_queue: kb.clone()
+            keyboard_req_queue: kb.clone(),
         }
     }
 
-    fn keyboard_irq_handler(kb_req_queue : Arc<Mutex<Vec<Arc<Promise<char>>>>>) -> Option<()> {
+    fn keyboard_irq_handler(kb_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>) -> Option<()> {
         apic::eoi();
         let scancode: u8 = unsafe { x86::io::inb(0x60) };
         if let Some(ch) = decode_scancode(scancode) {
