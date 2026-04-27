@@ -21,7 +21,7 @@ use intrusive_collections::{
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
     event::Event,
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
@@ -245,6 +245,7 @@ pub fn poll_tasks() -> ! {
         Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
+
     loop {
         if let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
@@ -254,8 +255,11 @@ pub fn poll_tasks() -> ! {
                 Arch::wake_other_cores();
             }
         }
+
         if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
             suspend_to_thread(thread);
+        } else {
+            sleep_core();
         }
     }
 }

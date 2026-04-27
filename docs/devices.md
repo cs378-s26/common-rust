@@ -73,6 +73,7 @@ Each discovery driver implements:
 ```rust
 pub trait DeviceDiscovery {
     fn am_i_this(&self, node: DeviceNode) -> Option<Vec<DeviceType>>;
+    fn run_at_start(&self) -> bool;
     fn name(&self) -> &'static str;
 }
 ```
@@ -129,7 +130,7 @@ The tests in `tests/virtio_blk.rs` show the current usage model clearly: they lo
 
 ### Boot Sequence
 
-Device discovery happens early in `system_init()` in `src/lib.rs`, after:
+There are two rounds of device discovery. The first happens early in `system_init()` in `src/lib.rs`, after:
 
 - heap initialization
 - TTY initialization
@@ -142,7 +143,15 @@ and before:
 - per-core initialization
 - scheduler handoff
 
-That ordering matters because discovery drivers already depend on memory-management services. They allocate virtual mappings, inspect firmware tables, and may allocate DMA-capable memory before the rest of the kernel is fully running.
+The second happens late in `core_init`, after 
+
+- APIC/GiC initialization
+- event handler initilization
+- idle thread initialization
+
+Drivers where `run_at_start` is true will run in the first phase, otherwise they run in the second phase.
+PCI devices are required to run in the second phase of device discovery. By default, drivers run in the
+second phase of initialization, which is what we recommend.
 
 ### Printing And Console Output
 
@@ -186,6 +195,11 @@ The current virtio block driver uses the `virtio_drivers` crate, which expects a
 
 So the device interface itself stays simple, but actual drivers still reach down into `dma.rs`, `physical_memory.rs`, and `virtual_memory.rs` when they need to talk to hardware.
 
+### Interrupts
+
+Devices can register interrupt handlers via `arch::register_irq_handler`. Interrupt handlers
+will run in interrupt context, and most return `None` if they cannot handle the interrupt.
+
 ### Architecture-Specific Control Paths
 
 Some discovered hardware is not exposed as a normal `BlockDevice` or `CharDevice`, but is still essential to the kernel.
@@ -213,6 +227,5 @@ The current device layer is useful, but deliberately incomplete.
 - `ioctl()` is a stub in the existing drivers.
 - There is no VFS or syscall integration yet, so devices are kernel-internal objects rather than user-visible files.
 - Discovery is tightly coupled to firmware parsing, not to hotplug or runtime bus enumeration.
-- Interrupt dispatch is not abstracted through the common device traits.
 
 That makes the current model best thought of as an early kernel driver framework: enough structure to discover hardware, map it safely, and expose typed operations to the rest of the kernel, but not yet a full device-management stack.
