@@ -43,6 +43,10 @@ impl PcieFunction {
     }
 }
 
+/*
+* Maps `bar_num` BAR to an MmioRegion. Returns None if the BAR is an I/O BAR, or if there was an error reading the config space.
+* Do not try to map the same bar of the same configuration space twice. 
+*/
 pub fn map_bar(pcie_func: &mut PcieFunction, bar_num: u16) -> Option<MmioRegion> {
     let cur_bar = pcie_func.read_config_space(0x10 + bar_num * 4).unwrap();
     let is_mmio = cur_bar & 1 == 0;

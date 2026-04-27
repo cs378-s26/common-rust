@@ -232,10 +232,6 @@ That makes the current model best thought of as an early kernel driver framework
 
 ## PCI-E Interface
 
-### Initialization
-
 Initialization for PCI-E devices is required to run in round 2 of device discovery. On initialization, an instance
-of `PcieFunction` will be passed to `i_am_this`. Several helper functions are provided:
-
-`map_bar`: maps memory BAR `i`, where `i` is zero-indexed. Returns `None` if the BAR is an i/o bar, and/or we have not
-found the MCFG yet. Returns a handle to the mapped region. 
+of `PcieFunction` will be passed to `i_am_this`. Several helper functions are provided in crate 
+`devices::discovery::pcie`. 
