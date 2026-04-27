@@ -1,5 +1,6 @@
 pub mod arp;
 pub mod ethernet;
+pub mod icmp;
 pub mod ipv4;
 
 /// an IPv4 address — shared between arp and ipv4
