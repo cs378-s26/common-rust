@@ -1,13 +1,15 @@
-use crate::arch::{Arch, ArchTrait};
-use crate::print::kprintln;
-use crate::*;
+use crate::{
+    arch::{Arch, ArchTrait},
+    print::kprintln,
+    *,
+};
 
 #[inline(always)]
 #[allow(dead_code)]
 pub fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
     match info.location() {
         Some(location) => kprintln!(
-            "panic: {}\nat {}:{}:{}\n{}",
+            "panic: {}\n{}:{}:{}\n{}",
             info.message(),
             location.file(),
             location.line(),
@@ -15,7 +17,7 @@ pub fn rust_panic_impl(info: &core::panic::PanicInfo) -> ! {
             StackTrace::current()
         ),
         None => kprintln!(
-            "panic: {}\nat unknown location\n{}",
+            "panic: {}\nunknown location\n{}",
             info.message(),
             StackTrace::current()
         ),

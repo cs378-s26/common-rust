@@ -1,16 +1,22 @@
+use std::{
+    fs,
+    io::BufReader,
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
+    sync::OnceLock,
+    thread::sleep,
+    time::{Duration, Instant, SystemTime},
+};
+
 use anyhow::{Context, Error, Result, anyhow};
 use cargo_metadata::{Artifact, Message, TargetKind};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::OnceLock;
-use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime};
 
-use crate::util::{Target, build_image_with_tag, cache_dir, download_ovmf, path_to_string};
+use crate::util::{
+    Target, build_ext2_filesystem_from_dir, build_image_with_tag, cache_dir, download_ovmf,
+    path_to_string,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestConfig {
@@ -19,8 +25,21 @@ pub struct TestConfig {
     pub timeout_ms: u64,
     pub test_name: Option<String>,
     pub expected_output_path: String,
+    pub filesystem_path: Option<String>,
+    #[serde(default)]
+    pub accepted_exit_codes: Vec<i32>,
+    #[serde(default)]
+    pub output_match: OutputMatchMode,
     pub target: TestTarget,
     pub qemu_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputMatchMode {
+    #[default]
+    Exact,
+    ContainsInOrder,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -91,10 +110,10 @@ struct CachePaths {
     report: PathBuf,
 }
 
-pub fn run(config_path: String, release: bool) -> Result<()> {
+pub fn run(config_path: String, release: bool, stream_serial_stdout: bool) -> Result<()> {
     let config_path = resolve_repo_root_path(Path::new(&config_path))?;
     let test_cfg = load_test_config(&config_path)?;
-    let summary = match run_with_config(&config_path, &test_cfg, release) {
+    let summary = match run_with_config(&config_path, &test_cfg, release, stream_serial_stdout) {
         Ok(summary) => summary,
         Err(err) => {
             let summary = write_failure_artifacts(&config_path, &test_cfg, &err.to_string())
@@ -129,6 +148,7 @@ fn run_with_config(
     config_path: &Path,
     test_cfg: &TestConfig,
     release: bool,
+    stream_serial_stdout: bool,
 ) -> Result<TestRunSummary> {
     if test_cfg.n_runs == 0 {
         return Err(anyhow!("n_runs must be >= 1 in {}", config_path.display()));
@@ -146,7 +166,6 @@ fn run_with_config(
             config_path.display()
         ));
     }
-
     let target = test_cfg.target.to_target();
     let display_name = test_display_name(config_path, test_cfg);
     let cache_paths = cache_paths(config_path, test_cfg.target)?;
@@ -157,8 +176,20 @@ fn run_with_config(
         target,
         Some(&display_name),
     )?;
+
+    let filesystem_image = if let Some(filesystem_path) = test_cfg.filesystem_path.as_deref() {
+        let source_path = resolve_repo_root_path(Path::new(filesystem_path))?;
+        Some(build_ext2_filesystem_from_dir(
+            &source_path,
+            &format!("{}-filesystem", display_name),
+        )?)
+    } else {
+        None
+    };
+
     let path_to_efi = path_to_string(&download_ovmf(target)?)?;
     let path_to_img = path_to_string(&img_path)?;
+
     let expected_output_path = resolve_repo_root_path(Path::new(&test_cfg.expected_output_path))?;
     let expected_output = fs::read_to_string(&expected_output_path).with_context(|| {
         format!(
@@ -167,13 +198,17 @@ fn run_with_config(
         )
     })?;
 
-    let deps = [
+    let mut deps = vec![
         config_path,
         expected_output_path.as_path(),
         kernel_path.as_path(),
         img_path.as_path(),
     ];
-    if !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
+    if let Some(filesystem_image) = filesystem_image.as_deref() {
+        deps.push(filesystem_image);
+    }
+    if !stream_serial_stdout
+        && !cache_is_stale(&cache_paths.serial_output, &cache_paths.report, &deps)?
         && let Some(cached_report) = load_cached_report(&cache_paths.report)
     {
         return Ok(cached_report.to_summary());
@@ -201,8 +236,27 @@ fn run_with_config(
                     .replace("{PATH_TO_IMG}", &path_to_img)
             })
             .collect();
-        qemu_args.push("-serial".into());
-        qemu_args.push(format!("file:{}", cache_paths.serial_output.display()));
+        if let Some(filesystem_image) = filesystem_image.as_deref() {
+            let filesystem_image = path_to_string(filesystem_image)?;
+            qemu_args.push("-drive".into());
+            qemu_args.push(format!(
+                "if=none,id=testfs0,file={filesystem_image},format=raw"
+            ));
+            qemu_args.push("-device".into());
+            qemu_args.push(format!("{},drive=testfs0", target.qemu_virtio_blk_device()));
+        }
+        if stream_serial_stdout {
+            qemu_args.push("-chardev".into());
+            qemu_args.push(format!(
+                "stdio,id=serial0,signal=off,logfile={}",
+                cache_paths.serial_output.display()
+            ));
+            qemu_args.push("-serial".into());
+            qemu_args.push("chardev:serial0".into());
+        } else {
+            qemu_args.push("-serial".into());
+            qemu_args.push(format!("file:{}", cache_paths.serial_output.display()));
+        }
 
         let qemu_cmd = test_cfg.target.qemu_cmd();
         eprintln!(
@@ -226,7 +280,7 @@ fn run_with_config(
             }
         };
 
-        if !qemu_status_ok(&status) {
+        if !qemu_status_ok(&status, test_cfg) {
             failed_at_run = Some(run_idx + 1);
             failure_reason = Some(format!("{} failed with status {}", qemu_cmd, status));
             break;
@@ -256,6 +310,7 @@ fn run_with_config(
         if let Err(err) = assert_output_match(
             &expected_output,
             &actual_output,
+            test_cfg.output_match,
             run_idx + 1,
             &expected_output_path,
             &cache_paths.serial_output,
@@ -458,12 +513,37 @@ fn resolve_repo_root_path(path: &Path) -> Result<PathBuf> {
 fn assert_output_match(
     expected: &str,
     actual: &str,
+    mode: OutputMatchMode,
     run_idx: u32,
     expected_path: &Path,
     actual_path: &Path,
 ) -> Result<()> {
-    if normalize_output(expected) == normalize_output(actual) {
-        return Ok(());
+    let expected = normalize_output(expected);
+    let actual = normalize_output(actual);
+
+    match mode {
+        OutputMatchMode::Exact if expected == actual => return Ok(()),
+        OutputMatchMode::ContainsInOrder => {
+            let mut search_start = 0;
+            for needle in expected
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+            {
+                let Some(relative_match) = actual[search_start..].find(needle) else {
+                    return Err(anyhow!(
+                        "serial output mismatch on run {}.\nexpected: {}\nactual:   {}\nmissing ordered fragment: {:?}",
+                        run_idx,
+                        expected_path.display(),
+                        actual_path.display(),
+                        needle
+                    ));
+                };
+                search_start += relative_match + needle.len();
+            }
+            return Ok(());
+        }
+        OutputMatchMode::Exact => {}
     }
 
     let mut mismatch_preview = String::new();
@@ -516,8 +596,12 @@ fn ansi_escape_regex() -> &'static Regex {
     })
 }
 
-fn qemu_status_ok(status: &ExitStatus) -> bool {
-    status.success() || status.code() == Some(1)
+fn qemu_status_ok(status: &ExitStatus, test_cfg: &TestConfig) -> bool {
+    status.success()
+        || status.code() == Some(1)
+        || status
+            .code()
+            .is_some_and(|code| test_cfg.accepted_exit_codes.contains(&code))
 }
 
 fn run_qemu_with_timeout(

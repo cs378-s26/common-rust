@@ -1,17 +1,9 @@
-use proc_macro2::Span;
-use proc_macro2::{self, TokenStream};
-use quote::ToTokens;
-use quote::quote;
-use syn::Field;
-use syn::FieldsNamed;
-use syn::FieldsUnnamed;
-use syn::Ident;
-use syn::Token;
-use syn::Variant;
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::{Data, DataStruct, DeriveInput, Fields, Type, parse_macro_input};
-use syn::{DataEnum, Index};
+use proc_macro2::{self, Span, TokenStream};
+use quote::{ToTokens, quote};
+use syn::{
+    Data, DataEnum, DataStruct, DeriveInput, Field, Fields, FieldsNamed, FieldsUnnamed, Ident,
+    Index, Token, Type, Variant, parse_macro_input, punctuated::Punctuated, spanned::Spanned,
+};
 
 fn is_bool(ty: &Type) -> bool {
     matches!(ty, Type::Path(type_path) if type_path.clone().into_token_stream().to_string() == "bool")
@@ -296,7 +288,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     quote! {
         impl CmdlineParsable for #ident {
-            fn parse<'a>(&mut self, lexer: &mut crate::cmdline::CmdlineLexer<'a>) -> Result<(), crate::cmdline::CmdlineParseError<'a>> {
+            fn parse<'a>(&mut self, lexer: &mut crate::cmdline::CmdlineLexer<'a>) -> ::core::result::Result<(), crate::cmdline::CmdlineParseError<'a>> {
                 #body
             }
         }

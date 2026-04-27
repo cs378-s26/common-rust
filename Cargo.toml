@@ -1,7 +1,7 @@
 [profile.release]
 panic = "abort"
 debug = "full"
-lto = "fat"
+# lto = "fat"
 
 [profile.dev]
 panic = "abort"
@@ -25,6 +25,7 @@ flanterm = { version = "0.1.0", path = "flanterm" }
 intrusive-collections = { version = "0.10.0", features = ["nightly"] }
 limine = "0.5.0"
 lock_api = "0.4.14"
+rustc-demangle = { version = "0.1", default-features = false }
 seq-macro = "0.3.6"
 spin = "0.10.0"
 static_cell = "2.1.1"
@@ -33,14 +34,14 @@ uart_16550 = "0.4.0"
 proc-macros = { version = "0.1.0", path = "proc-macros" }
 logos = { version = "0.16.1", default-features = false, features = ["export_derive", "logos-derive"] }
 fdt = "0.1.5"
+virtio-drivers = "0.13.0"
+zerocopy = { version = "0.8.40", features = ["derive"] }
+bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"
 x86_64 = "0.15.4"
-
-[features]
-default = ["sched_eevdf"]
-sched_eevdf = []
+ps2 = "0.2.0"
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]

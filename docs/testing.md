@@ -25,6 +25,7 @@ type TestConfig = {
     timeout_ms: number, // required, must be >= 1
     test_name?: string,
     expected_output_path: string,
+    filesystem_path?: string,
     target: "x86_64" | "aarch64",
     qemu_args: string[]
     
@@ -32,7 +33,7 @@ type TestConfig = {
 ```
 
 The build tool will recursively search all directories in `test_cfgs` for files matching the pattern `test_cfgs/**/*_test.json`, and run these as tests.
-Any `qemu_args` sub string matching the pattern `{PATH_TO_EFI}` and `{PATH_TO_IMG}` will get substituted with the corresponding path.
+Any `qemu_args` sub string matching the pattern `{PATH_TO_EFI}` and `{PATH_TO_IMG}` will get substituted with the corresponding path. If `filesystem_path` is set, it is resolved relative to the repository root, packed into a cached ext2 image, and attached as an additional virtio block disk. The test runner uses `virtio-blk-pci` on x86_64 and `virtio-blk-device` on aarch64.
 
 An example integration test can be found in `tests/example_integration.rs` with the corresponding config json in `test_cfgs/example_integration/example_x86_64_test.json`.
 
@@ -55,3 +56,5 @@ kernel_common::integration_test!({
 ```
 
 Note that the output is checked. The test will be run `n_runs` times, and the output of each run will be compared to the expected output. If any run does not match the expected output, the test will fail. The test will also fail if any run exceeds the specified timeout, or if the test binary panics, so assertions provide a convenient way to check a condition many times and get immediate failures at low runtime cost.
+
+For a single test run, `cargo buildtool qemu-test <config> --stdout` streams the serial output live to stdout while still writing the captured serial log used for output comparison. This mode bypasses cached test results and always launches QEMU.

@@ -2,9 +2,10 @@
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 #![feature(gen_blocks)]
 
+use std::fs;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::fs;
 
 mod debug;
 mod gdb;
@@ -42,11 +43,18 @@ enum Commands {
         mem: u8,
         #[arg(short = 'r', long)]
         release: bool,
+        #[arg(short = 'f', long, default_value = "fs_path")]
+        filesystem_path: String,
     },
     QemuTest {
         test_cfg_path: String,
         #[arg(short = 'r', long)]
         release: bool,
+        #[arg(
+            long,
+            help = "Stream serial output live to stdout and bypass cached test results"
+        )]
+        stdout: bool,
     },
     Gdb {
         #[arg(short = 't', long, value_enum, default_value_t = Target::X86_64)]
@@ -76,7 +84,8 @@ fn main() -> Result<()> {
             cores,
             mem,
             release,
-        } => qemu::run(kvm, cores, mem, release, target)?,
+            filesystem_path,
+        } => qemu::run(kvm, cores, mem, release, target, filesystem_path)?,
         Commands::Gdb {
             target,
             kvm,
@@ -86,7 +95,8 @@ fn main() -> Result<()> {
         Commands::QemuTest {
             test_cfg_path,
             release,
-        } => qemu_test::run(test_cfg_path, release)?,
+            stdout,
+        } => qemu_test::run(test_cfg_path, release, stdout)?,
         Commands::Clean => {
             fs::remove_dir_all(cache_dir()?)?;
             cache_dir()?;

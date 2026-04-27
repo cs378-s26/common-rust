@@ -1,19 +1,27 @@
-use core::fmt::{
-    self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result, UpperExp,
-    UpperHex, Write,
-};
-use core::ptr;
-use flanterm::{
-    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+use alloc::boxed::Box;
+use core::{
+    fmt::{
+        self, Binary, Debug, Display, Formatter, LowerExp, LowerHex, Octal, Pointer, Result,
+        UpperExp, UpperHex, Write,
+    },
+    ptr,
 };
 
 use bitflags::bitflags;
-use limine::framebuffer::Framebuffer;
-use limine::request::FramebufferRequest;
+use flanterm::{
+    flanterm_context, flanterm_fb_init, flanterm_flush, flanterm_set_autoflush, flanterm_write,
+};
+use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
+// use log::Level; TODO: migrate logging over to log rust crate
+use proc_macros::CmdlineParsable;
 use spin::Once;
 
-use crate::arch::{self, SerialCharSink, UnwindContext, UnwindContextTrait};
-use crate::sync::{IntMutex, MutexLike};
+use crate::{
+    arch::{Arch, ArchTrait, UnwindContext, UnwindContextTrait},
+    cmdline::{CmdlineParsable, get_cmdline},
+    symbols::{lookup_location, lookup_symbol},
+    sync::{IntMutex, MutexLike},
+};
 
 #[derive(Clone, Copy)]
 pub struct Color(pub u8, pub u8, pub u8);
@@ -228,7 +236,7 @@ unsafe impl Sync for FlanTermSink {}
 static LOCK_PW: IntMutex<()> = IntMutex::new(());
 pub static LOCK_KPRINT: IntMutex<()> = IntMutex::new(());
 static FLAN_TERM_BACKEND: Once<FlanTermSink> = Once::new();
-static SERIAL_BACKEND: Once<SerialCharSink> = Once::new();
+static SERIAL_BACKEND: Once<Box<dyn CharSink>> = Once::new();
 
 pub struct PrintWriter;
 
@@ -252,6 +260,72 @@ impl Write for PrintWriter {
     }
 }
 
+bitflags! {
+    #[derive(Clone, Copy)]
+    pub struct LogSource: u8 {
+        const INIT = 1 << 0;
+        const INIT_LIMINE = 1 << 1;
+        const INIT_SMP = 1 << 2;
+        const INIT_MEMMAP = 1 << 3;
+    }
+}
+
+/*
+impl ParsableFlags for LogSource {}
+
+#[derive(CmdlineParsable, Clone, Copy)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<LogLevel> for Level {
+    fn from(value: LogLevel) -> Self {
+        match value {
+            LogLevel::Error => Self::Error,
+            LogLevel::Warn => Self::Warn,
+            LogLevel::Info => Self::Info,
+            LogLevel::Debug => Self::Debug,
+            LogLevel::Trace => Self::Trace,
+        }
+    }
+}
+
+#[derive(CmdlineParsable, Clone, Copy)]
+pub struct LogMode(pub LogLevel, pub LogSource, pub LogLevel);
+*/
+
+#[derive(CmdlineParsable, Clone, Copy)]
+pub struct SerialOptions {
+    pub enable: bool,
+    // pub mode: LogMode,
+}
+
+#[derive(CmdlineParsable, Clone, Copy)]
+pub struct FramebufferOptions {
+    pub enable: bool,
+    // pub mode: LogMode,
+}
+
+/*
+#[derive(CmdlineParsable, Clone, Copy)]
+pub struct FormatOptions {
+    pub level: bool,
+    pub target: bool,
+    pub mod_path: bool,
+    pub src: bool,
+}*/
+
+#[derive(CmdlineParsable, Clone, Copy)]
+pub struct LogOptions {
+    pub serial: SerialOptions,
+    pub fb: FramebufferOptions,
+    // pub format: FormatOptions,
+}
+
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
@@ -271,7 +345,15 @@ pub fn init_tty() {
         kprintln!("init_tty(): framebuffer: {}x{}", fb.width(), fb.height());
     }
 
-    arch::init_tty(&SERIAL_BACKEND);
+    if get_cmdline().logging.serial.enable {
+        Arch::init_tty(&SERIAL_BACKEND);
+    }
+}
+
+pub fn set_serial_backend(backend: Box<dyn CharSink>) {
+    if get_cmdline().logging.serial.enable {
+        SERIAL_BACKEND.call_once(|| backend);
+    }
 }
 
 pub macro kprint {
@@ -286,7 +368,7 @@ pub macro kprint {
 
 pub macro kprintln {
     () => {{
-        $mod::kprint!("\n");
+        $crate::print::kprint!("\n");
     }},
     ($fmt:expr) => {{
         $crate::print::kprint!(concat!($fmt, "\n"));
@@ -316,7 +398,24 @@ impl Display for StackTrace {
         let mut i = 0;
         while unsafe { context.valid() } {
             let addr = unsafe { context.return_address() };
-            writeln!(f, "#{}: {:#016x}", i, addr)?;
+
+            match lookup_symbol(addr) {
+                Some(symbol) => {
+                    let demangled = rustc_demangle::demangle(symbol.name);
+                    match lookup_location(addr.saturating_sub(1)).or(symbol.location) {
+                        Some(loc) => writeln!(
+                            f,
+                            "#{}: {:#016x} in {} at {}:{}:{}",
+                            i, addr, demangled, loc.file, loc.row, loc.col
+                        )?,
+                        None => writeln!(f, "#{}: {:#016x} in {}", i, addr, demangled)?,
+                    }
+                }
+                None => {
+                    writeln!(f, "#{}: {:#016x}", i, addr)?;
+                }
+            }
+
             i += 1;
             context = unsafe { context.next() };
         }

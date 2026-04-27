@@ -4,13 +4,17 @@ use core::{
     ptr::{self},
 };
 
-use super::interrupt::InterruptContext;
-
 use spin::MutexGuard;
 use x86::{Ring, bits64::rflags::RFlags, segmentation::SegmentSelector};
 
-use crate::arch::x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable};
-use crate::arch::{Arch, ContextTrait};
+use super::interrupt::InterruptContext;
+use crate::{
+    arch::{
+        Arch, ContextTrait,
+        x86_64::{slice_stack_pointer, tables::GlobalDescriptorTable},
+    },
+    syscall::SyscallContext,
+};
 
 /// Represents the general-purpose registers of an x86 CPU.
 #[repr(C)]
@@ -41,6 +45,45 @@ pub struct Context {
     pub rflags: RFlags,
     pub cs: u64,
     pub ss: u64,
+}
+
+impl SyscallContext for Context {
+    fn syscall_number(&self) -> u64 {
+        self.gp.rax
+    }
+
+    fn arg0(&self) -> u64 {
+        self.gp.rdi
+    }
+
+    fn arg1(&self) -> u64 {
+        self.gp.rsi
+    }
+
+    fn arg2(&self) -> u64 {
+        self.gp.rdx
+    }
+
+    fn arg3(&self) -> u64 {
+        self.gp.r10
+    }
+
+    fn arg4(&self) -> u64 {
+        self.gp.r8
+    }
+
+    fn arg5(&self) -> u64 {
+        self.gp.r9
+    }
+
+    fn set_return_value(&mut self, ret: u64) {
+        self.gp.rax = ret;
+    }
+
+    fn is_user_address(&self, ptr: u64) -> bool {
+        // TODO this is a pretty naive check, will need to be improved as we run more user syscalls with pointers
+        (ptr >> 63) & 1 == 0
+    }
 }
 
 impl const Default for Context {
@@ -172,11 +215,27 @@ impl ContextTrait for Context {
     ) -> Self {
         let mut ctx = Self::default();
         ctx.setup_kthread_context();
-
         ctx.rip = function as usize as u64;
         ctx.gp.rdi = data as u64;
         ctx.gp.rsp = slice_stack_pointer(stack);
         ctx
+    }
+
+    fn new_uthread(_pc: u64, _sp: u64) -> Self {
+        Self {
+            rip: _pc,
+            gp: GPRegisters {
+                rsp: _sp,
+                ..Default::default()
+            },
+            cs: SegmentSelector::new(GlobalDescriptorTable::USER_CS, Ring::Ring3)
+                .bits()
+                .into(),
+            ss: SegmentSelector::new(GlobalDescriptorTable::USER_DS, Ring::Ring3)
+                .bits()
+                .into(),
+            rflags: RFlags::FLAGS_IF, // make sure IF is set
+        }
     }
 }
 

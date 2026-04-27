@@ -14,21 +14,28 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+        aarch64Cross = pkgs.pkgsCross.aarch64-multiplatform;
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       in
         {
           devShells.default = with pkgs; mkShell {
             buildInputs = [
-              clang
+              llvmPackages_21.clang-unwrapped
               llvmPackages_21.bintools
+              llvmPackages_21.lldb
+              aarch64Cross.buildPackages.binutils
+              aarch64Cross.buildPackages.gcc
               rustToolchain
               pkg-config
               openssl
               qemu
               wabt
               gdb
+              e2fsprogs
+              sccache
             ];
-            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
+            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_21.libclang.lib ];
+            RUSTC_WRAPPER = "sccache";
           };
         }
     );
