@@ -21,7 +21,8 @@ use intrusive_collections::{
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext},
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
+    event::Event,
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
@@ -177,6 +178,7 @@ thread_local! {
     pub IS_IDLE: AtomicBool = AtomicBool::new(false);
     pub PINNED_TO_CORE: AtomicBool = AtomicBool::new(false);
     pub CORE_PINNED_TO: AtomicUsize = AtomicUsize::new(usize::MAX);
+    pub CUR_EVENT: Mutex<Option<Event>> = Mutex::new(None);
     TID: AtomicU64 = AtomicU64::new(0);
     STACK: Stack = Stack([0; _]);
     CTX_GUARD: Cell<Option<MutexGuard<'static, Context>>> = Cell::new(None);
@@ -252,6 +254,7 @@ pub fn poll_tasks() -> ! {
         Thread::is_same_thread(&this_thread(), IDLE.get().unwrap()),
         "poll_tasks may only be called from idle"
     );
+
     loop {
         if let Some(thread) = { LOCAL_WORK_QUEUE.lock().pop_front() } {
             if PINNED_TO_CORE.read_for(&thread).load(Ordering::Relaxed) {
@@ -261,8 +264,11 @@ pub fn poll_tasks() -> ! {
                 Arch::wake_other_cores();
             }
         }
+
         if let Some(thread) = { GLOBAL_WORK_QUEUE.lock().pop_front() } {
             suspend_to_thread(thread);
+        } else {
+            sleep_core();
         }
     }
 }

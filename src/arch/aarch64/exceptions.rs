@@ -60,12 +60,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
 
     if exception_class == SVC {
         // system_call_handler(exc);
-        push_event(
-            Event::Syscall {
-                thread: this_thread(),
-            },
-            CORE_ID.get(),
-        );
+        push_event(Event::Syscall, CORE_ID.get(), false);
         let interrupt_context = InterruptContext {
             gpr: exc.gpr,
             sp: exc.sp,
@@ -120,9 +115,10 @@ fn page_fault_handler(e: &mut ExceptionContext, exception_class: u64) {
             Event::PageFault {
                 cause,
                 address: far_el1 as usize,
-                thread: this_thread(),
+                //                thread: this_thread(),
             },
             CORE_ID.get(),
+            false,
         );
 
         let interrupt_context = InterruptContext {

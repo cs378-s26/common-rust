@@ -10,7 +10,7 @@ use spin::Once;
 use uart_16550::SerialPort;
 use x86::bits64::registers::rbp;
 
-use crate::devices::discovery::DeviceDiscovery;
+use crate::{arch::tsc::read_tsc, devices::discovery::DeviceDiscovery};
 
 pub mod apic;
 mod asm;
@@ -19,6 +19,7 @@ mod cpuid;
 mod debug;
 mod devices;
 mod interrupt;
+mod ioapic;
 mod mp;
 mod tables;
 pub mod tsc;
@@ -93,6 +94,14 @@ impl ArchTrait for Arch {
         apic::send_ipi_all_except_self(IPI_WAKE);
     }
 
+    fn register_irq_handler(
+        irq_num: u8,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+        irq_vec: Option<u8>,
+    ) {
+        register_irq_handler(irq_num, handler, irq_vec);
+    }
+
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: spin::MutexGuard<'static, Self::Context>,
@@ -118,7 +127,7 @@ impl ArchTrait for Arch {
     }
 
     fn read_cycle_counter() -> u64 {
-        asm::read_cycle_counter()
+        read_tsc()
     }
 
     const PAGE_SIZE: usize = 4096;
@@ -168,6 +177,7 @@ impl ArchTrait for Arch {
                         latch: latch.clone(),
                     },
                     CoreId(core),
+                    true,
                 ); // TODO avoid sending this when not needed
             }
         }
@@ -191,6 +201,10 @@ impl ArchTrait for Arch {
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     ) {
         devices::create_arch_specific_drivers(system_drivers);
+    }
+
+    fn init_tty(cell: &Once<Box<dyn CharSink>>) {
+        cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
     }
 }
 
@@ -242,8 +256,4 @@ impl CharSink for SerialCharSink {
     unsafe fn flush(&self) {
         // no-op
     }
-}
-
-pub fn init_tty(cell: &Once<Box<dyn CharSink>>) {
-    cell.call_once(|| Box::new(SerialCharSink::open(0x3f8)));
 }

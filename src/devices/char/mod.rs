@@ -1,6 +1,8 @@
 use alloc::string::String;
 
 use crate::devices::Device;
+#[cfg(target_arch = "x86_64")]
+pub mod ps2_kb_m;
 pub mod uart_pl011;
 
 #[derive(Debug)]

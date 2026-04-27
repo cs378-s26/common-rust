@@ -12,7 +12,7 @@ kernel_common::integration_test!({
         devices::discovery::BLOCK_DEVICES,
         fs::{
             ext2::Ext2,
-            vfs::{Filesystem, INodeType, VFS, VNode},
+            vfs::{INodeType, VFS, VNode},
         },
         print::kprintln,
         sync::MutexLike,
@@ -34,9 +34,7 @@ kernel_common::integration_test!({
         .expect("ext2 filesystem not found on attached block devices");
     drop(block_devices);
 
-    let root = ext2.get_root().expect("failed to get ext2 root");
-    let _fs_id = VFS.mount(ext2.clone());
-    VFS.set_root(root.clone()).ok();
+    let _fs_id = VFS.mount(ext2.clone(), &["/"]);
 
     kprintln!("Mounted ext2 from testfs");
 

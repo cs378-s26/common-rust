@@ -10,12 +10,13 @@ mod aarch64;
 use alloc::{boxed::Box, vec::Vec};
 
 use limine::{mp::Cpu, request::MpRequest};
-use spin::MutexGuard;
+use spin::{MutexGuard, Once};
 
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 use crate::{
     devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+    print::CharSink,
 };
 
 pub trait UnwindContextTrait: Sized {
@@ -78,6 +79,16 @@ pub trait ArchTrait {
     fn irq_is_enabled() -> bool;
     fn sleep_core();
     fn wake_other_cores();
+    // `handler` will be called on a core upon receiving an IRQ of `irq_num`
+    // `handler` will run in interrupt context. You cannot block, and `handler` should
+    // really run in O(1) time
+    // Acknowledging the interrupt (eg via eoi) is the responsibility of `handler`. For x86-64,
+    // we will still re-enable interrupts via setting rflags
+    fn register_irq_handler(
+        irq_num: u8,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+        irq_vec: Option<u8>,
+    );
 
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety
@@ -115,4 +126,6 @@ pub trait ArchTrait {
     fn create_arch_specific_drivers(
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );
+
+    fn init_tty(cell: &Once<Box<dyn CharSink>>);
 }
