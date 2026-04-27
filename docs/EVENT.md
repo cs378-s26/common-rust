@@ -37,3 +37,7 @@ handler will be lost and/or experience unnecessary interface if you use the even
 your interrupt handler with `should_alloc=false`. If you use `should_alloc=true`, then `push_event` may not execute in O(1) time. 
 The idiomatic way to implement bottom-half work is for the interrupt handler to wake a blocked bottom-half thread using one of our
 synchronization primitives. 
+
+## Authors
+
+Michael Jennings and Anthony Du. Ruiqi Li contributed to design discussions.
