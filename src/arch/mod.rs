@@ -79,6 +79,16 @@ pub trait ArchTrait {
     fn irq_is_enabled() -> bool;
     fn sleep_core();
     fn wake_other_cores();
+    // `handler` will be called on a core upon receiving an IRQ of `irq_num`
+    // `handler` will run in interrupt context. You cannot block, and `handler` should
+    // really run in O(1) time
+    // Acknowledging the interrupt (eg via eoi) is the responsibility of `handler`. For x86-64,
+    // we will still re-enable interrupts via setting rflags
+    fn register_irq_handler(
+        irq_num: u8,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+        irq_vec: Option<u8>,
+    );
 
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety

@@ -9,9 +9,12 @@ use x86_64::{
     },
 };
 
-use crate::memory::{
-    physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
-    virtual_memory::PagingOptions,
+use crate::{
+    arch::apic,
+    memory::{
+        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        virtual_memory::PagingOptions,
+    },
 }; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
 
 // ChatGPT told me how to do this trait impl'ing
@@ -120,6 +123,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
 }
 
 pub fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
+    apic::get_lapic_id();
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper = unsafe {
         OffsetPageTable::new(

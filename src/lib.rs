@@ -67,6 +67,7 @@ use crate::{
     mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
+    state::{Irq, StateTrait},
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
@@ -99,6 +100,20 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+#[cfg(target_arch = "x86_64")]
+fn take_kb_input() {
+    loop {
+        let c = crate::devices::char::ps2_kb_m::read();
+        kprintln!("Read character: {}", c);
+    }
+}
+
+fn usual_main() {
+    kprintln!("Entered kernel");
+    #[cfg(target_arch = "x86_64")]
+    take_kb_input();
+}
+
 pub struct KernelWork;
 
 impl KernelWorkTrait for KernelWork {
@@ -106,7 +121,7 @@ impl KernelWorkTrait for KernelWork {
         #[cfg(test)]
         test_main();
         #[cfg(not(test))]
-        kprintln!("entered kernel");
+        usual_main();
     }
 }
 
@@ -236,10 +251,14 @@ impl SpinBarrier {
 /// Should only be called from bootstrap processor during kernel initialization
 unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     unsafe { Arch::initialize_core(cpu) };
+    //kprintln!("Done initializing core BSP");
+    assert!(!Irq::get());
     let mp_res = MP_REQUEST
         .get_response()
         .expect("Expected to find MpResponse, found None.");
     let core_count = mp_res.cpus().len();
+    //kprintln!("Core count: {}", core_count);
+    //kprintln!("Meow 2");
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -275,7 +294,9 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
 
     // this is where the magic happens
     one!({ init_coroutine_queue() });
+    //kprintln!("Coroutines Initialized!");
     all!({ set_up_idle() });
+    //kprintln!("Idle thread set up!");
     all!({ init_coroutine_executor() });
     all!({ init_event_handler() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
@@ -291,6 +312,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         })
     });
     all!({ Arch::set_irq_enabled(true) });
+    kprintln!("Interrupts enabled, polling tasks!");
     poll_tasks() // runs on all cores, never to return
 }
 

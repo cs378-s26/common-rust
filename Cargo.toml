@@ -41,6 +41,7 @@ bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"
 x86_64 = "0.15.4"
+ps2 = "0.2.0"
 
 [workspace]
 members = ["buildtool", "flanterm", "proc-macros"]

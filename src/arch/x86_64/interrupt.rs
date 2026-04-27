@@ -1,16 +1,22 @@
+use alloc::boxed::Box;
 use core::{
     arch::naked_asm,
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use intrusive_collections::{
+    KeyAdapter, LinkedList, LinkedListAtomicLink, RBTree, RBTreeLink, intrusive_adapter,
+};
 use x86::controlregs::cr2;
 use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
+    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
     event::{Event, push_event},
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
+    sync::{IntMutex, MutexLike},
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -197,14 +203,106 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             push_event(Event::Syscall, CORE_ID.get(), false);
             unsafe { crate::thread::block_to_idle(context) };
         }
-        _ => panic!(
-            "Unhandled interrupt #{}: err={}, cr2={:x}",
-            context.id,
-            context.err,
-            unsafe { cr2() }
-        ),
+        _ => {
+            handle_device_interrupt(context.id as u8);
+        }
     }
     if from_user {
         unsafe { GS::swap() };
+    }
+}
+
+//this is hardcoded since apparently x86-64 has only 256 interrupt vectors
+/*
+static mut OCCUPIED_VECTORS: IntMutex<[bool; 256]> = IntMutex::new([false; 256]);
+static mut NEXT_VECTOR: IntMutex<u8> = IntMutex::new(0x30); // start at 0x30 to avoid conflicts with exceptions
+*/
+
+intrusive_adapter!(InterruptHandlerAdapter = Arc<InterruptHandler>: InterruptHandler { link => LinkedListAtomicLink });
+struct InterruptHandler {
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    link: LinkedListAtomicLink,
+}
+
+use intrusive_collections::RBTreeAtomicLink;
+
+struct InterruptHandlersLine {
+    irq: u8,
+    handlers: IntMutex<LinkedList<InterruptHandlerAdapter>>,
+    link: RBTreeAtomicLink,
+}
+
+impl<'a> KeyAdapter<'a> for InterruptHandlersLineAdapter {
+    type Key = u8;
+    fn get_key(&self, value: &'a InterruptHandlersLine) -> u8 {
+        value.irq
+    }
+}
+
+intrusive_adapter!(InterruptHandlersLineAdapter = Arc<InterruptHandlersLine>: InterruptHandlersLine { link => RBTreeLink });
+
+use alloc::sync::Arc;
+
+static HANDLERS: IntMutex<RBTree<InterruptHandlersLineAdapter>> =
+    IntMutex::new(RBTree::new(InterruptHandlersLineAdapter::NEW));
+
+fn route_irq_num(irq_num: u8, vec: u8) {
+    let override_ = crate::devices::discovery::acpi::get_gsi_for_irq(irq_num);
+    //TODO: use MADT flags to determine trigger mode and polarity
+    //for now, we'll just route IRQ to 0x67
+    super::ioapic::route_irq(
+        override_.gsi as u8,
+        vec,
+        IOAPIC_CPU_TO_LAPIC.lock().get(&0).copied().unwrap(),
+        override_.trigger_mode,
+        override_.polarity,
+    );
+}
+
+use crate::print::kprintln;
+
+pub fn register_irq_handler(
+    irq_num: u8,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    irq_vec: Option<u8>,
+) {
+    let irq_vec_real = irq_vec.unwrap_or(0x67);
+    kprintln!("Routing IRQ {} to handler", irq_num);
+    route_irq_num(irq_num, irq_vec_real);
+    let handler = Arc::new(InterruptHandler {
+        handler,
+        link: LinkedListAtomicLink::new(),
+    });
+    let mut handlers_list = HANDLERS.lock();
+    let handlers_for_line = handlers_list.find_mut(&irq_vec_real);
+    if let Some(true_list) = handlers_for_line.get() {
+        true_list.handlers.lock().push_back(handler);
+    } else {
+        let mut new_list = LinkedList::new(InterruptHandlerAdapter::new());
+        new_list.push_back(handler);
+        let new_line = InterruptHandlersLine {
+            irq: irq_vec_real,
+            handlers: IntMutex::new(new_list),
+            link: RBTreeAtomicLink::new(),
+        };
+        handlers_list.insert(Arc::new(new_line));
+    }
+}
+
+//TODO: store a mapping of irq vector --> irq number
+fn handle_device_interrupt(irq_vec: u8) {
+    let handlers_list = HANDLERS.lock();
+    let mut has_handled = false;
+    if let Some(true_list) = handlers_list.find(&irq_vec).get() {
+        for handler in true_list.handlers.lock().iter() {
+            let irq_handler = &handler.handler;
+            if irq_handler().is_some() {
+                has_handled = true;
+                break;
+            }
+        }
+    }
+    if !has_handled {
+        panic!("Spurious interrupt on IRQ {}", irq_vec);
     }
 }
