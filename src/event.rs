@@ -10,13 +10,9 @@ use crate::{
     mp::{CORE_ID, CoreId, core_local},
     sync::{IntSpinLock, MutexLike},
     syscall::syscall_handler,
-    syscall::syscall_handler,
     thread::{
-        CONTEXT, 
         CONTEXT, CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, ThreadQueue,
-        make_thread, new_thread_queue, this_thread,
-        yield_thread,
-    ,
+        make_thread, new_thread_queue, this_thread, yield_thread,
     },
 };
 
@@ -75,7 +71,7 @@ pub fn init_event_handler() {
                             "Page fault events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the page fault"
                         );
                     }
-                    Syscall => {
+                    _Syscall => {
                         panic!(
                             "Syscall events should never be pushed to the event queue, they should always be handled immediately by the thread that caused the syscall"
                         );

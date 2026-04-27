@@ -1,21 +1,17 @@
-pub mod numbers;
 pub mod fs;
-pub mod process;
-pub mod net;
 pub mod legacy;
+pub mod net;
+pub mod numbers;
+pub mod process;
 
 use alloc::sync::Arc;
-pub use numbers::number;
-pub use numbers::wrapper_constants::*;
 
-use crate::thread::Thread;
+pub use numbers::{number, wrapper_constants::*};
 
-use crate::thread::Thread;
-use self::fs::*;
-use self::process::*;
-use self::net::*;
 #[cfg(target_arch = "x86_64")]
 use self::legacy::*;
+use self::{fs::*, net::*, process::*};
+use crate::thread::Thread;
 
 // SyscallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -64,7 +60,6 @@ pub trait SyscallContext {
 }
 
 pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
-pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
     let num = ctx.syscall_number();
 
     match num {
@@ -110,14 +105,6 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
         }
         number::GETPID => {
             ctx.set_return_value(sys_getpid(thread, ctx));
-        }
-        number::EXIT => {
-            let exit_code = ctx.arg0() as i32;
-            thread.process.get().unwrap().exit_code.set(exit_code);
-            // TODO handle thread/process termination and cleanup, needs parent-child relationship most likely
-        }
-        number::GETPID => {
-            ctx.set_return_value(thread.process.get().unwrap().get_pid() as u64);
         }
 
         // x86_64 libraries will use these legacy system calls which ARM does not support any more
