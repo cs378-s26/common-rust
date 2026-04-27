@@ -46,7 +46,7 @@ pub struct PagingOptions: u64 {
 
 `fn virtual_invalidate(vaddr: u64)` - should invalidate the TLB entry for the given virtual address on the current CPU. Necessary whenever mappings are changed to avoid using stale mappings or mappings settings (e.g., when unmapping pages or changing a read-only COW page to be writable).
 
-`shootdown_tlbs(space: u64, base: usize, length: usize)` - called to invalidate the . Issues an *event* (see `event.rs`) for `x86-64` and triggers an interrupt to cause all CPUs to switch to handling that event. On ARM, this can be implemented by simply issuing the appropriate instruction and performing the necessary data synchronization operations, so this is effectively a no-op.
+`shootdown_tlbs(space: u64, base: usize, length: usize)` - called to invalidate the . For `x86-64`, issues an *event* (see `event.rs`) and triggers an interrupt to cause all CPUs to switch to handling that event. On ARM, this can be implemented by simply issuing the appropriate instruction and performing the necessary data synchronization operations, so this is effectively a no-op.
 
 ## Design and Tradeoffs
 
@@ -61,3 +61,5 @@ We support up to level-4 page tables on x86-64, giving us 48 bits of virtual add
 To avoid inserting architecture-specific code into the core virtual memory management logic, we call architecture-specific functions for allocating and freeing physical frames, modifying page table entries, flushing the TLB, and issuing shootdowns. However, some aspects of these interfaces admittedly leave some things to be desired. For example, TLB shootdowns are not actually needed on ARM (we just need a single instruction and four data synchronization operations).
 
 We currently do not distinguish between address spaces when handling shootdowns, which is quite inefficient both in terms of stray invalidations and wasted time. Perhaps a better interface would be to have the architecture-specific unmapping function handle this, which would require changing it to accept a range of pages to unmap in order to avoid interrupt thrashing.
+
+Currently, a huge amount of logic (including allocation strategy and page fault handling) is duplicated between the kernel implementation (in `memory/virtual_memory.rs`) and the user-facing implementation (in `memory/virtual_memory_2.rs`), which is not ideal.
