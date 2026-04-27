@@ -69,6 +69,14 @@ impl ArchTrait for Arch {
         panic!("Not implemented");
     }
 
+    fn register_msix_handler(
+        msix_table: &mut MmioRegion,
+        irq_vec: Option<u8>,
+        handler: Box<dyn Fn() + Send + Sync>
+    ) {
+        panic!("Not implemented");
+    }
+
     fn sleep_core() {
         asm::sleep_core();
     }

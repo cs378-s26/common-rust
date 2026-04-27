@@ -102,6 +102,14 @@ impl ArchTrait for Arch {
         register_irq_handler(irq_num, handler, irq_vec);
     }
 
+    fn register_msix_handler(
+            msix_table: &mut crate::memory::dma::MmioRegion,
+            irq_vec: Option<u8>,
+            handler: Box<dyn Fn() + Send + Sync>,
+    ) {
+        
+    }
+
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: spin::MutexGuard<'static, Self::Context>,

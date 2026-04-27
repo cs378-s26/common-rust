@@ -8,6 +8,7 @@ pub use self::x86_64::*;
 mod aarch64;
 
 use alloc::{boxed::Box, vec::Vec};
+use crate::memory::dma::MmioRegion;
 
 use limine::{mp::Cpu, request::MpRequest};
 use spin::{MutexGuard, Once};
@@ -88,6 +89,14 @@ pub trait ArchTrait {
         irq_num: u8,
         handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
         irq_vec: Option<u8>,
+    );
+    /*
+    *  Same interface as register_irq_handler. 
+    */
+    fn register_msix_handler(
+        msix_table: &mut MmioRegion,
+        irq_vec: Option<u8>,
+        handler: Box<dyn Fn() + Send + Sync>,
     );
 
     /// save the current context and switch on to the provided temp stack & call fwd()
