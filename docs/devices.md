@@ -229,3 +229,13 @@ The current device layer is useful, but deliberately incomplete.
 - Discovery is tightly coupled to firmware parsing, not to hotplug or runtime bus enumeration.
 
 That makes the current model best thought of as an early kernel driver framework: enough structure to discover hardware, map it safely, and expose typed operations to the rest of the kernel, but not yet a full device-management stack.
+
+## PCI-E Interface
+
+### Initialization
+
+Initialization for PCI-E devices is required to run in round 2 of device discovery. On initialization, an instance
+of `PcieFunction` will be passed to `i_am_this`. There are several niceties that `PcieFunction` provides:
+- Initialization of the memory regions corresponding to the BARs. Note that we only initialize memory-mapped BARs.
+    Support for i/o space BARS is not planned, since modern hardware tends to not use i/o space.
+    - To access BAR `i`, index into `func.bars[i]`. For 64-bit BARs, only the lower BAR will be allocated.

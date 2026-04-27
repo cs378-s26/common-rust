@@ -16,19 +16,15 @@ pub struct PcieFunction {
     pub bus: u8,
     pub device: u8,
     pub function: u8,
-    pub bars: [Option<MmioRegion>; 6]
 }
 
 impl PcieFunction {
-
     fn new(bus: u8, device: u8, function: u8) -> Self {
-        let mut func = Self {
+        let func = Self {
             bus,
             device,
             function,
-            bars: [None, None, None, None, None, None],
         };
-        func.initialize_bars();
         func
     }
 
@@ -39,53 +35,55 @@ impl PcieFunction {
     pub fn write_config_space(&self, offset: u16, value: u32) -> Option<()> {
         PCIE.get().unwrap().write_config_space(self.bus, self.device, self.function, offset, value)
     }
+}
 
-    fn initialize_bars(&mut self) {
-        let mut bar_num = 0;
+pub fn initialize_bars(pcie_func : &mut PcieFunction) -> [Option<MmioRegion>; 6] {
+        let mut bar_num: u16 = 0;
+        let mut bars : [Option<MmioRegion>; 6] = [None, None, None, None, None, None];
         loop {
             if bar_num >= 6 {
                 break;
             }
-            let cur_bar = self.read_config_space(0x10 + bar_num * 4).unwrap();
+            let cur_bar = pcie_func.read_config_space(0x10 + bar_num * 4).unwrap();
             let is_mmio = cur_bar & 1 == 0;
             if is_mmio {
                 let type_ = (cur_bar >> 1) & 0b11;
                 if type_ == 2 {
                     //64-bit address, so we take from the next BAR too
-                    let next_bar = self.read_config_space(0x10 + (bar_num+1) * 4).unwrap();
+                    let next_bar = pcie_func.read_config_space(0x10 + (bar_num+1) * 4).unwrap();
                     let bar_addr = (cur_bar & 0xFFFFFFF0) as u64 | (((next_bar & 0xFFFFFFFF) as u64) << 32);
                     //get size
-                    self.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
-                    self.write_config_space(0x10 + (bar_num + 1) * 4, 0xFFFF_FFFF);
-                    let sz0 = (self.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) as u64;
-                    let sz1 = (self.read_config_space(0x10 + (bar_num + 1) * 4).unwrap() & 0xFFFFFFFF) as u64;
-                    let bar_size = (!(sz0 | (sz1 << 32)) + 1) as usize;
+                    pcie_func.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
+                    pcie_func.write_config_space(0x10 + (bar_num + 1) * 4, 0xFFFF_FFFF);
+                    let sz0 = (pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) as u64;
+                    let sz1 = (pcie_func.read_config_space(0x10 + (bar_num + 1) * 4).unwrap() & 0xFFFFFFFF) as u64;
+                    let bar_size: usize = (!(sz0 | (sz1 << 32)) + 1) as usize;
                     //restore BARs;
-                    self.write_config_space(0x10 + bar_num * 4, cur_bar);
-                    self.write_config_space(0x10 + (bar_num + 1) * 4, next_bar);
+                    pcie_func.write_config_space(0x10 + bar_num * 4, cur_bar);
+                    pcie_func.write_config_space(0x10 + (bar_num + 1) * 4, next_bar);
                     let bar_size = bar_size.max(0x10000);
                     let bar_region = MmioRegion::new(bar_addr as usize, bar_size);
-                    self.bars[bar_num as usize] = Some(bar_region);
-                    self.bars[(bar_num + 1) as usize] = None; //mark the next BAR as used by this one
+                    bars[bar_num as usize] = Some(bar_region);
+                    bars[(bar_num + 1) as usize] = None; //mark the next BAR as used by this one
                     bar_num += 2;
                 } else {
                     //we assume this is a 32-bit region. 
                     let bar_addr = cur_bar & 0xFFFFFFF0;
-                    self.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
-                    let sz = (!(self.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) + 1) as u64;
-                    self.write_config_space(0x10 + bar_num * 4, cur_bar);
+                    pcie_func.write_config_space(0x10 + bar_num * 4, 0xFFFF_FFFF);
+                    let sz = (!(pcie_func.read_config_space(0x10 + bar_num * 4).unwrap() & 0xFFFFFFF0) + 1) as u64;
+                    pcie_func.write_config_space(0x10 + bar_num * 4, cur_bar);
                     let bar_size = sz.max(0x10000);
                     let bar_region = MmioRegion::new(bar_addr as usize, bar_size as usize);
-                    self.bars[bar_num as usize] = Some(bar_region);
+                    bars[bar_num as usize] = Some(bar_region);
                     bar_num += 1;
                 }
             } else {
                 //i/o space, we ignore for now
-                self.bars[bar_num as usize] = None;
+                bars[bar_num as usize] = None;
                 bar_num += 1;
             }
         }
-    }
+        bars
 }
 
 impl Pcie {
