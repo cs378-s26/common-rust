@@ -1,8 +1,7 @@
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
-    devices::Device,
     sync::{IntMutex, MutexLike},
 };
 
