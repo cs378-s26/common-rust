@@ -297,7 +297,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
-        crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), Some(0x69));
+        crate::arch::register_irq_handler(Some(1), Box::new(keyboard_irq_handler), Some(0x69));
         kprintln!("PS2 keyboard IRQ handler registered");
     }
 

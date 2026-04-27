@@ -95,8 +95,9 @@ pub trait ArchTrait {
     */
     fn register_msix_handler(
         msix_table: &mut MmioRegion,
+        table_off : u16,
         irq_vec: Option<u8>,
-        handler: Box<dyn Fn() + Send + Sync>,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     );
 
     /// save the current context and switch on to the provided temp stack & call fwd()

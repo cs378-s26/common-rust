@@ -14,13 +14,14 @@ use core::sync::atomic::{AtomicBool, Ordering, fence};
 use spin::Once;
 
 use self::{
+    event::handle_interrupt,
     context::DeviceContext,
     regs::*,
     ring::{Ring, alloc_erst},
     trb::{Trb, trb_type},
 };
 use crate::{
-    devices::discovery::pcie::{PCIE, map_bar, PcieFunction},
+    devices::discovery::pcie::{PCIE, map_bar, get_msix_table, register_msix_handler, PcieFunction},
     memory::dma::{DmaRegion, MmioRegion},
     print::kprintln,
     sync::{IntSpinLock, MutexLike},
@@ -186,7 +187,7 @@ impl XhciController {
             max_slots,
             max_ports
         );
-
+    
         let read_op32 = |off: usize| -> u32 { unsafe { mmio.read::<u32>(cap_len + off) } };
         let write_op32 = |off: usize, val: u32| unsafe { mmio.write::<u32>(cap_len + off, val) };
         let write_op64 = |off: usize, val: u64| unsafe { mmio.write::<u64>(cap_len + off, val) };
@@ -246,7 +247,9 @@ impl XhciController {
         write_rt64(RT_IR0 + IR_ERSTBA, erst.phys_addr() as u64);
         write_rt64(RT_IR0 + IR_ERDP, event_ring.phys_base());
 
-        setup_msix(bus, device, function, mmio.virt_addr());
+        let (bir, cap, offset) = get_msix_table(&mut handle)?;
+        assert!(bir == 0);
+        register_msix_handler( &mut handle, &mmio, offset, cap, Some(XHCI_MSI_VECTOR), Box::new(handle_interrupt));
 
         write_rt32(RT_IR0 + IR_IMAN, IMAN_IE | IMAN_IP);
         write_op32(OP_USBCMD, USBCMD_RUN | USBCMD_INTE | USBCMD_HSEE);
@@ -297,77 +300,6 @@ impl XhciController {
             slots,
         })
     }
-}
-
-fn setup_msix(bus: u8, dev: u8, func: u8, bar0_virt: usize) {
-    let pcie = PCIE.get().unwrap();
-
-    let cap_ptr_word = match pcie.read_config_space(bus, dev, func, 0x34) {
-        Some(v) => v,
-        None => return,
-    };
-    let mut cap_off = (cap_ptr_word & 0xFF) as u16;
-
-    while cap_off != 0 {
-        let cap_hdr = match pcie.read_config_space(bus, dev, func, cap_off) {
-            Some(v) => v,
-            None => break,
-        };
-        let cap_id = (cap_hdr & 0xFF) as u8;
-        let next = ((cap_hdr >> 8) & 0xFF) as u16;
-
-        if cap_id == PCI_CAP_MSIX && enable_msix(bus, dev, func, cap_off, bar0_virt, pcie) {
-            return;
-        }
-
-        cap_off = next;
-    }
-
-    kprintln!("xhci: no MSI-X capability found — interrupts will not work");
-}
-
-/// Configure MSI-X: write the first table entry and enable. Returns true on success.
-fn enable_msix(
-    bus: u8,
-    dev: u8,
-    func: u8,
-    cap_off: u16,
-    bar0_virt: usize,
-    pcie: &crate::devices::discovery::pcie::Pcie,
-) -> bool {
-    let mc_word = match pcie.read_config_space(bus, dev, func, cap_off) {
-        Some(v) => v,
-        None => return false,
-    };
-    let tbl_bir_off = match pcie.read_config_space(bus, dev, func, cap_off + 4) {
-        Some(v) => v,
-        None => return false,
-    };
-    let bir = (tbl_bir_off & 0x7) as usize;
-    let table_off = (tbl_bir_off & !0x7) as usize;
-
-    if bir != 0 {
-        kprintln!("xhci: MSI-X table in BAR{} — not supported, skipping", bir);
-        return false;
-    }
-
-    let entry = bar0_virt + table_off;
-    unsafe {
-        core::ptr::write_volatile(entry as *mut u32, MSI_ADDR_LAPIC0);
-        core::ptr::write_volatile((entry + 4) as *mut u32, 0);
-        core::ptr::write_volatile((entry + 8) as *mut u32, MSI_DATA_VALUE as u32);
-        core::ptr::write_volatile((entry + 12) as *mut u32, 0);
-    }
-
-    let new_mc_word = (mc_word | 0x8000_0000) & !0x4000_0000;
-    pcie.write_config_space(bus, dev, func, cap_off, new_mc_word);
-
-    kprintln!(
-        "xhci: MSI-X enabled (BAR0+0x{:x}) vector=0x{:02x}",
-        table_off,
-        XHCI_MSI_VECTOR
-    );
-    true
 }
 
 /// Compute the xHCI endpoint ID for a USB endpoint address.

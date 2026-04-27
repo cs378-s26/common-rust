@@ -99,15 +99,16 @@ impl ArchTrait for Arch {
         handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
         irq_vec: Option<u8>,
     ) {
-        register_irq_handler(irq_num, handler, irq_vec);
+        register_irq_handler(Some(irq_num), handler, irq_vec);
     }
 
     fn register_msix_handler(
-            _: &mut crate::memory::dma::MmioRegion,
-            _: Option<u8>,
-            _: Box<dyn Fn() + Send + Sync>,
+            msix_table: &mut crate::memory::dma::MmioRegion,
+            table_off : u16,
+            irq_vec: Option<u8>,
+            handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     ) {
-        
+        register_msix_handler(msix_table, 0, table_off, irq_vec, handler);
     }
 
     unsafe fn save_context<T: FnOnce() -> !>(

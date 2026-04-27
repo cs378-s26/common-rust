@@ -20,10 +20,11 @@ extern crate alloc;
 static USB_SEM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// Called by the architecture-level interrupt dispatcher for vector 0x30.
-pub fn handle_interrupt() {
+pub fn handle_interrupt() -> Option<()> {
     XHCI_IRQ_PENDING.store(true, Ordering::Release);
     apic::eoi();
     USB_SEM.up();
+    Some(())
 }
 
 pub fn usb_event_thread() {

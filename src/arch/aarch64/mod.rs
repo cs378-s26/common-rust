@@ -72,6 +72,7 @@ impl ArchTrait for Arch {
     fn register_msix_handler(
         msix_table: &mut MmioRegion,
         irq_vec: Option<u8>,
+        core_num : Option<u8>,
         handler: Box<dyn Fn() + Send + Sync>
     ) {
         panic!("Not implemented");
