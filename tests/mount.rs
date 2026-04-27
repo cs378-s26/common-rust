@@ -6,15 +6,9 @@
 kernel_common::integration_test!({
     extern crate alloc;
 
-    use alloc::sync::Arc;
-
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
-        fs::{
-            ext2::Ext2,
-            vfs::{INodeType, VFS, VNode},
-        },
-        print::kprintln,
+        fs::{ext2::Ext2, vfs::VFS},
         sync::MutexLike,
     };
     let mut block_devices = BLOCK_DEVICES.lock();
@@ -22,8 +16,8 @@ kernel_common::integration_test!({
         .expect("ext2 filesystem not found on attached block devices");
     drop(block_devices);
 
-    let _fs_id = VFS.mount(ext2.clone(), &["/"]);
-    let _fs_id_2 = VFS.mount(ext2.clone(), &["/", "cat"]);
+    let _ = VFS.mount(ext2.clone(), &["/"]).unwrap();
+    let _ = VFS.mount(ext2.clone(), &["/", "cat"]).unwrap();
     let root = VFS.get_root().unwrap();
     let mut path = alloc::vec!["/", "cat"];
     let cat = VFS.partial_lookup(&root, &path).unwrap();

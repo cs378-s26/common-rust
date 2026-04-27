@@ -7,10 +7,7 @@ kernel_common::integration_test!({
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
         elf::ElfLoader,
-        fs::{
-            ext2::Ext2,
-            vfs::{Filesystem, VFS},
-        },
+        fs::{ext2::Ext2, vfs::VFS},
         print::kprintln,
         process::Process,
         sync::MutexLike,
@@ -20,7 +17,7 @@ kernel_common::integration_test!({
     let fs = Ext2::new_from_block_devices(&mut block_devices)
         .expect("ext2 filesystem not found on attached block devices");
     drop(block_devices);
-    VFS.mount(fs, &["/"]);
+    let _ = VFS.mount(fs, &["/"]).unwrap();
 
     let process = Process::new().expect("failed to create process");
     let root = VFS.get_root().unwrap();
