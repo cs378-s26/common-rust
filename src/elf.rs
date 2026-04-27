@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use crate::print::kprintln;
 
 use crate::{Arch, ArchTrait, fs::vfs::VNode, process::Process};
 
@@ -242,15 +243,25 @@ impl ElfLoader {
                     let vaddr = ph.p_vaddr as usize;
                     let offset = ph.p_offset as usize;
 
+                    // in reality the check here needs to be that they have the same offset relative to p_align, 
+                    // but for simplicity we just need them to be page aligned so we can map their offsets correctly
+                    if vaddr % Arch::PAGE_SIZE != offset % Arch::PAGE_SIZE {
+                        return Err(ElfError::EHInvalidProgramHeader);
+                    }
+
                     if memsz < filesz {
                         return Err(ElfError::PHInvalidMemSize);
                     }
+                    let vaddr_rounded = vaddr & !(Arch::PAGE_SIZE - 1);
+                    let offset_rounded = offset & !(Arch::PAGE_SIZE - 1);
+                    let padding = offset - offset_rounded;
+                    let map_size = memsz + padding;
 
                     vm.mmap(
-                        Some((inode_key, offset, Some(filesz))),
-                        (memsz + Arch::PAGE_SIZE - 1) & !(Arch::PAGE_SIZE - 1), // Round up.
+                        Some((inode_key, offset_rounded, Some(filesz))),
+                        map_size.div_ceil(Arch::PAGE_SIZE) * Arch::PAGE_SIZE, // Round up.
                         false,
-                        Some(vaddr),
+                        Some(vaddr_rounded),
                     )
                     .map_err(|_| ElfError::MmapError)?;
                 }
@@ -271,8 +282,8 @@ impl ElfLoader {
                 }
                 _ => {
                     // TODO: handle other types. Ignore for now. Uncomment for type.
-                    // let segment_type = ph.p_type;
-                    // kprintln!("Unsupported segment type: {}", segment_type);
+                    let segment_type = ph.p_type;
+                    kprintln!("Unsupported segment type: {}", segment_type);
                     return Err(ElfError::PHUnsupportedType);
                 }
             }

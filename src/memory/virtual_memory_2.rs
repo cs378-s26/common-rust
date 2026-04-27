@@ -20,7 +20,7 @@ static LIMINE_PAGE_TABLE: Once<usize> = Once::new();
 
 struct Mapping {
     inode_key: INodeKey,
-    offset: usize,
+    file_offset: usize,
     file_length: Option<usize>,
     length: usize,
     shared: bool,
@@ -60,8 +60,8 @@ impl VirtualMemory {
         if !length.is_multiple_of(Arch::PAGE_SIZE) {
             return Err("map length must be aligned to page boundary");
         }
-        if let Some((_, offset, file_length)) = file {
-            if !offset.is_multiple_of(Arch::PAGE_SIZE) {
+        if let Some((_, file_offset, file_length)) = file {
+            if !file_offset.is_multiple_of(Arch::PAGE_SIZE) {
                 return Err("file offset must be aligned to page boundary");
             }
             if file_length.is_some() && shared {
@@ -86,11 +86,13 @@ impl VirtualMemory {
         if file.is_none() {
             file = Some((create_fake_file()?, 0, None));
         }
+
+        // TODO allow for anonymous maps
         let file = file.unwrap();
         let mut active_set = self.active_set.lock();
         active_set.insert(Box::new(Mapping {
             inode_key: file.0,
-            offset: file.1,
+            file_offset: file.1,
             file_length: file.2,
             length,
             shared,
@@ -176,7 +178,7 @@ impl VirtualMemory {
         assert!(vaddr.is_multiple_of(Arch::PAGE_SIZE));
         let key = PageKey {
             inode_key: mapping.inode_key.clone(),
-            offset: vaddr - mapping.base + mapping.offset,
+            offset: vaddr - mapping.base + mapping.file_offset,
         };
         let paddr = PAGE_CACHE.lock().get_page(&key)?;
         self.vmap_write(vaddr, paddr);
@@ -197,7 +199,7 @@ impl VirtualMemory {
         }
         let shared_key = PageKey {
             inode_key: mapping.inode_key.clone(),
-            offset: mapping.offset,
+            offset: mapping.file_offset + vaddr - mapping.base,
         };
         let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
         if !cause.contains(PageFaultConditions::WRITE) {
@@ -231,7 +233,7 @@ impl VirtualMemory {
         if vaddr - mapping.base < file_length {
             let shared_key = PageKey {
                 inode_key: mapping.inode_key.clone(),
-                offset: vaddr - mapping.base + mapping.offset,
+                offset: vaddr - mapping.base + mapping.file_offset,
             };
             let shared_paddr = PAGE_CACHE.lock().get_page(&shared_key)?;
             unsafe {
