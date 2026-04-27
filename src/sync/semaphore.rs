@@ -78,6 +78,16 @@ impl Semaphore {
         }
     }
 
+    pub fn try_down(&self) -> bool {
+        let mut st = self.state.lock();
+        if st.count > 0 {
+            st.count -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn up(&self) {
         let mut st = self.state.lock();
         st.count += 1;
