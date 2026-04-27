@@ -1,14 +1,14 @@
 use alloc::{
     collections::btree_map::BTreeMap,
     sync::{Arc, Weak},
+    boxed::Box
 };
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use spin::Once;
 
 use crate::{
-    devices::Device,
-    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode},
+    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode, VFSDevice},
     sync::{IntMutex, MutexLike},
 };
 
@@ -17,14 +17,14 @@ pub static DEV: Once<Arc<Dev>> = Once::new();
 pub struct Dev {
     self_ref: Once<Weak<Self>>,
     counter: AtomicUsize,
-    devices: IntMutex<BTreeMap<usize, Option<Arc<dyn Device>>>>,
+    devices: IntMutex<BTreeMap<usize, Option<Arc<IntMutex<Box<dyn VFSDevice>>>>>>,
     fs_id: IntMutex<Option<usize>>,
 }
 
 pub struct DevINode {
     fs: Weak<Dev>,
     inumber: usize,
-    device: IntMutex<Option<Arc<dyn Device>>>,
+    device: Option<Arc<IntMutex<Box<dyn VFSDevice>>>>
 }
 
 impl Dev {
@@ -50,7 +50,7 @@ impl Dev {
         }
         Ok(Arc::new(DevINode {
             fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
-            device: IntMutex::new(cloned_device),
+            device: cloned_device,
             inumber,
         }))
     }
@@ -101,8 +101,8 @@ impl VNode for DevINode {
         fs.alloc_inode(inumber)
     }
 
-    fn set_device(&self, device: Arc<dyn Device>) -> Result<(), FsError> {
-        *self.device.lock() = Some(device);
+    fn set_device(&mut self, device: Arc<IntMutex<Box<dyn VFSDevice>>>) -> Result<(), FsError> {
+        self.device= Some(device.clone());
         Ok(())
     }
 
@@ -113,6 +113,24 @@ impl VNode for DevINode {
 
     fn write_page(&self, _physical_address: usize, _offset: usize) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
+    }
+
+    fn read_unaligned(&self, _offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+        if let Some(device) = self.device.clone() {
+            let mut realdev = device.lock();
+            realdev.read_unaligned(_offset, buffer)
+        } else {
+            Err(FsError::InvalidOperation)
+        }
+    }
+
+    fn write_unaligned(&self, _offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
+        if let Some(device) = self.device.clone() {
+            let mut realdev = device.lock();
+            realdev.write_unaligned(_offset, buffer)
+        } else {
+            Err(FsError::InvalidOperation)
+        }
     }
 
     fn get_inode_key(&self) -> Result<INodeKey, FsError> {
@@ -128,4 +146,15 @@ impl VNode for DevINode {
         };
         Ok(result)
     }
+}
+
+/*
+* Allocates a device inode accessible by the user under `/dev/<fname>. `
+*/
+pub fn allocate_device_inode(fname : &str, device : Arc<IntMutex<Box<dyn VFSDevice>>>) -> Result<(), FsError> {
+    let dev = DEV.get().unwrap().clone();
+    let root = dev.get_root()?;
+    let inode = root.create_child(fname, INodeType::Other)?;
+    inode.set_device(device)?;
+    Ok(())
 }
