@@ -9,14 +9,14 @@ kernel_common::integration_test!({
     use alloc::sync::Arc;
 
     use kernel_common::{
+        devices::discovery::BLOCK_DEVICES,
         fs::{
             dev::allocate_device_inode,
-            vfs::{FsError, VFSDevice, VFS},
             ext2::Ext2,
+            vfs::{FsError, VFS, VFSDevice},
         },
-        sync::MutexLike,
-        devices::discovery::BLOCK_DEVICES,
         print::kprintln,
+        sync::MutexLike,
     };
 
     // Trivial device: reads zeros, silently accepts writes.
@@ -61,7 +61,10 @@ kernel_common::integration_test!({
         .read_unaligned(0, &mut buf)
         .expect("read_unaligned failed");
     assert_eq!(n, 8, "expected 8 bytes read");
-    assert!(buf.iter().all(|&b| b == 0), "expected all-zero bytes from NullDevice");
+    assert!(
+        buf.iter().all(|&b| b == 0),
+        "expected all-zero bytes from NullDevice"
+    );
     kprintln!("read check passed");
 
     // Write: device should accept the write and report the correct byte count.
