@@ -103,9 +103,9 @@ impl ArchTrait for Arch {
     }
 
     fn register_msix_handler(
-            msix_table: &mut crate::memory::dma::MmioRegion,
-            irq_vec: Option<u8>,
-            handler: Box<dyn Fn() + Send + Sync>,
+            _: &mut crate::memory::dma::MmioRegion,
+            _: Option<u8>,
+            _: Box<dyn Fn() + Send + Sync>,
     ) {
         
     }

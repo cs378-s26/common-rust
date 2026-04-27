@@ -20,7 +20,7 @@ use self::{
     trb::{Trb, trb_type},
 };
 use crate::{
-    devices::discovery::pcie::PCIE,
+    devices::discovery::pcie::{PCIE, map_bar, PcieFunction},
     memory::dma::{DmaRegion, MmioRegion},
     print::kprintln,
     sync::{IntSpinLock, MutexLike},
@@ -165,27 +165,12 @@ impl XhciController {
     /// Fully initialize an xHCI controller at the given PCI function.
     /// Returns `None` if the controller cannot be started.
     pub fn init(bus: u8, device: u8, function: u8) -> Option<XhciController> {
-        let pcie = PCIE.get().unwrap();
+        let mut handle = PcieFunction::new(bus, device, function);
 
-        let cmd = pcie.read_config_space(bus, device, function, 0x04)?;
-        pcie.write_config_space(bus, device, function, 0x04, cmd | 0x0006)?;
+        let cmd = handle.read_config_space(0x4)?;
+        handle.write_config_space(0x4, cmd | 0x0006);
 
-        let bar0 = pcie.read_config_space(bus, device, function, 0x10)? as u64;
-        let bar1 = pcie.read_config_space(bus, device, function, 0x14)? as u64;
-        let bar_phys = (bar0 & 0xFFFF_FFF0) | (bar1 << 32);
-
-        pcie.write_config_space(bus, device, function, 0x10, 0xFFFF_FFFF)?;
-        pcie.write_config_space(bus, device, function, 0x14, 0xFFFF_FFFF)?;
-        let sz0 = pcie.read_config_space(bus, device, function, 0x10)? as u64 & 0xFFFF_FFF0;
-        let sz1 = pcie.read_config_space(bus, device, function, 0x14)? as u64;
-        let bar_size = (!(sz0 | (sz1 << 32)) + 1) as usize;
-        // Restore BARs
-        pcie.write_config_space(bus, device, function, 0x10, bar0 as u32)?;
-        pcie.write_config_space(bus, device, function, 0x14, bar1 as u32)?;
-
-        let bar_size = bar_size.max(0x10000);
-
-        let mmio = MmioRegion::new(bar_phys as usize, bar_size);
+        let mmio = map_bar(&mut handle, 0)?;
 
         let cap_len = unsafe { mmio.read::<u8>(CAP_CAPLENGTH) } as usize;
         let hcsparams1 = unsafe { mmio.read::<u32>(CAP_HCSPARAMS1) };
@@ -197,10 +182,7 @@ impl XhciController {
             ((hcsparams1 & HCSPARAMS1_MAX_PORTS_MASK) >> HCSPARAMS1_MAX_PORTS_SHIFT) as u8;
 
         kprintln!(
-            "xhci: BAR0=0x{:x} size=0x{:x} caplength={} max_slots={} max_ports={}",
-            bar_phys,
-            bar_size,
-            cap_len,
+            "xhci: max_slots={} max_ports={}",
             max_slots,
             max_ports
         );
