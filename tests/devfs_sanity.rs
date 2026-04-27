@@ -8,9 +8,7 @@ kernel_common::integration_test!({
 
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
-        fs::{
-            ext2::Ext2, vfs::VFS
-        },
+        fs::{ext2::Ext2, vfs::VFS},
         print::kprintln,
         sync::MutexLike,
     };
@@ -27,8 +25,6 @@ kernel_common::integration_test!({
     let dev_root = VFS
         .partial_lookup(&root, &["/", "dev"])
         .expect("mount traversal to /dev failed");
-    let _ = dev_root
-        .lookup("ps2kbd")
-        .expect("/dev/ps2kbd not found");
+    let _ = dev_root.lookup("ps2kbd").expect("/dev/ps2kbd not found");
     kprintln!("found /dev/ps2kbd via VFS");
 });
