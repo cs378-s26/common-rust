@@ -82,9 +82,7 @@ fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
         if offset == 0 {
             return None;
         }
-        kprintln!("Read from offset: {:#x}", offset);
         let cap: u32 = pcie_func.read_config_space(offset).unwrap();
-        kprintln!("Read capability: {:#x}", cap);
         let cap_id = (cap & 0xFF) as u8;
         if cap_id == PCI_CAP_MSIX {
             return Some(offset);
@@ -93,11 +91,8 @@ fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
     }
 }
 
-use crate::kprintln;
-
 pub fn get_msix_table(pcie_func : &mut PcieFunction) -> Option<(u8, u16, u32)> {
     let msix_cap = find_msix_capability(pcie_func)?;
-    kprintln!("Found MSI-X capability at offset {:#x}", msix_cap);
     let table_bir = (pcie_func.read_config_space(msix_cap + 0x4).unwrap() & 0x7) as u8;
     let table_offset = pcie_func.read_config_space(msix_cap + 0x4).unwrap() & !(0x7);
     Some((table_bir, msix_cap, table_offset))
