@@ -1,4 +1,4 @@
-use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
@@ -26,7 +26,7 @@ pub enum FsError {
 }
 
 // Shim between the different variants of devices and the VFS
-pub trait VFSDevice : Send + Sync {
+pub trait VFSDevice: Send + Sync {
     fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError>;
     fn write_unaligned(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError>;
 }

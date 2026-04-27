@@ -1,15 +1,15 @@
 use alloc::{
-    collections::btree_map::BTreeMap,
-    sync::{Arc, Weak},
     boxed::Box,
-    string::{ToString, String}
+    collections::btree_map::BTreeMap,
+    string::{String, ToString},
+    sync::{Arc, Weak},
 };
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use spin::Once;
 
 use crate::{
-    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode, VFSDevice},
+    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VFSDevice, VNode},
     sync::{IntMutex, MutexLike},
 };
 
@@ -36,13 +36,13 @@ impl Dev {
             counter: AtomicUsize::new(1),
             devices: IntMutex::new(BTreeMap::new()),
             fs_id: IntMutex::new(None),
-            self_ref: Once::new()
+            self_ref: Once::new(),
         });
         fs.self_ref.call_once(|| Arc::downgrade(&fs));
         fs
     }
 
-    /* 
+    /*
     fn alloc_inode_with_device(&self, inumber: usize, device: Option<Arc<IntMutex<Box<dyn VFSDevice>>>>) -> Result<Arc<dyn VNode>, FsError> {
         if let Some(device) = device.clone() {
             self.devices.lock().insert(inumber, Some(device));
@@ -123,7 +123,9 @@ impl VNode for DevINode {
         let inumber = fs.counter.fetch_add(1, Ordering::SeqCst);
         fs.devices.lock().insert(inumber, None);
         let vnode = fs.alloc_inode(inumber);
-        self.children.lock().insert(fname.to_string(), vnode.clone()?);
+        self.children
+            .lock()
+            .insert(fname.to_string(), vnode.clone()?);
         vnode
     }
 
@@ -184,7 +186,7 @@ impl VNode for DevINode {
 /*
 * Allocates a device inode accessible by the user under `/dev/<fname>. `
 */
-pub fn allocate_device_inode(fname : &str, device : Arc<dyn VFSDevice>) -> Result<(), FsError> {
+pub fn allocate_device_inode(fname: &str, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
     let dev = DEV.get().unwrap().clone();
     let root = dev.get_root()?;
     let inode: Arc<dyn VNode> = root.create_child(fname, INodeType::Other)?;

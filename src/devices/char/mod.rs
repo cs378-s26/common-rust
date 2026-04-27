@@ -1,7 +1,9 @@
 use alloc::string::String;
-use crate::fs::vfs::{VFSDevice, FsError};
 
-use crate::devices::Device;
+use crate::{
+    devices::Device,
+    fs::vfs::{FsError, VFSDevice},
+};
 #[cfg(target_arch = "x86_64")]
 pub mod ps2_kb_m;
 pub mod uart_pl011;
@@ -19,13 +21,12 @@ pub trait CharDevice: Device {
     fn write(&self, buffer: &[u8]) -> Result<usize, CharDeviceError>;
 }
 
-
 impl VFSDevice for dyn CharDevice {
-    fn read_unaligned(&self, _ : usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+    fn read_unaligned(&self, _: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
         self.read(buffer).map_err(|_| FsError::ReadError)
     }
 
-    fn write_unaligned(&self, _ : usize, buffer: &[u8]) -> Result<usize, FsError> {
+    fn write_unaligned(&self, _: usize, buffer: &[u8]) -> Result<usize, FsError> {
         self.write(buffer).map_err(|_| FsError::WriteError)
     }
 }
