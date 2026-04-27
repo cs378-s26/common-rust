@@ -235,7 +235,9 @@ That makes the current model best thought of as an early kernel driver framework
 ### Initialization
 
 Initialization for PCI-E devices is required to run in round 2 of device discovery. On initialization, an instance
-of `PcieFunction` will be passed to `i_am_this`. There are several niceties that `PcieFunction` provides:
-- Initialization of the memory regions corresponding to the BARs. Note that we only initialize memory-mapped BARs.
-    Support for i/o space BARS is not planned, since modern hardware tends to not use i/o space.
-    - To access BAR `i`, index into `func.bars[i]`. For 64-bit BARs, only the lower BAR will be allocated.
+of `PcieFunction` will be passed to `i_am_this`. Several helper functions are provided:
+
+`initialize_bars`: maps all memory-mapped BARS. This only initializes memory-mapped BARs, since modern hardware tends
+not to use i/o space. To access BAR `i`, access index `i` of the returned array. For 64-bit BARs, access the number
+of the lower BAR. For example, if you want to access an entry spanning `BAR2` and `BAR3`, then access index `2` of
+the returned array. 
