@@ -67,44 +67,94 @@ kernel_common::integration_test!({
         use kernel_common::syscall::number;
         use kernel_common::syscall::AT_FDCWD;
 
-        kprintln!("Testing syscalls...");
+        kprintln!("Testing syscalls exhaustively...");
 
-        // 1. Openat with O_CREAT
-        let path = "test_syscall.txt\0";
-        // O_CREAT is 64
+        // 1. Basic Create, Write, Close, Open, Read, Close
+        let path = "test_exhaustive.txt\0";
         let fd = call_syscall(&thread, number::OPENAT, AT_FDCWD as u64, path.as_ptr() as u64, 64, 0);
-        assert!(fd >= 3, "failed to open/create file, got fd {}", fd as i64);
-        kprintln!("openat O_CREAT passed, fd: {}", fd);
+        assert!(fd >= 3);
+        kprintln!("1. openat O_CREAT passed, fd: {}", fd);
 
-        // 2. Write
-        let data = "syscall write test";
+        let data = "exhaustive test data";
         let written = call_syscall(&thread, number::WRITE, fd, data.as_ptr() as u64, data.len() as u64, 0);
         assert_eq!(written, data.len() as u64);
-        kprintln!("write passed");
+        kprintln!("2. write passed");
 
-        // 3. Close
         let res = call_syscall(&thread, number::CLOSE, fd, 0, 0, 0);
         assert_eq!(res, 0);
-        kprintln!("close passed");
+        kprintln!("3. close passed");
 
-        // 4. Openat again for reading
         let fd2 = call_syscall(&thread, number::OPENAT, AT_FDCWD as u64, path.as_ptr() as u64, 0, 0);
         assert!(fd2 >= 3);
-        kprintln!("openat read passed, fd: {}", fd2);
+        kprintln!("4. openat read passed, fd: {}", fd2);
 
-        // 5. Read
         let mut buf = [0u8; 32];
-        let read_bytes = call_syscall(&thread, number::READ, fd2, buf.as_mut_ptr() as u64, 32, 0);
+        let read_bytes = call_syscall(&thread, number::READ, fd2, buf.as_mut_ptr() as u64, data.len() as u64, 0);
         assert_eq!(read_bytes, data.len() as u64);
         assert_eq!(&buf[..data.len()], data.as_bytes());
-        kprintln!("read passed: {}", core::str::from_utf8(&buf[..data.len()]).unwrap());
+        kprintln!("5. read passed");
 
-        // 6. Close
-        let res2 = call_syscall(&thread, number::CLOSE, fd2, 0, 0, 0);
-        assert_eq!(res2, 0);
-        kprintln!("close passed again");
+        // 2. Test reading past EOF
+        let read_eof = call_syscall(&thread, number::READ, fd2, buf.as_mut_ptr() as u64, 32, 0);
+        assert_eq!(read_eof, 0);
+        kprintln!("6. read past EOF returned 0");
 
-        kprintln!("All syscall tests passed!");
+        call_syscall(&thread, number::CLOSE, fd2, 0, 0, 0);
+
+        // 3. Test opening existing file from image
+        let hello_path = "hello.txt\0";
+        let fd_hello = call_syscall(&thread, number::OPENAT, AT_FDCWD as u64, hello_path.as_ptr() as u64, 0, 0);
+        assert!(fd_hello >= 3);
+        let mut hello_buf = [0u8; 32];
+        let hello_read = call_syscall(&thread, number::READ, fd_hello, hello_buf.as_mut_ptr() as u64, 32, 0);
+        assert!(hello_read > 0);
+        kprintln!("7. open/read existing file passed: {}", core::str::from_utf8(&hello_buf[..hello_read as usize]).unwrap());
+        call_syscall(&thread, number::CLOSE, fd_hello, 0, 0, 0);
+
+        // 4. Test directory fd and relative path
+        let dir_path = "dir\0";
+        let fd_dir = call_syscall(&thread, number::OPENAT, AT_FDCWD as u64, dir_path.as_ptr() as u64, 0, 0);
+        assert!(fd_dir >= 3);
+        kprintln!("8. open directory passed, fd: {}", fd_dir);
+
+        let nested_path = "nested.txt\0";
+        let fd_nested = call_syscall(&thread, number::OPENAT, fd_dir, nested_path.as_ptr() as u64, 0, 0);
+        assert!(fd_nested >= 3);
+        let mut nested_buf = [0u8; 32];
+        let nested_read = call_syscall(&thread, number::READ, fd_nested, nested_buf.as_mut_ptr() as u64, 32, 0);
+        assert!(nested_read > 0);
+        kprintln!("9. openat relative to dir fd passed: {}", core::str::from_utf8(&nested_buf[..nested_read as usize]).unwrap());
+        
+        // 5. Create new file relative to directory fd
+        let new_rel_path = "new_relative.txt\0";
+        let fd_new_rel = call_syscall(&thread, number::OPENAT, fd_dir, new_rel_path.as_ptr() as u64, 64, 0);
+        assert!(fd_new_rel >= 3);
+        let rel_data = "relative file data";
+        call_syscall(&thread, number::WRITE, fd_new_rel, rel_data.as_ptr() as u64, rel_data.len() as u64, 0);
+        kprintln!("10. create/write file relative to dir fd passed");
+
+        call_syscall(&thread, number::CLOSE, fd_new_rel, 0, 0, 0);
+        call_syscall(&thread, number::CLOSE, fd_nested, 0, 0, 0);
+        call_syscall(&thread, number::CLOSE, fd_dir, 0, 0, 0);
+
+        // 6. Error cases
+        // Non-existent file without O_CREAT
+        let no_file_path = "no_such_file.txt\0";
+        let res_no_file = call_syscall(&thread, number::OPENAT, AT_FDCWD as u64, no_file_path.as_ptr() as u64, 0, 0);
+        assert_eq!(res_no_file as i64, -1);
+        kprintln!("11. open non-existent file failed as expected");
+
+        // Invalid fd for close
+        let res_close_inv = call_syscall(&thread, number::CLOSE, 999, 0, 0, 0);
+        assert_eq!(res_close_inv as i64, -1);
+        kprintln!("12. close invalid fd failed as expected");
+
+        // Invalid fd for read
+        let res_read_inv = call_syscall(&thread, number::READ, 999, buf.as_mut_ptr() as u64, 32, 0);
+        assert_eq!(res_read_inv as i64, -1);
+        kprintln!("13. read invalid fd failed as expected");
+
+        kprintln!("All exhaustive syscall tests passed!");
         DONE.store(1, Ordering::SeqCst);
     });
 

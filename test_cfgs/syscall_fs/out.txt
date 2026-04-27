@@ -1,10 +1,17 @@
 Starting Testing Code...
-Testing syscalls...
-openat O_CREAT passed, fd: 3
-write passed
-close passed
-openat read passed, fd: 3
-read passed: syscall write test
-close passed again
-All syscall tests passed!
+Testing syscalls exhaustively...
+1. openat O_CREAT passed, fd: 3
+2. write passed
+3. close passed
+4. openat read passed, fd: 3
+5. read passed
+6. read past EOF returned 0
+7. open/read existing file passed: ext2 hello world
+8. open directory passed, fd: 3
+9. openat relative to dir fd passed: nesting works!
+10. create/write file relative to dir fd passed
+11. open non-existent file failed as expected
+12. close invalid fd failed as expected
+13. read invalid fd failed as expected
+All exhaustive syscall tests passed!
 Syscall test complete.
