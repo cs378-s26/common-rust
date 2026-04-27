@@ -4,6 +4,7 @@
     "n_runs": 1,
     "timeout_ms": 60000,
     "expected_output_path": "test_cfgs/devfs/out.txt",
+    "filesystem_path": "test_cfgs/devfs/files",
     "target": "aarch64",
     "qemu_args": [
         "-machine",
