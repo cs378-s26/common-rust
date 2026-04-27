@@ -1,5 +1,4 @@
 use alloc::{
-    boxed::Box,
     collections::btree_map::BTreeMap,
     string::{String, ToString},
     sync::{Arc, Weak},

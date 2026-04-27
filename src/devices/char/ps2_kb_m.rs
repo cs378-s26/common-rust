@@ -1,8 +1,4 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{
-    cell::UnsafeCell,
-    sync::atomic::{AtomicUsize, Ordering},
-};
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
@@ -14,53 +10,6 @@ use crate::{
     print::kprintln,
     sync::Promise,
 };
-
-const QUEUE_CAP: usize = 256;
-
-// Lock-free SPSC ring buffer. IRQ handler is the sole producer.
-struct ScancodeQueue {
-    buf: UnsafeCell<[u8; QUEUE_CAP]>,
-    head: AtomicUsize, // consumer index — only written by consumer
-    tail: AtomicUsize, // producer index — only written by IRQ handler
-}
-
-unsafe impl Sync for ScancodeQueue {}
-
-impl ScancodeQueue {
-    const fn new() -> Self {
-        Self {
-            buf: UnsafeCell::new([0u8; QUEUE_CAP]),
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
-        }
-    }
-
-    /// Push a byte. Called only from IRQ context (single producer).
-    /// Drops the incoming byte silently if the queue is full.
-    fn push(&self, val: u8) {
-        let tail = self.tail.load(Ordering::Relaxed);
-        let next = (tail + 1) % QUEUE_CAP;
-
-        if next == self.head.load(Ordering::Acquire) {
-            return; // full — drop byte; never write head from producer side
-        }
-        unsafe { (*self.buf.get())[tail] = val };
-        self.tail.store(next, Ordering::Release);
-    }
-
-    /// Pop a byte. Called from thread context (single consumer).
-    fn pop(&self) -> Option<u8> {
-        let head = self.head.load(Ordering::Relaxed);
-        if head == self.tail.load(Ordering::Acquire) {
-            return None;
-        }
-        // SAFETY: head is only written here (single consumer).
-        let val = unsafe { (*self.buf.get())[head] };
-        self.head.store((head + 1) % QUEUE_CAP, Ordering::Release);
-        Some(val)
-    }
-}
-
 struct Ps2Keyboard {
     keyboard_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>,
 }
@@ -316,7 +265,7 @@ pub fn init_ps2() -> Result<(), &'static str> {
             .map_err(|_| "keyboard reset/self-test failed")?;
         kprintln!("PS2 keyboard IRQ handler registered");
         let kb = Ps2Keyboard::new();
-        crate::fs::dev::allocate_device_inode("ps2kbd", Arc::new(kb));
+        let _ = crate::fs::dev::allocate_device_inode("ps2kbd", Arc::new(kb));
     }
 
     // Write final config  this enables IRQs for all working devices.
