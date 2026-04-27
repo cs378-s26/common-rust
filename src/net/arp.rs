@@ -3,7 +3,7 @@ use spin::Lazy;
 
 use crate::sync::{IntMutex, MutexLike, Promise};
 
-use super::ethernet::MacAddr;
+use super::{Ipv4Addr, ethernet::MacAddr};
 
 pub const ARP_PACKET_LEN: usize = 28;
 
@@ -13,10 +13,6 @@ const HLEN: u8 = 6;
 const PLEN: u8 = 4;
 const OP_REQUEST: u16 = 1;
 const OP_REPLY: u16 = 2;
-
-/// an IPv4 address — will move to a shared types module when ipv4.rs is added
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Ipv4Addr(pub [u8; 4]);
 
 #[derive(Debug)]
 pub enum ArpError {
