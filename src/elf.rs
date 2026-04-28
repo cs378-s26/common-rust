@@ -28,6 +28,7 @@ mod eh_constants {
 mod ph_constants {
     pub const PT_LOAD: u32 = 1;
     pub const PT_NOTE: u32 = 4;
+    pub const PT_TLS: u32 = 7;
     pub const PT_GNU_STACK: u32 = 0x6474e551;
     pub const PT_GNU_RELRO: u32 = 0x6474e552;
     pub const PT_GNU_PROPERTY: u32 = 0x6474e553;

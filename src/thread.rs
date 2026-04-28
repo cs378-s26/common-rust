@@ -103,7 +103,8 @@ impl LocalStorageHandler for ThreadLocalStorageHandler {
 
     fn get_base() -> u64 {
         assert!(is_on_thread());
-        unsafe { Arch::get_thread_local_pointer() }
+        // unsafe { Arch::get_thread_local_pointer() }
+        CUR_TLS_ADDR.get()
     }
 }
 
@@ -158,6 +159,7 @@ struct Stack([u8; 4 * 4096]);
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();
     pub CURRENT_THREAD: Cell<Option<Arc<Thread>>> = Cell::new(None);
+    CUR_TLS_ADDR: Cell<u64> = Cell::new(0);
     CTX_SWITCH_STACK: Stack = Stack([0; _]);
     pub LOCAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread_queue());
 }
@@ -182,7 +184,8 @@ static GLOBAL_WORK_QUEUE: IntSpinLock<ThreadQueue> = IntSpinLock::new(new_thread
 fn thread_enter(thread: Arc<Thread>) {
     // assert!(!Arch::irq_is_enabled());
 
-    unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+    // unsafe { Arch::set_thread_local_pointer(&thread.tls_addr) };
+    CUR_TLS_ADDR.set(thread.tls_addr);
     if let Some(process) = thread.process.get() {
         Arch::set_user_address_space(process.virtual_memory.get_page_table() as u64);
     } else {
@@ -195,7 +198,8 @@ fn thread_exit() {
     // assert!(!Arch::irq_is_enabled());
 
     CURRENT_THREAD.set(None);
-    unsafe { Arch::set_thread_local_pointer(ptr::null()) };
+    CUR_TLS_ADDR.set(0);
+    // unsafe { Arch::set_thread_local_pointer(ptr::null()) };
 }
 
 pub fn is_on_thread() -> bool {
