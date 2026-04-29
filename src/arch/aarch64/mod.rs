@@ -80,6 +80,13 @@ impl ArchTrait for Arch {
         panic!("Not implemented");
     }
 
+    fn allocate_msi_vector(
+        _irq_vec: Option<u8>,
+        _handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    ) -> (u32, u32) {
+        panic!("Not implemented");
+    }
+
     fn sleep_core() {
         asm::sleep_core();
     }

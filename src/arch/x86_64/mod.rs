@@ -111,6 +111,18 @@ impl ArchTrait for Arch {
         register_msix_handler(msix_table, 0, table_off, irq_vec, handler);
     }
 
+    fn allocate_msi_vector(
+        irq_vec: Option<u8>,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    ) -> (u32, u32) {
+        let vector = irq_vec.unwrap_or(0x67);
+        let lapic_id = apic::get_lapic_id();
+        let msg_addr = 0xFEE0_0000u32 | (lapic_id << 12);
+        let msg_data = vector as u32;
+        register_irq_handler(None, handler, Some(vector));
+        (msg_addr, msg_data)
+    }
+
     unsafe fn save_context<T: FnOnce() -> !>(
         temp_stack: &[u8],
         ctx: spin::MutexGuard<'static, Self::Context>,

@@ -70,6 +70,10 @@ pub fn create_drivers() -> Vec<Box<dyn DeviceDiscovery + Send + Sync>> {
     let mut drivers: Vec<Box<dyn DeviceDiscovery + Send + Sync>> = Vec::new();
     drivers.push(Box::new(UartPl011Discovery));
     drivers.push(Box::new(VirtioDiscovery));
+    #[cfg(target_arch = "x86_64")]
+    drivers.push(Box::new(
+        crate::devices::usb::xhci::discovery::XhciDiscovery,
+    ));
     Arch::create_arch_specific_drivers(&mut drivers);
     drivers
 }

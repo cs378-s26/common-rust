@@ -104,21 +104,26 @@ pub fn map_bar(pcie_func: &mut PcieFunction, bar_num: u16) -> Option<MmioRegion>
     }
 }
 
-const PCI_CAP_MSIX: u8 = 0x11;
+pub const PCI_CAP_MSI: u8 = 0x05;
+pub const PCI_CAP_MSIX: u8 = 0x11;
 
-fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
-    let mut offset = (pcie_func.read_config_space(0x34).unwrap() & 0xff) as u16;
-    loop {
-        if offset == 0 {
-            return None;
-        }
-        let cap: u32 = pcie_func.read_config_space(offset).unwrap();
-        let cap_id = (cap & 0xFF) as u8;
-        if cap_id == PCI_CAP_MSIX {
+const PCI_CFG_CAP_PTR: u16 = 0x34;
+const MSI_MC_64BIT_BIT: u32 = 1 << 23;
+const MSI_MC_ENABLE_BIT: u32 = 1 << 16;
+const MSI_MC_MME_MASK: u32 = 0x7 << 20; 
+
+pub fn find_capability(pcie_func: &PcieFunction, cap_id: u8) -> Option<u16> {
+    let mut offset = (pcie_func.read_config_space(PCI_CFG_CAP_PTR)? & 0xFC) as u16;
+    let mut hops = 0;
+    while offset != 0 && hops < 48 {
+        let cap = pcie_func.read_config_space(offset)?;
+        if (cap & 0xFF) as u8 == cap_id {
             return Some(offset);
         }
-        offset = ((cap >> 8) & 0xFF) as u16;
+        offset = ((cap >> 8) & 0xFC) as u16;
+        hops += 1;
     }
+    None
 }
 
 /*
@@ -128,10 +133,41 @@ fn find_msix_capability(pcie_func: &PcieFunction) -> Option<u16> {
 * table_offset is the offset within the BAR where the MSI-X table is located
 */
 pub fn get_msix_table(pcie_func: &mut PcieFunction) -> Option<(u8, u16, u32)> {
-    let msix_cap = find_msix_capability(pcie_func)?;
+    let msix_cap = find_capability(pcie_func, PCI_CAP_MSIX)?;
     let table_bir = (pcie_func.read_config_space(msix_cap + 0x4).unwrap() & 0x7) as u8;
     let table_offset = pcie_func.read_config_space(msix_cap + 0x4).unwrap() & !(0x7);
     Some((table_bir, msix_cap, table_offset))
+}
+
+pub fn register_msi_handler(
+    handle: &mut PcieFunction,
+    msi_cap_off: u16,
+    irq_vec: Option<u8>,
+    handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+) -> Option<()> {
+    let mc_word = handle.read_config_space(msi_cap_off)?;
+    let is_64bit = (mc_word & MSI_MC_64BIT_BIT) != 0;
+
+    // Disable MSI while reprogramming so the device can't deliver during the
+    // brief window between writing address and data.
+    handle.write_config_space(msi_cap_off, mc_word & !MSI_MC_ENABLE_BIT)?;
+
+    let (msg_addr, msg_data) = Arch::allocate_msi_vector(irq_vec, handler);
+
+    handle.write_config_space(msi_cap_off + 4, msg_addr)?;
+    if is_64bit {
+        handle.write_config_space(msi_cap_off + 8, 0)?;
+        handle.write_config_space(msi_cap_off + 0xC, msg_data)?;
+    } else {
+        handle.write_config_space(msi_cap_off + 8, msg_data)?;
+    }
+
+    let live_mc = handle.read_config_space(msi_cap_off)?;
+    handle.write_config_space(
+        msi_cap_off,
+        (live_mc & !MSI_MC_MME_MASK) | MSI_MC_ENABLE_BIT,
+    )?;
+    Some(())
 }
 
 /*

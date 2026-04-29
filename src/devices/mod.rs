@@ -2,6 +2,8 @@ pub mod block;
 pub mod char;
 pub mod discovery;
 pub mod network;
+#[cfg(target_arch = "x86_64")]
+pub mod usb;
 pub mod virtio;
 
 pub trait Device {

@@ -102,6 +102,16 @@ pub trait ArchTrait {
         handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     );
 
+    /// Allocate a CPU vector for an MSI/MSI-X interrupt and register `handler`
+    /// on it, then return the `(message_address, message_data)` pair the
+    /// requesting device should be programmed with so writes to that address
+    /// dispatch `handler`. On x86-64, the address steers to a LAPIC ID and
+    /// the data carries the IDT vector.
+    fn allocate_msi_vector(
+        irq_vec: Option<u8>,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
+    ) -> (u32, u32);
+
     /// save the current context and switch on to the provided temp stack & call fwd()
     /// # Safety
     /// Internal, do not call outside of thread module.
