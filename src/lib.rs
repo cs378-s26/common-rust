@@ -55,11 +55,24 @@ use memory::{
 use modules::load_modules_early;
 
 use crate::{
-    arch::{Arch, ArchTrait}, cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline}, coroutine::{init_coroutine_executor, init_coroutine_queue}, devices::discovery::{create_drivers, discover_devices}, event::init_event_handler, fs::{
+    arch::{Arch, ArchTrait},
+    cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline},
+    coroutine::{init_coroutine_executor, init_coroutine_queue},
+    devices::discovery::{create_drivers, discover_devices},
+    event::init_event_handler,
+    fs::{
         dev::{DEV, Dev},
         fake::{FAKE, Fake},
+        random::GLOBAL_RNG,
         vfs::VFS,
-    }, memory::{heap::init_malloc, virtual_memory_2::VirtualMemory}, mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table}, print::{StackTrace, init_tty, kprintln}, process::init_pid_allocator, random::init_global_rng, state::{Irq, StateTrait}, thread::{poll_tasks, set_up_idle, spawn_thread}
+    },
+    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
+    print::{StackTrace, init_tty, kprintln},
+    process::init_pid_allocator,
+    random::init_global_rng,
+    state::{Irq, StateTrait},
+    thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
 // some sample limine requests, for no particular reason
@@ -273,7 +286,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         if !ONCE.swap(true, Ordering::SeqCst) {
             $code;
         }
-
+        GLOBAL_RNG.write(Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 
@@ -283,6 +296,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: SpinBarrier = SpinBarrier::new();
         $code;
+        GLOBAL_RNG.write(Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 
