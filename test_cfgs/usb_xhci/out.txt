@@ -1,0 +1,6 @@
+Starting Testing Code...
+Found 1 xHCI controller(s)
+Controller 0: 2 USB device(s) enumerated
+Found USB HID keyboard
+Found USB HID mouse
+USB xHCI integration test passed

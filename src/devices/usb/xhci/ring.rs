@@ -206,11 +206,6 @@ pub fn build_status_stage(dir_in: bool, ioc: bool) -> (u32, u32, u32, u32) {
     (0, 0, 0, dw3)
 }
 
-pub fn build_no_op_transfer() -> (u32, u32, u32, u32) {
-    use crate::devices::usb::xhci::registers::TRB_TYPE_NO_OP;
-    (0, 0, 0, trb_type(TRB_TYPE_NO_OP))
-}
-
 pub fn build_enable_slot() -> (u32, u32, u32, u32) {
     use crate::devices::usb::xhci::registers::TRB_TYPE_ENABLE_SLOT;
     (0, 0, 0, trb_type(TRB_TYPE_ENABLE_SLOT))

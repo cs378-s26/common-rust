@@ -161,10 +161,3 @@ fn log2_floor(x: u32) -> u8 {
     }
     (31 - x.leading_zeros()) as u8
 }
-
-pub fn input_control_dwords(add_flags: u32, drop_flags: u32) -> [u32; 8] {
-    let mut dws = [0u32; 8];
-    dws[0] = drop_flags;
-    dws[1] = add_flags;
-    dws
-}

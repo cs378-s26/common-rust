@@ -239,4 +239,9 @@ of `PcieFunction` will be passed to `i_am_this`. Several helper functions are pr
 ### MSI-X Interrupts
 
 Register MSI-X Interrupt handlers using `get_msix_table` and `register_msix_handler`. We split MSI-X interrupt
-registration into two functions in case the user already allocated the BAR that the MSI-X table is in. 
+registration into two functions in case the user already allocated the BAR that the MSI-X table is in.
+Legacy MSI  is also supported via `register_msi_handler` as a fallback for hardware that doesn't expose MSI-X. 
+
+### USB / xHCI
+
+xHCI host controllers are discovered as PCIe functions with class `0x0C` / subclass `0x03` / prog-IF `0x30` and exposed to the rest of the kernel through `kernel_common::devices::usb::xhci::CONTROLLERS`. See [USB.md](USB.md) for the bringup flow and the MSI-vs-MSI-X fallback.
