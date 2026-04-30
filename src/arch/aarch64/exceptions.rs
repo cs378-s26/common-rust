@@ -51,7 +51,7 @@ struct ExceptionContext {
     spsr_el1: u64,
     esr_el1: u64,
     sp: u64,
-    _pad: u64, // padding to make the size a multiple of 16 bytes for alignment, see SAVE_REGS in exception.s
+    tpidr_el0: u64
 }
 
 /// Prints verbose information about the exception and then panics.

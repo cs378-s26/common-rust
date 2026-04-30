@@ -281,6 +281,8 @@ impl ElfLoader {
                     // TODO: handle other GNU properties.
                     // Stuff about CPU/ABI/security or something.
                 }
+                ph_constants::PT_TLS => {
+                }
                 _ => {
                     // TODO: handle other types. Ignore for now. Uncomment for type.
                     let segment_type = ph.p_type;
