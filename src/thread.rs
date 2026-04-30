@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
+    collections::BTreeMap,
     sync::{Arc, Weak},
 };
 #[cfg(target_arch = "x86_64")]
@@ -23,18 +24,17 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
     event::Event,
+    fs::{
+        file::File,
+        vfs::{VFS, VNode},
+    },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     process::Process,
     state::{Irq, StateGuard},
-    sync::{IntSpinLock, MutexLike},
+    sync::{IntMutex, IntSpinLock, MutexLike},
 };
-
-use alloc::collections::BTreeMap;
-use crate::fs::file::File;
-use crate::fs::vfs::{VNode, VFS};
-use crate::sync::IntMutex;
 
 pub struct Thread {
     // used for generally queuing threads somewhere

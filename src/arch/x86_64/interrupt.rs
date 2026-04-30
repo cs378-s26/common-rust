@@ -17,7 +17,6 @@ use crate::{
     memory::virtual_memory::PageFaultConditions,
     mp::CORE_ID,
     sync::{IntMutex, MutexLike},
-    thread::this_thread,
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);

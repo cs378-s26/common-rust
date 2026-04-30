@@ -1,8 +1,9 @@
 #![cfg(target_arch = "x86_64")]
 
 use alloc::sync::Arc;
-use crate::thread::Thread;
+
 use super::SyscallContext;
+use crate::thread::Thread;
 
 pub fn sys_open_wrapper(_thread: &Arc<Thread>, _ctx: &impl SyscallContext) -> u64 {
     panic!("legacy open -> openat translation unimplemented");

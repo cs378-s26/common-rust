@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
-use crate::thread::Thread;
+
 use super::SyscallContext;
+use crate::thread::Thread;
 
 pub fn sys_exit(thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
     let exit_code = ctx.arg0() as i32;

@@ -1,13 +1,15 @@
-use alloc::sync::Arc;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, sync::Arc, vec::Vec};
 
-use crate::thread::Thread;
-use crate::fs::vfs::{VFS, FsError, INodeType};
-use crate::fs::file::File;
-use crate::print::kprint;
-use crate::sync::MutexLike;
-use super::{SyscallContext, AT_FDCWD};
+use super::{AT_FDCWD, SyscallContext};
+use crate::{
+    fs::{
+        file::File,
+        vfs::{FsError, INodeType, VFS},
+    },
+    print::kprint,
+    sync::MutexLike,
+    thread::Thread,
+};
 
 pub const O_CREAT: u64 = 64;
 
@@ -46,7 +48,14 @@ pub fn sys_write(thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
 }
 
 pub fn sys_openat(thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
-    do_sys_openat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2(), ctx.arg3(), thread, ctx)
+    do_sys_openat(
+        ctx.arg0() as i32,
+        ctx.arg1(),
+        ctx.arg2(),
+        ctx.arg3(),
+        thread,
+        ctx,
+    )
 }
 
 pub fn sys_close(thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
@@ -71,10 +80,17 @@ pub fn sys_faccessat(_thread: &Arc<Thread>, _ctx: &impl SyscallContext) -> u64 {
 
 // Core Implementation Layer
 
-pub fn do_sys_read(fd: u64, buf_ptr: u64, count: u64, thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
+pub fn do_sys_read(
+    fd: u64,
+    buf_ptr: u64,
+    count: u64,
+    thread: &Arc<Thread>,
+    ctx: &impl SyscallContext,
+) -> u64 {
     let fd_table = thread.fd_table.lock();
     if let Some(file) = fd_table.get(&(fd as i32)) {
-        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1)) {
+        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1))
+        {
             return -1i64 as u64;
         }
         let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, count as usize) };
@@ -87,9 +103,16 @@ pub fn do_sys_read(fd: u64, buf_ptr: u64, count: u64, thread: &Arc<Thread>, ctx:
     }
 }
 
-pub fn do_sys_write(fd: u64, buf_ptr: u64, count: u64, thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
+pub fn do_sys_write(
+    fd: u64,
+    buf_ptr: u64,
+    count: u64,
+    thread: &Arc<Thread>,
+    ctx: &impl SyscallContext,
+) -> u64 {
     if fd == 1 || fd == 2 {
-        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1)) {
+        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1))
+        {
             return -1i64 as u64;
         }
         let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, count as usize) };
@@ -101,7 +124,8 @@ pub fn do_sys_write(fd: u64, buf_ptr: u64, count: u64, thread: &Arc<Thread>, ctx
 
     let fd_table = thread.fd_table.lock();
     if let Some(file) = fd_table.get(&(fd as i32)) {
-        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1)) {
+        if !ctx.is_user_address(buf_ptr) || (count > 0 && !ctx.is_user_address(buf_ptr + count - 1))
+        {
             return -1i64 as u64;
         }
         let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, count as usize) };
@@ -114,7 +138,14 @@ pub fn do_sys_write(fd: u64, buf_ptr: u64, count: u64, thread: &Arc<Thread>, ctx
     }
 }
 
-pub fn do_sys_openat(dirfd: i32, pathname_ptr: u64, flags: u64, _mode: u64, thread: &Arc<Thread>, ctx: &impl SyscallContext) -> u64 {
+pub fn do_sys_openat(
+    dirfd: i32,
+    pathname_ptr: u64,
+    flags: u64,
+    _mode: u64,
+    thread: &Arc<Thread>,
+    ctx: &impl SyscallContext,
+) -> u64 {
     let pathname = match read_user_string(pathname_ptr, ctx) {
         Ok(s) => s,
         Err(_) => {
@@ -125,7 +156,11 @@ pub fn do_sys_openat(dirfd: i32, pathname_ptr: u64, flags: u64, _mode: u64, thre
     let start_node = if pathname.starts_with('/') {
         VFS.get_root().expect("VFS root not set")
     } else if dirfd == AT_FDCWD {
-        thread.cwd.lock().clone().unwrap_or_else(|| VFS.get_root().expect("CWD and VFS root not set"))
+        thread
+            .cwd
+            .lock()
+            .clone()
+            .unwrap_or_else(|| VFS.get_root().expect("CWD and VFS root not set"))
     } else {
         let fd_table = thread.fd_table.lock();
         match fd_table.get(&dirfd) {
@@ -143,12 +178,14 @@ pub fn do_sys_openat(dirfd: i32, pathname_ptr: u64, flags: u64, _mode: u64, thre
         let file = Arc::new(File::new(current));
         let mut fd_table = thread.fd_table.lock();
         let mut fd = 3;
-        while fd_table.contains_key(&fd) { fd += 1; }
+        while fd_table.contains_key(&fd) {
+            fd += 1;
+        }
         fd_table.insert(fd, file);
         return fd as u64;
     }
 
-    for &comp in &components[..components.len()-1] {
+    for &comp in &components[..components.len() - 1] {
         match current.lookup(comp) {
             Ok(next) => current = next,
             Err(_) => {
@@ -176,7 +213,9 @@ pub fn do_sys_openat(dirfd: i32, pathname_ptr: u64, flags: u64, _mode: u64, thre
     let file = Arc::new(File::new(vnode));
     let mut fd_table = thread.fd_table.lock();
     let mut fd = 3;
-    while fd_table.contains_key(&fd) { fd += 1; }
+    while fd_table.contains_key(&fd) {
+        fd += 1;
+    }
     fd_table.insert(fd, file);
     fd as u64
 }
