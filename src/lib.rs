@@ -69,7 +69,7 @@ use crate::{
     mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
-    random::{init_global_rng, GLOBAL_RNG},
+    random::{GLOBAL_RNG, init_global_rng},
     state::{Irq, StateTrait},
     sync::MutexLike,
     thread::{poll_tasks, set_up_idle, spawn_thread},
@@ -286,7 +286,11 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         if !ONCE.swap(true, Ordering::SeqCst) {
             $code;
         }
-        GLOBAL_RNG.get().unwrap().lock().inject(&Arch::read_cycle_counter());
+        GLOBAL_RNG
+            .get()
+            .unwrap()
+            .lock()
+            .inject(&Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 
@@ -296,7 +300,11 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: SpinBarrier = SpinBarrier::new();
         $code;
-        GLOBAL_RNG.get().unwrap().lock().inject(&Arch::read_cycle_counter());
+        GLOBAL_RNG
+            .get()
+            .unwrap()
+            .lock()
+            .inject(&Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 

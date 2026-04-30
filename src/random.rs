@@ -1,7 +1,8 @@
 use core::array::from_fn;
 
 // "never, ever try to roll your own crypto" - david wu
-use rand::{Rng, SeedableRng, rngs::ChaCha20Rng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use spin::Once;
 
 use crate::sync::IntMutex;
@@ -116,11 +117,12 @@ pub fn init_global_rng() {
 
 #[cfg(test)]
 mod test {
-    use crate::random::Random;
+    use crate::{print::kprintln, random::Random};
 
     #[test_case]
     fn test_rng() {
         // can't print anything for now, so just checking if it runs
+        kprintln!("RNG test");
         let mut rng = Random::new();
         rng.generate::<u64>();
         let mut buffer = [0; 42];
