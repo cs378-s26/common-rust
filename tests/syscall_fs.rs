@@ -10,10 +10,7 @@ kernel_common::integration_test!({
 
     use kernel_common::{
         devices::discovery::BLOCK_DEVICES,
-        fs::{
-            ext2::Ext2,
-            vfs::{Filesystem, VFS},
-        },
+        fs::{ext2::Ext2, vfs::VFS},
         print::kprintln,
         process::Process,
         sync::MutexLike,
