@@ -73,7 +73,10 @@ pub trait Randomizable {
 
 impl Randomizable for u64 {
     fn generate(rng: &mut Random) -> Self {
-        rng.0.next_u64()
+        kprintln!("generating randomness");
+        let v = rng.0.next_u64();
+        kprintln!("generated randomness");
+        v
     }
 }
 
@@ -105,10 +108,7 @@ impl Random {
         self.0 = ChaCha20Rng::from_seed(combine(Seed(buffer), data.hash()).0);
     }
     pub fn fork(&mut self) -> Random {
-        kprintln!("forking");
-        let v = Random(self.0.fork());
-        kprintln!("forked");
-        v
+        Random(self.0.fork())
     }
 }
 
@@ -125,8 +125,8 @@ mod test {
     #[test_case]
     fn test_rng() {
         // can't print anything for now, so just checking if it runs
-        kprintln!("RNG test");
-        let mut rng = Random::new();
+        kprintln!("testing RNG");
+        let mut rng: Random = Random::new();
         rng.generate::<u64>();
         let mut buffer = [0; 42];
         rng.fill(&mut buffer);

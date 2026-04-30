@@ -65,6 +65,7 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 
 #[unsafe(naked)]
 unsafe extern "C" fn irq_handler_t0() -> ! {
+
     naked_asm!(
         "pushq %rbp",
 
@@ -208,6 +209,9 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             push_event(Event::Syscall, CORE_ID.get(), false);
             unsafe { crate::thread::block_to_idle(context) };
         }
+        13 => {
+            panic!("General protection violation. PC {:x}, SP {:x}, err {:x}, CPL {:x}", context.rip, context.rsp, context.err, context.cs & 0b11);
+        }
         _ => {
             handle_device_interrupt(context.id as u8);
         }
@@ -308,6 +312,6 @@ fn handle_device_interrupt(irq_vec: u8) {
         }
     }
     if !has_handled {
-        panic!("Spurious interrupt on IRQ {}", irq_vec);
+        panic!("Spurious interrupt on IRQ {} at PC:", irq_vec);
     }
 }

@@ -696,7 +696,7 @@ fn build_test_binary(test_cfg: &TestConfig, release: bool) -> Result<PathBuf> {
     cmd.args(args)
         .env(
             "RUSTFLAGS",
-            "-C relocation-model=static -C force-frame-pointers=yes",
+            "-C relocation-model=static -C force-frame-pointers=yes -Ctarget-feature=-sse -Ctarget-feature=-sse2 -Ctarget-feature=-mmx",
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
