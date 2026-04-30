@@ -12,11 +12,7 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
-    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
-    event::{Event, push_event},
-    memory::virtual_memory::PageFaultConditions,
-    mp::CORE_ID,
-    sync::{IntMutex, MutexLike},
+    arch::x86_64::context::FpuState, devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC, event::{Event, push_event}, memory::virtual_memory::PageFaultConditions, mp::CORE_ID, sync::{IntMutex, MutexLike}
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -28,6 +24,7 @@ pub fn timer_ticks() -> u64 {
 #[repr(C)]
 pub struct InterruptContext {
     pub regs: [u64; 14],
+    pub fpstate: FpuState,
     pub rbp: u64, // For preemptive context restore.
     pub id: u64,
     pub err: u64,
@@ -70,6 +67,10 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
         "pushq %rbp",
+
+        "addq $-512, %rsp",
+        "fxsave (%rsp)",
+        
         "pushq %rax",
         "pushq %rcx",
         "pushq %rdx",
@@ -117,6 +118,10 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "popq %rdx",
         "popq %rcx",
         "popq %rax",
+
+        "fxrstor (%rsp)",
+        "addq $512, %rsp",
+
         "popq %rbp",
 
         "addq $16, %rsp",

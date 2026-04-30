@@ -5,7 +5,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use spin::Once;
 
-use crate::sync::IntMutex;
+use crate::{print::kprintln, sync::IntMutex};
 
 pub struct Random(ChaCha20Rng);
 pub struct Seed([u8; 32]);
@@ -105,7 +105,10 @@ impl Random {
         self.0 = ChaCha20Rng::from_seed(combine(Seed(buffer), data.hash()).0);
     }
     pub fn fork(&mut self) -> Random {
-        Random(self.0.fork())
+        kprintln!("forking");
+        let v = Random(self.0.fork());
+        kprintln!("forked");
+        v
     }
 }
 
