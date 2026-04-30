@@ -56,8 +56,7 @@ kernel_common::integration_test!({
     let ext2 = Ext2::new_from_block_devices(&mut block_devices)
         .expect("ext2 filesystem not found");
     drop(block_devices);
-    VFS.mount(ext2.clone());
-    VFS.set_root(ext2.get_root().unwrap()).unwrap();
+    VFS.mount(ext2.clone(), &["/"]).expect("Failed to mount root");
 
     let process = Process::new().unwrap();
     Process::run(process.clone(), move || {
