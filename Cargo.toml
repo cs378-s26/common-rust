@@ -37,7 +37,8 @@ fdt = "0.1.5"
 virtio-drivers = "0.13.0"
 zerocopy = { version = "0.8.40", features = ["derive"] }
 bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
-rand = "0.10.1"
+rand = { version = "0.10.1", default-features = false, features = ["chacha"]}
+rand_chacha = { version = "0.10.0", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"

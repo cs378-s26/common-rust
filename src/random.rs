@@ -1,12 +1,12 @@
 use core::array::from_fn;
 
 // "never, ever try to roll your own crypto" - david wu
-use rand::{Rng, SeedableRng, prelude::StdRng};
+use rand::{Rng, SeedableRng, rngs::ChaCha20Rng};
 use spin::Once;
 
 use crate::sync::IntMutex;
 
-pub struct Random(StdRng);
+pub struct Random(ChaCha20Rng);
 pub struct Seed([u8; 32]);
 
 /// Combines two seeds together
@@ -90,7 +90,7 @@ impl<T: Randomizable, const N: usize> Randomizable for [T; N] {
 
 impl Random {
     pub fn new() -> Random {
-        Random(StdRng::from_seed([0; 32]))
+        Random(ChaCha20Rng::from_seed([0; 32]))
     }
     fn fill(&mut self, buffer: &mut [u8]) {
         self.0.fill_bytes(buffer);
@@ -101,7 +101,7 @@ impl Random {
     pub fn inject(&mut self, data: &dyn Hashable) {
         let mut buffer = [0; 32];
         self.fill(&mut buffer);
-        self.0 = StdRng::from_seed(combine(Seed(buffer), data.hash()).0);
+        self.0 = ChaCha20Rng::from_seed(combine(Seed(buffer), data.hash()).0);
     }
     pub fn fork(&mut self) -> Random {
         Random(self.0.fork())
@@ -126,5 +126,7 @@ mod test {
         let mut buffer = [0; 42];
         rng.fill(&mut buffer);
         rng.inject(&mut buffer[0]);
+        let mut rng2 = rng.fork();
+        assert!(rng2.generate::<[u32; 8]>() != rng.generate::<[u32; 8]>());
     }
 }
