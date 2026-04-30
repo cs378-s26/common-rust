@@ -2,6 +2,9 @@ use core::array::from_fn;
 
 // "never, ever try to roll your own crypto" - david wu
 use rand::{Rng, SeedableRng, prelude::StdRng};
+use spin::Once;
+
+use crate::sync::IntMutex;
 
 pub struct Random(StdRng);
 pub struct Seed([u8; 32]);
@@ -103,6 +106,12 @@ impl Random {
     pub fn fork(&mut self) -> Random {
         Random(self.0.fork())
     }
+}
+
+pub static GLOBAL_RNG: Once<IntMutex<Random>> = Once::new();
+
+pub fn init_global_rng() {
+    GLOBAL_RNG.call_once(|| IntMutex::new(Random::new()));
 }
 
 #[cfg(test)]

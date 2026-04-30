@@ -6,6 +6,7 @@ use spin::Once;
 use crate::{
     arch::{Arch, ArchTrait},
     memory::virtual_memory_2::VirtualMemory,
+    random::{GLOBAL_RNG, Random},
     sync::{IntMutex, MutexLike, Promise},
     thread::{THIS_THREAD, spawn_thread},
 };
@@ -67,6 +68,7 @@ pub fn init_pid_allocator() {
 pub struct Process {
     pub virtual_memory: VirtualMemory,
     pub exit_code: Promise<i32>,
+    pub rng: Random, // https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-corrigan-gibbs.pdf
     pid: u32,
 }
 
@@ -76,6 +78,7 @@ impl Process {
         Some(Arc::new(Self {
             virtual_memory: VirtualMemory::new(),
             exit_code: Promise::new(),
+            rng: GLOBAL_RNG.get().unwrap().lock().fork(),
             pid,
         }))
     }
