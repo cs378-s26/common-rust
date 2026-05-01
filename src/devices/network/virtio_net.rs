@@ -7,7 +7,7 @@ use virtio_drivers::{
 };
 
 use super::{NetworkDevice, NetworkError};
-use crate::devices::{Device, virtio::VirtioHal};
+use crate::{devices::{Device, virtio::VirtioHal}, net::ethernet::MacAddr};
 /// VirtIONetDriver wraps the virtio-drivers VirtIONet device and ties it to our kernel's HAL
 /// constructed from a transport (MMIO) and used by the device framework to send and receive packets
 pub struct VirtIONetDriver<H: Hal, T: Transport, const QUEUE_SIZE: usize> {
@@ -26,6 +26,10 @@ impl<T: Transport> VirtIONetDriver<VirtioHal, T, 16> {
 impl<T: Transport> NetworkDevice for VirtIONetDriver<VirtioHal, T, 16> {
     fn name(&self) -> &str {
         "virtio_net"
+    }
+
+    fn mac_address(&self) -> MacAddr {
+        MacAddr(self.net.mac_address())
     }
 
     fn send_packet(&mut self, packet: &[u8]) -> Result<(), NetworkError> {
