@@ -64,7 +64,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
         let interrupt_context = InterruptContext {
             gpr: exc.gpr,
             sp: exc.sp,
-            pc: exc.elr_el1 + 4,
+            pc: exc.elr_el1,
             spsr: exc.spsr_el1,
         };
         unsafe {
