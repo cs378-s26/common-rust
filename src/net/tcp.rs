@@ -5,6 +5,7 @@ use spin::Lazy;
 
 use crate::{
     devices::discovery::NETWORK_DEVICES,
+    print::kprintln,
     sync::{BoundedBuffer, IntMutex, MutexLike, Promise},
 };
 use super::{
@@ -262,8 +263,10 @@ impl TcpConn {
     // create a SYN_RCVD connection in response to an incoming SYN
     fn new_from_syn(listener: &Arc<TcpConn>, hdr: &TcpHeader<'_>, src_ip: Ipv4Addr, src_mac: MacAddr) -> Arc<Self> {
         let isn = next_isn();
-        let local_port = listener.inner.lock().local_port;
-        let local_addr = listener.inner.lock().local_addr;
+        let (local_port, local_addr) = {
+            let inner = listener.inner.lock();
+            (inner.local_port, inner.local_addr)
+        };
         let mss = hdr.mss.unwrap_or(536);
         Arc::new(Self {
             inner: IntMutex::new(TcbInner {
@@ -298,8 +301,12 @@ impl TcpConn {
 
     /// transition to LISTEN and register with the demux table
     pub fn listen(self: &Arc<Self>) {
-        self.inner.lock().state = TcpState::Listen;
-        TCP_DEMUX.register_listener(self.inner.lock().local_port, Arc::clone(self));
+        let port = {
+            let mut inner = self.inner.lock();
+            inner.state = TcpState::Listen;
+            inner.local_port
+        };
+        TCP_DEMUX.register_listener(port, Arc::clone(self));
     }
 
     pub fn handle_segment(self: &Arc<Self>, src_ip: Ipv4Addr, src_mac: MacAddr, hdr: &TcpHeader<'_>) {
@@ -411,7 +418,24 @@ impl TcpConn {
         if let Some(weak) = &self.listener {
             if let Some(listener) = weak.upgrade() {
                 // try_push because we are in the receive loop and cannot block
-                let _ = listener.accept_queue.try_push(Arc::clone(self));
+                if !listener.accept_queue.try_push(Arc::clone(self)) {
+                    // queue full — send RST so the peer knows the connection failed,
+                    // then remove this conn from the established table so it doesn't leak
+                    kprintln!("tcp: accept queue full on port {}, sending RST", {
+                        self.inner.lock().local_port
+                    });
+                    let (local_addr, remote_addr, remote_mac, local_port, remote_port, snd_nxt, rcv_nxt) = {
+                        let inner = self.inner.lock();
+                        (inner.local_addr, inner.remote_addr, inner.remote_mac,
+                         inner.local_port, inner.remote_port, inner.snd_nxt, inner.rcv_nxt)
+                    };
+                    send_segment(
+                        local_addr, remote_addr, remote_mac,
+                        local_port, remote_port,
+                        snd_nxt, rcv_nxt, FLAG_RST, 0, None, &[],
+                    );
+                    TCP_DEMUX.unregister_established(local_port, remote_addr, remote_port);
+                }
             }
         }
     }
