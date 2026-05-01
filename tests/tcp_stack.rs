@@ -5,14 +5,14 @@
 
 kernel_common::integration_test!({
     extern crate alloc;
-    use alloc::sync::Arc;
+    use alloc::sync::{Arc, Weak};
 
     use kernel_common::{
         net::{
             Ipv4Addr,
             ethernet::MacAddr,
             tcp::{
-                FLAG_ACK, FLAG_SYN, TCP_DEMUX, TcpConn, TcpError, TcpHeader, TcpState,
+                FLAG_ACK, FLAG_FIN, FLAG_SYN, TCP_DEMUX, TcpConn, TcpError, TcpHeader, TcpState,
                 build_tcp_segment,
             },
             udp::{UDP_DEMUX, UdpDatagram, UdpSink},
@@ -236,5 +236,232 @@ kernel_common::integration_test!({
         TCP_DEMUX.unregister_established(PORT, remote_ip, 7000);
         TCP_DEMUX.unregister_established(PORT, remote_ip, 7001);
         kprintln!("tcp: SYN delivery and child creation passed");
+    }
+
+    // ── Full three-way handshake → accept queue ───────────────────────────────────
+    //
+    // ISN_COUNTER is private, so we can't predict what new_from_syn assigns.
+    // Instead we manually construct a child conn in SynRcvd with a known ISN (9000),
+    // set its listener back-reference via Arc::get_mut (safe while rc==1), register
+    // it in the demux, then deliver the final ACK.  handle_syn_rcvd verifies
+    // hdr.ack == snd_nxt and pushes the child into the listener's accept_queue.
+    {
+        const PORT: u16 = 55_810;
+        let local_ip   = Ipv4Addr([192, 168, 1, 1]);
+        let remote_ip  = Ipv4Addr([10, 0, 0, 99]);
+        let remote_mac = MacAddr([0xBB; 6]);
+
+        let listener = TcpConn::new(local_ip, PORT);
+        listener.listen();
+
+        let mut child = TcpConn::new(local_ip, PORT);
+        {
+            // rc == 1 here so Arc::get_mut succeeds; set the listener back-ref
+            let c = Arc::get_mut(&mut child).unwrap();
+            c.listener = Some(Weak::clone(&Arc::downgrade(&listener)));
+        }
+        {
+            let mut inner = child.inner.lock();
+            inner.state       = TcpState::SynRcvd;
+            inner.remote_addr = remote_ip;
+            inner.remote_port = 7000;
+            inner.remote_mac  = remote_mac;
+            inner.snd_nxt     = 9001; // ISN=9000, SYN consumed one seq number
+            inner.snd_una     = 9000;
+            inner.rcv_nxt     = 301;  // peer SYN seq=300, consumed one
+        }
+        TCP_DEMUX.register_established(PORT, remote_ip, 7000, Arc::clone(&child));
+
+        // final ACK from peer — ack=9001 matches child snd_nxt
+        let mut buf = [0u8; 64];
+        let len = build_tcp_segment(
+            remote_ip, local_ip, 7000, PORT,
+            301, 9001, FLAG_ACK, 65535, None, &[], &mut buf,
+        ).expect("build handshake ACK failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf[..len]);
+
+        assert_eq!(child.inner.lock().state, TcpState::Established, "child should be Established");
+        let accepted = listener.accept_queue.pop();
+        assert_eq!(accepted.inner.lock().state, TcpState::Established, "accepted conn should be Established");
+
+        TCP_DEMUX.unregister_listener(PORT);
+        TCP_DEMUX.unregister_established(PORT, remote_ip, 7000);
+        kprintln!("tcp: full handshake and accept passed");
+    }
+
+    // ── Data transfer on established connection ───────────────────────────────────
+    //
+    // Manually set up an established conn and deliver a data segment through the
+    // demux.  handle_established pushes the payload into rx_buf.  pop() returns
+    // immediately because try_push already incremented the semaphore.
+    {
+        const PORT: u16 = 55_811;
+        let local_ip   = Ipv4Addr([192, 168, 1, 1]);
+        let remote_ip  = Ipv4Addr([10, 0, 0, 99]);
+        let remote_mac = MacAddr([0xBB; 6]);
+
+        let conn = TcpConn::new(local_ip, PORT);
+        {
+            let mut inner = conn.inner.lock();
+            inner.state       = TcpState::Established;
+            inner.remote_addr = remote_ip;
+            inner.remote_port = 8000;
+            inner.remote_mac  = remote_mac;
+            inner.snd_nxt     = 1000;
+            inner.rcv_nxt     = 1000;
+        }
+        TCP_DEMUX.register_established(PORT, remote_ip, 8000, Arc::clone(&conn));
+
+        let payload = b"hello kernel";
+        let mut buf = [0u8; 128];
+        let len = build_tcp_segment(
+            remote_ip, local_ip, 8000, PORT,
+            1000, 1000, FLAG_ACK, 65535, None, payload, &mut buf,
+        ).expect("build data seg failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf[..len]);
+
+        let received = conn.rx_buf.pop();
+        assert!(&received[..] == &payload[..], "received payload mismatch");
+        assert_eq!(conn.inner.lock().rcv_nxt, 1012, "rcv_nxt should advance by payload len (12)");
+
+        TCP_DEMUX.unregister_established(PORT, remote_ip, 8000);
+        kprintln!("tcp: data transfer after established passed");
+    }
+
+    // ── Active close: Established → FinWait1 → FinWait2 → Closed ────────────────
+    //
+    // conn.close() sends a FIN and advances snd_nxt by one.  A peer ACK
+    // acknowledging that FIN moves to FinWait2.  A peer FIN in FinWait2 calls
+    // handle_peer_fin, which sets Closed and auto-unregisters from the demux.
+    {
+        const PORT: u16 = 55_812;
+        let local_ip   = Ipv4Addr([192, 168, 1, 1]);
+        let remote_ip  = Ipv4Addr([10, 0, 0, 99]);
+        let remote_mac = MacAddr([0xBB; 6]);
+
+        let conn = TcpConn::new(local_ip, PORT);
+        {
+            let mut inner = conn.inner.lock();
+            inner.state       = TcpState::Established;
+            inner.remote_addr = remote_ip;
+            inner.remote_port = 9000;
+            inner.remote_mac  = remote_mac;
+            inner.snd_nxt     = 300;
+            inner.snd_una     = 300;
+            inner.rcv_nxt     = 500;
+        }
+        TCP_DEMUX.register_established(PORT, remote_ip, 9000, Arc::clone(&conn));
+
+        // our FIN at seq=300; snd_nxt becomes 301
+        conn.close();
+        assert_eq!(conn.inner.lock().state, TcpState::FinWait1, "should be FinWait1 after close");
+
+        // peer ACK(ack=301) covers our FIN → FinWait2
+        let mut buf = [0u8; 64];
+        let len = build_tcp_segment(
+            remote_ip, local_ip, 9000, PORT,
+            500, 301, FLAG_ACK, 65535, None, &[], &mut buf,
+        ).expect("build peer ACK failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf[..len]);
+        assert_eq!(conn.inner.lock().state, TcpState::FinWait2, "should be FinWait2 after peer ACK");
+
+        // peer FIN|ACK → Closed (handle_peer_fin auto-unregisters from demux)
+        let mut buf2 = [0u8; 64];
+        let len2 = build_tcp_segment(
+            remote_ip, local_ip, 9000, PORT,
+            500, 301, FLAG_FIN | FLAG_ACK, 65535, None, &[], &mut buf2,
+        ).expect("build peer FIN failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf2[..len2]);
+        assert_eq!(conn.inner.lock().state, TcpState::Closed, "should be Closed after peer FIN");
+
+        kprintln!("tcp: active close sequence passed");
+    }
+
+    // ── Passive close: Established → CloseWait → LastAck → Closed ────────────────
+    //
+    // Peer initiates close.  handle_established on a FIN moves us to CloseWait.
+    // conn.close() from CloseWait sends our FIN and moves to LastAck.
+    // A peer ACK of our FIN calls handle_last_ack, which sets Closed and
+    // auto-unregisters from the demux.
+    {
+        const PORT: u16 = 55_813;
+        let local_ip   = Ipv4Addr([192, 168, 1, 1]);
+        let remote_ip  = Ipv4Addr([10, 0, 0, 99]);
+        let remote_mac = MacAddr([0xBB; 6]);
+
+        let conn = TcpConn::new(local_ip, PORT);
+        {
+            let mut inner = conn.inner.lock();
+            inner.state       = TcpState::Established;
+            inner.remote_addr = remote_ip;
+            inner.remote_port = 9001;
+            inner.remote_mac  = remote_mac;
+            inner.snd_nxt     = 500;
+            inner.snd_una     = 500;
+            inner.rcv_nxt     = 400;
+        }
+        TCP_DEMUX.register_established(PORT, remote_ip, 9001, Arc::clone(&conn));
+
+        // peer FIN at seq=400 → CloseWait, rcv_nxt becomes 401
+        let mut buf = [0u8; 64];
+        let len = build_tcp_segment(
+            remote_ip, local_ip, 9001, PORT,
+            400, 500, FLAG_FIN | FLAG_ACK, 65535, None, &[], &mut buf,
+        ).expect("build peer FIN failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf[..len]);
+        assert_eq!(conn.inner.lock().state, TcpState::CloseWait, "should be CloseWait after peer FIN");
+
+        // our FIN at seq=500; snd_nxt becomes 501
+        conn.close();
+        assert_eq!(conn.inner.lock().state, TcpState::LastAck, "should be LastAck after our close");
+
+        // peer ACK(ack=501) covers our FIN → Closed (handle_last_ack auto-unregisters)
+        let mut buf2 = [0u8; 64];
+        let len2 = build_tcp_segment(
+            remote_ip, local_ip, 9001, PORT,
+            401, 501, FLAG_ACK, 65535, None, &[], &mut buf2,
+        ).expect("build final ACK failed");
+        TCP_DEMUX.deliver(remote_ip, local_ip, remote_mac, &buf2[..len2]);
+        assert_eq!(conn.inner.lock().state, TcpState::Closed, "should be Closed after final ACK");
+
+        kprintln!("tcp: passive close sequence passed");
+    }
+
+    // ── connect() happy path: SynSent → Established ───────────────────────────────
+    //
+    // conn.connect() is non-blocking at the TcpConn level — it sends a SYN
+    // (which fails silently with no NIC) and registers in the established table.
+    // We read snd_nxt after connect() to learn our ISN+1, then deliver a SYN-ACK
+    // with ack=snd_nxt.  handle_syn_sent verifies the ack, sets rcv_nxt=server_ISN+1,
+    // and transitions to Established.
+    {
+        const LOCAL_PORT: u16 = 55_814;
+        let local_ip   = Ipv4Addr([192, 168, 1, 1]);
+        let server_ip  = Ipv4Addr([10, 0, 0, 1]);
+        let server_mac = MacAddr([0xCC; 6]);
+        const SERVER_ISN: u32 = 7777;
+
+        let conn = TcpConn::new(local_ip, LOCAL_PORT);
+        conn.connect(server_ip, 80, server_mac); // non-blocking; SYN send fails silently (no NIC)
+        assert_eq!(conn.inner.lock().state, TcpState::SynSent, "should be SynSent after connect");
+
+        let our_snd_nxt = conn.inner.lock().snd_nxt; // ISN+1
+
+        // server SYN-ACK: seq=SERVER_ISN, ack=our_snd_nxt
+        let mut buf = [0u8; 64];
+        let len = build_tcp_segment(
+            server_ip, local_ip, 80, LOCAL_PORT,
+            SERVER_ISN, our_snd_nxt, FLAG_SYN | FLAG_ACK, 65535, Some(1460), &[], &mut buf,
+        ).expect("build SYN-ACK failed");
+        TCP_DEMUX.deliver(server_ip, local_ip, server_mac, &buf[..len]);
+
+        {
+            let inner = conn.inner.lock();
+            assert_eq!(inner.state,   TcpState::Established, "should be Established after SYN-ACK");
+            assert_eq!(inner.rcv_nxt, SERVER_ISN + 1,        "rcv_nxt should be server ISN + 1");
+        }
+
+        TCP_DEMUX.unregister_established(LOCAL_PORT, server_ip, 80);
+        kprintln!("tcp: connect() happy path passed");
     }
 });

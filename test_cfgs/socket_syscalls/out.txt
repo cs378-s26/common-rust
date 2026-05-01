@@ -13,4 +13,7 @@ sys_accept4: error case tests passed
 sys_connect: error case tests passed
 sys_getpid:
 fd allocation order: test passed
+sys_listen: unbound socket test passed
+sys_bind: double-bind on UDP returned EADDRINUSE
+sys_bind: double-bind on TCP socket passed
 all socket syscall tests passed

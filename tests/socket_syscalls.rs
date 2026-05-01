@@ -13,6 +13,7 @@ kernel_common::integration_test!({
             Ipv4Addr,
             arp::{ARP_TABLE, ArpPacket},
             ethernet::MacAddr,
+            tcp::TCP_DEMUX,
             udp::{UDP_DEMUX, UdpDatagram},
         },
         print::kprintln,
@@ -528,6 +529,66 @@ kernel_common::integration_test!({
             sc(number::CLOSE, c as u64, 0, 0, 0, 0, 0);
         }
         kprintln!("fd allocation order: test passed");
+
+        // ── sys_listen: unbound socket ────────────────────────────────────────────
+        //
+        // A socket that was never bound has local_port=0. listen() should still
+        // return 0 — the kernel registers port 0 in the demux. Cleanup unregisters
+        // port 0 to avoid polluting the demux for subsequent tests.
+        {
+            let unbound_tcp = sc(number::SOCKET, AF_INET, SOCK_STREAM, 0, 0, 0, 0);
+            assert!(unbound_tcp >= 0);
+            assert_eq!(
+                sc(number::LISTEN, unbound_tcp as u64, 8, 0, 0, 0, 0), 0,
+                "listen on unbound TCP socket should succeed"
+            );
+            TCP_DEMUX.unregister_listener(0);
+            sc(number::CLOSE, unbound_tcp as u64, 0, 0, 0, 0, 0);
+        }
+        kprintln!("sys_listen: unbound socket test passed");
+
+        // ── sys_bind: UDP double-bind on same socket ──────────────────────────────
+        //
+        // Binding a UDP socket to a port registers it in UDP_DEMUX. A second bind
+        // on the same socket to the same port should return EADDRINUSE because
+        // the port is already occupied.
+        {
+            let sock = sc(number::SOCKET, AF_INET, SOCK_DGRAM, 0, 0, 0, 0);
+            assert!(sock >= 0);
+            let addr1 = sockaddr_in([10, 0, 2, 15], 56_220);
+            assert_eq!(
+                sc(number::BIND, sock as u64, addr1.as_ptr() as u64, 8, 0, 0, 0), 0,
+                "first bind should succeed"
+            );
+            let addr2 = sockaddr_in([10, 0, 2, 15], 56_220);
+            assert_eq!(
+                sc(number::BIND, sock as u64, addr2.as_ptr() as u64, 8, 0, 0, 0), EADDRINUSE,
+                "second bind to same port on same socket should return EADDRINUSE"
+            );
+            sc(number::CLOSE, sock as u64, 0, 0, 0, 0, 0);
+        }
+        kprintln!("sys_bind: double-bind on UDP returned EADDRINUSE");
+
+        // ── sys_bind: TCP double-bind on same socket ──────────────────────────────
+        //
+        // TCP bind just overwrites the local_addr/local_port in TcbInner — there
+        // is no demux registration at bind time, so a second bind always succeeds.
+        {
+            let sock = sc(number::SOCKET, AF_INET, SOCK_STREAM, 0, 0, 0, 0);
+            assert!(sock >= 0);
+            let addr1 = sockaddr_in([10, 0, 2, 15], 56_221);
+            assert_eq!(
+                sc(number::BIND, sock as u64, addr1.as_ptr() as u64, 8, 0, 0, 0), 0,
+                "first TCP bind should succeed"
+            );
+            let addr2 = sockaddr_in([10, 0, 2, 15], 56_222);
+            assert_eq!(
+                sc(number::BIND, sock as u64, addr2.as_ptr() as u64, 8, 0, 0, 0), 0,
+                "second TCP bind should also succeed (overwrites first)"
+            );
+            sc(number::CLOSE, sock as u64, 0, 0, 0, 0, 0);
+        }
+        kprintln!("sys_bind: double-bind on TCP socket passed");
 
         // ── cleanup ───────────────────────────────────────────────────────────────
 
