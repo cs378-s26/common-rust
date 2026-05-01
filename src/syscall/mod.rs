@@ -1,13 +1,19 @@
+pub mod fs;
+pub mod legacy;
+pub mod net;
 pub mod numbers;
+pub mod process;
+
 use alloc::sync::Arc;
 
-pub use numbers::number;
-#[cfg(target_arch = "x86_64")]
-pub use numbers::wrapper_constants::*;
+pub use numbers::{number, wrapper_constants::*};
 
+#[cfg(target_arch = "x86_64")]
+use self::legacy::*;
+use self::{fs::*, net::*, process::*};
 use crate::thread::Thread;
 
-// SycallContext Trait
+// SyscallContext Trait
 // The purpose of this trait is to unify system calls between
 // x86 and ARM such that each architecture can implement this
 // trait for their respective interrupt context structs.
@@ -59,217 +65,99 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
     match num {
         // Modern core ABI (Aarch64 uses these exclusively while x86_64 uses both because of legacy support)
         number::READ => {
-            sys_read(ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(sys_read(thread, ctx));
         }
         number::WRITE => {
-            sys_write(ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(sys_write(thread, ctx));
         }
         number::OPENAT => {
-            sys_openat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2(), ctx.arg3());
+            ctx.set_return_value(sys_openat(thread, ctx));
         }
         number::CLOSE => {
-            sys_close(ctx.arg0() as i32);
+            ctx.set_return_value(sys_close(thread, ctx));
         }
         number::CLONE => {
-            sys_clone(ctx.arg0(), ctx.arg1(), ctx.arg2(), ctx.arg3(), ctx.arg4());
+            ctx.set_return_value(sys_clone(thread, ctx));
         }
         number::PIPE2 => {
-            sys_pipe2(ctx.arg0(), ctx.arg1() as i32);
+            ctx.set_return_value(sys_pipe2(thread, ctx));
         }
         number::NEWFSTATAT => {
-            sys_newfstatat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2(), ctx.arg3() as i32);
+            ctx.set_return_value(sys_newfstatat(thread, ctx));
         }
         number::PPOLL => {
-            sys_ppoll(ctx.arg0(), ctx.arg1(), ctx.arg2(), ctx.arg3());
+            ctx.set_return_value(sys_ppoll(thread, ctx));
         }
         number::FACCESSAT => {
-            sys_faccessat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2() as i32);
+            ctx.set_return_value(sys_faccessat(thread, ctx));
         }
         number::PSELECT6 => {
-            sys_pselect6(
-                ctx.arg0() as i32,
-                ctx.arg1(),
-                ctx.arg2(),
-                ctx.arg3(),
-                ctx.arg4(),
-                ctx.arg5(),
-            );
+            ctx.set_return_value(sys_pselect6(thread, ctx));
         }
         number::MKDIRAT => {
-            sys_mkdirat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(sys_mkdirat(thread, ctx));
         }
         number::UNLINKAT => {
-            sys_unlinkat(ctx.arg0() as i32, ctx.arg1(), ctx.arg2() as i32);
+            ctx.set_return_value(sys_unlinkat(thread, ctx));
         }
         number::EXIT => {
-            let exit_code = ctx.arg0() as i32;
-            thread.process.get().unwrap().exit_code.set(exit_code);
-            // TODO handle thread/process termination and cleanup, needs parent-child relationship most likely
+            ctx.set_return_value(sys_exit(thread, ctx));
         }
         number::GETPID => {
-            ctx.set_return_value(thread.process.get().unwrap().get_pid() as u64);
+            ctx.set_return_value(sys_getpid(thread, ctx));
         }
 
         // x86_64 libraries will use these legacy system calls which ARM does not support any more
         // they can all be transformed to be satisfied by calls to the more modern functions via wrappers
         #[cfg(target_arch = "x86_64")]
         number::OPEN => {
-            sys_open_wrapper(ctx);
+            ctx.set_return_value(sys_open_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::STAT => {
-            sys_stat_wrapper(ctx);
+            ctx.set_return_value(sys_stat_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::LSTAT => {
-            sys_lstat_wrapper(ctx);
+            ctx.set_return_value(sys_lstat_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::POLL => {
-            sys_poll_wrapper(ctx);
+            ctx.set_return_value(sys_poll_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::ACCESS => {
-            sys_access_wrapper(ctx);
+            ctx.set_return_value(sys_access_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::PIPE => {
-            sys_pipe_wrapper(ctx);
+            ctx.set_return_value(sys_pipe_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::SELECT => {
-            sys_select_wrapper(ctx);
+            ctx.set_return_value(sys_select_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::FORK => {
-            sys_fork_wrapper(ctx);
+            ctx.set_return_value(sys_fork_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::VFORK => {
-            sys_vfork_wrapper(ctx);
+            ctx.set_return_value(sys_vfork_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::MKDIR => {
-            sys_mkdir_wrapper(ctx);
+            ctx.set_return_value(sys_mkdir_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::RMDIR => {
-            sys_rmdir_wrapper(ctx);
+            ctx.set_return_value(sys_rmdir_wrapper(thread, ctx));
         }
         #[cfg(target_arch = "x86_64")]
         number::UNLINK => {
-            sys_unlink_wrapper(ctx);
+            ctx.set_return_value(sys_unlink_wrapper(thread, ctx));
         }
 
         _ => panic!("SYSCALL {} UNIMPLEMENTED", num),
     }
-}
-
-// functions that we must implement. These are the only ones used by Aarch64 and
-// represent modern supersets(?) (supercalls?) of the legacy systemcalls
-
-fn sys_read(_fd: u64, _buf: u64, _count: u64) {}
-fn sys_write(_fd: u64, _buf: u64, _count: u64) {}
-fn sys_openat(_dirfd: i32, _pathname: u64, _flags: u64, _mode: u64) {}
-fn sys_close(_fd: i32) {}
-fn sys_clone(_flags: u64, _stack: u64, _parent_tid: u64, _child_tid: u64, _tls: u64) {}
-fn sys_pipe2(_pipefd: u64, _flags: i32) {}
-fn sys_newfstatat(_dirfd: i32, _pathname: u64, _statbuf: u64, _flags: i32) {}
-fn sys_ppoll(_fds: u64, _nfds: u64, _tmo_p: u64, _sigmask: u64) {}
-fn sys_faccessat(_dirfd: i32, _pathname: u64, _mode: i32) {}
-fn sys_pselect6(
-    _nfds: i32,
-    _readfds: u64,
-    _writefds: u64,
-    _exceptfds: u64,
-    _timeout: u64,
-    _sigmask: u64,
-) {
-}
-fn sys_mkdirat(_dirfd: i32, _pathname: u64, _mode: u64) {}
-fn sys_unlinkat(_dirfd: i32, _pathname: u64, _flags: i32) {}
-
-// Legacy x86_64 wrappers for compatibility
-
-#[cfg(target_arch = "x86_64")]
-fn sys_open_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 open(pathname, flags, mode)
-    sys_openat(AT_FDCWD, ctx.arg0(), ctx.arg1(), ctx.arg2());
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_stat_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 stat(pathname, statbuf)
-    sys_newfstatat(AT_FDCWD, ctx.arg0(), ctx.arg1(), 0);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_lstat_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 lstat(pathname, statbuf)
-    sys_newfstatat(AT_FDCWD, ctx.arg0(), ctx.arg1(), AT_SYMLINK_NOFOLLOW);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_poll_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 poll(fds, nfds, timeout)
-    // Wrap by passing a NULL sigmask to ppoll.
-    // Note: poll uses ms, ppoll uses timespec; full conversion would happen in sys_ppoll
-    sys_ppoll(ctx.arg0(), ctx.arg1(), ctx.arg2(), 0);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_access_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 access(pathname, mode)
-    sys_faccessat(AT_FDCWD, ctx.arg0(), ctx.arg1() as i32);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_pipe_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 pipe(pipefd)
-    sys_pipe2(ctx.arg0(), 0);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_select_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 select(nfds, readfds, writefds, exceptfds, timeout)
-    // Map to pselect6 with NULL sigmask.
-    sys_pselect6(
-        ctx.arg0() as i32,
-        ctx.arg1(),
-        ctx.arg2(),
-        ctx.arg3(),
-        ctx.arg4(),
-        0,
-    );
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_fork_wrapper(_ctx: &impl SyscallContext) {
-    // x86_64 fork() -> clone(SIGCHLD, 0, NULL, NULL, 0)
-    sys_clone(SIGCHLD, 0, 0, 0, 0);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_vfork_wrapper(_ctx: &impl SyscallContext) {
-    // x86_64 vfork() -> clone(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, NULL, NULL, 0)
-    sys_clone(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, 0, 0, 0);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_mkdir_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 mkdir(pathname, mode)
-    sys_mkdirat(AT_FDCWD, ctx.arg0(), ctx.arg1());
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_rmdir_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 rmdir(pathname) -> unlinkat(AT_FDCWD, pathname, AT_REMOVEDIR)
-    const AT_REMOVEDIR: i32 = 0x200;
-    sys_unlinkat(AT_FDCWD, ctx.arg0(), AT_REMOVEDIR);
-}
-
-#[cfg(target_arch = "x86_64")]
-fn sys_unlink_wrapper(ctx: &impl SyscallContext) {
-    // x86_64 unlink(pathname)
-    sys_unlinkat(AT_FDCWD, ctx.arg0(), 0);
 }

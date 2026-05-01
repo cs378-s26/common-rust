@@ -12,7 +12,7 @@ use crate::{
     syscall::syscall_handler,
     thread::{
         CONTEXT, CORE_PINNED_TO, CUR_EVENT, LOCAL_WORK_QUEUE, PINNED_TO_CORE, Thread, ThreadQueue,
-        make_thread, new_thread_queue, this_thread, yield_thread,
+        make_thread, new_thread_queue, schedule_thread, this_thread, yield_thread,
     },
 };
 
@@ -85,7 +85,7 @@ pub fn init_event_handler() {
                 match event {
                     PageFault { cause, address } => {
                         handle_page_fault(cause, address, &thread);
-                        LOCAL_WORK_QUEUE.lock().push_back(thread);
+                        schedule_thread(thread);
                     }
                     Syscall => {
                         // Handle syscall event
@@ -93,7 +93,7 @@ pub fn init_event_handler() {
                         syscall_handler(&thread, &mut *context);
                         drop(context);
 
-                        LOCAL_WORK_QUEUE.lock().push_back(thread);
+                        schedule_thread(thread);
                     }
                     Shootdown { .. } => {
                         panic!(

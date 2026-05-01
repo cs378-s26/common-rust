@@ -48,11 +48,14 @@ pub mod number {
 }
 
 // Constants for syscall translation via wrappers
-#[cfg(target_arch = "x86_64")]
 pub mod wrapper_constants {
     pub const AT_FDCWD: i32 = -100;
+    #[cfg(target_arch = "x86_64")]
     pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
+    #[cfg(target_arch = "x86_64")]
     pub const SIGCHLD: u64 = 17;
+    #[cfg(target_arch = "x86_64")]
     pub const CLONE_VM: u64 = 0x00000100;
+    #[cfg(target_arch = "x86_64")]
     pub const CLONE_VFORK: u64 = 0x00004000;
 }

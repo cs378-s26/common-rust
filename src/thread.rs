@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
+    collections::BTreeMap,
     sync::{Arc, Weak},
 };
 #[cfg(target_arch = "x86_64")]
@@ -23,12 +24,16 @@ use spin::{Mutex, MutexGuard, Once};
 use crate::{
     arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
     event::Event,
+    fs::{
+        file::File,
+        vfs::{VFS, VNode},
+    },
     local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
     memory::virtual_memory_2::VirtualMemory,
     mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
     process::Process,
     state::{Irq, StateGuard},
-    sync::{IntSpinLock, MutexLike},
+    sync::{IntMutex, IntSpinLock, MutexLike},
 };
 
 pub struct Thread {
@@ -43,6 +48,8 @@ pub struct Thread {
     pub tls: Pin<Box<[u8]>>,
     pub tls_addr: u64, // aliased to tls
     pub process: Once<Arc<Process>>,
+    pub fd_table: IntMutex<BTreeMap<i32, Arc<File>>>,
+    pub cwd: IntMutex<Option<Arc<dyn VNode>>>,
 }
 
 impl Thread {
@@ -56,6 +63,8 @@ impl Thread {
             tls: Pin::new(tls),
             tls_addr,
             process: Once::new(),
+            fd_table: IntMutex::new(BTreeMap::new()),
+            cwd: IntMutex::new(VFS.get_root()),
         });
 
         THIS_THREAD
