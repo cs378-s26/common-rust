@@ -12,7 +12,8 @@ use crate::{
         arp::{ARP_TABLE, build_arp_request},
         ethernet::{EtherType, MacAddr, build_ethernet_frame},
         ipv4::{Protocol, build_ipv4_packet},
-        socket::UdpSocket,
+        socket::{TcpSocket, UdpSocket},
+        tcp::TcpConn,
         udp::{UDP_DEMUX, UdpSink, build_udp_packet},
     },
     sync::MutexLike,
@@ -154,6 +155,18 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
             );
             ctx.set_return_value(ret as u64);
         }
+        number::LISTEN => {
+            let ret = sys_listen(thread, ctx.arg0(), ctx.arg1());
+            ctx.set_return_value(ret as u64);
+        }
+        number::ACCEPT4 => {
+            let ret = sys_accept4(thread, ctx, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
+        }
+        number::CONNECT => {
+            let ret = sys_connect(thread, ctx, ctx.arg0(), ctx.arg1(), ctx.arg2());
+            ctx.set_return_value(ret as u64);
+        }
 
         // x86_64 libraries will use these legacy system calls which ARM does not support any more
         // they can all be transformed to be satisfied by calls to the more modern functions via wrappers
@@ -281,24 +294,37 @@ fn sys_unlinkat(_dirfd: i32, _pathname: u64, _flags: i32) {}
 
 fn sys_socket(thread: &Arc<Thread>, domain: u64, type_: u64, protocol: u64) -> i64 {
     const AF_INET: u64 = 2;
+    const SOCK_STREAM: u64 = 1;
     const SOCK_DGRAM: u64 = 2;
     const SOCK_TYPE_MASK: u64 = 0xf;
 
     if domain != AF_INET {
         return EINVAL;
     }
-    if type_ & SOCK_TYPE_MASK != SOCK_DGRAM {
-        return EINVAL;
-    }
-    // 0 means "default for type" (UDP for SOCK_DGRAM); 17 is IPPROTO_UDP
-    if protocol != 0 && protocol != 17 {
-        return EINVAL;
-    }
 
     let Some(process) = thread.process.get() else { return EBADF; };
-    let socket = UdpSocket::new();
-    let fd = process.fd_table.lock().insert(socket);
-    fd as i64
+
+    match type_ & SOCK_TYPE_MASK {
+        SOCK_DGRAM => {
+            // 0 means default for type (UDP); 17 is IPPROTO_UDP
+            if protocol != 0 && protocol != 17 {
+                return EINVAL;
+            }
+            let fd = process.fd_table.lock().insert(UdpSocket::new());
+            fd as i64
+        }
+        SOCK_STREAM => {
+            // 0 means default for type (TCP); 6 is IPPROTO_TCP
+            if protocol != 0 && protocol != 6 {
+                return EINVAL;
+            }
+            // local address filled in by bind or connect; use zeros for now
+            let conn = TcpConn::new(Ipv4Addr([0, 0, 0, 0]), 0);
+            let fd = process.fd_table.lock().insert(TcpSocket::new(conn));
+            fd as i64
+        }
+        _ => EINVAL,
+    }
 }
 
 fn sys_bind(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, sockaddr_ptr: u64, _addrlen: u64) -> i64 {
@@ -461,6 +487,97 @@ fn sys_recvfrom(
     }
 
     n as i64
+}
+
+fn sys_listen(thread: &Arc<Thread>, fd: u64, _backlog: u64) -> i64 {
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
+    sock.conn.listen();
+    0
+}
+
+fn sys_accept4(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_ptr: u64, _addrlen_ptr: u64) -> i64 {
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
+
+    // blocks until a fully-established connection arrives
+    let child_conn = sock.conn.accept_queue.pop();
+
+    // write peer address back if the caller provided a pointer
+    if addr_ptr != 0 && ctx.is_user_address(addr_ptr) {
+        let inner = child_conn.inner.lock();
+        let mut buf = [0u8; 16];
+        buf[0..2].copy_from_slice(&2u16.to_ne_bytes()); // AF_INET
+        buf[2..4].copy_from_slice(&inner.remote_port.to_be_bytes());
+        buf[4..8].copy_from_slice(&inner.remote_addr.0);
+        unsafe { copy_to_user(addr_ptr, &buf); }
+    }
+
+    let new_fd = process.fd_table.lock().insert(TcpSocket::new(child_conn));
+    new_fd as i64
+}
+
+fn sys_connect(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_ptr: u64, _addrlen: u64) -> i64 {
+    const AF_INET: u16 = 2;
+    const BUF_SIZE: usize = 1536;
+
+    if !ctx.is_user_address(addr_ptr) {
+        return EFAULT;
+    }
+
+    let mut addr_buf = [0u8; 8];
+    unsafe { copy_from_user(addr_ptr, &mut addr_buf); }
+    if u16::from_ne_bytes([addr_buf[0], addr_buf[1]]) != AF_INET {
+        return EINVAL;
+    }
+    let dst_port = u16::from_be_bytes([addr_buf[2], addr_buf[3]]);
+    let dst_ip   = Ipv4Addr([addr_buf[4], addr_buf[5], addr_buf[6], addr_buf[7]]);
+
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
+
+    let our_mac = {
+        let devs = NETWORK_DEVICES.lock();
+        match devs.first() {
+            Some(nic) => nic.mac_address(),
+            None => return EIO,
+        }
+    };
+
+    // resolve destination MAC — ARP if not cached
+    let dst_mac = match ARP_TABLE.resolve(dst_ip) {
+        Some(mac) => mac,
+        None => {
+            let src_ip = sock.conn.inner.lock().local_addr;
+            let promise = ARP_TABLE.start_lookup(dst_ip);
+
+            let mut arp_buf   = [0u8; 28];
+            let mut frame_buf = [0u8; BUF_SIZE];
+            let broadcast = MacAddr([0xff; 6]);
+            if let Ok(arp_len) = build_arp_request(our_mac, src_ip, dst_ip, &mut arp_buf) {
+                if let Ok(frame_len) = build_ethernet_frame(
+                    broadcast, our_mac, EtherType::Arp, &arp_buf[..arp_len], &mut frame_buf,
+                ) {
+                    let mut devs = NETWORK_DEVICES.lock();
+                    if let Some(nic) = devs.first_mut() {
+                        let _ = nic.send_packet(&frame_buf[..frame_len]);
+                    }
+                }
+            }
+
+            promise.get()
+        }
+    };
+
+    sock.conn.connect(dst_ip, dst_port, dst_mac);
+
+    // block until the SYN-ACK arrives and we reach ESTABLISHED
+    sock.conn.connected.get();
+
+    0
 }
 
 // Legacy x86_64 wrappers for compatibility
