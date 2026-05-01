@@ -9,10 +9,12 @@
 #![feature(never_type)]
 #![feature(sync_unsafe_cell)]
 #![feature(custom_test_frameworks)]
+#![feature(const_cmp)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 pub mod arch;
+pub mod build_cfg;
 pub mod cmdline;
 pub mod coroutine;
 pub mod devices;
@@ -31,6 +33,7 @@ pub mod symbols;
 pub mod sync;
 pub mod syscall;
 pub mod thread;
+
 extern crate alloc;
 use alloc::sync::Arc;
 use core::{
@@ -55,6 +58,7 @@ use modules::load_modules_early;
 
 use crate::{
     arch::{Arch, ArchTrait},
+    build_cfg::BUILD_INFO,
     cmdline::{get_cmdline_error, get_cmdline_text, parse_kernel_cmdline},
     coroutine::{init_coroutine_executor, init_coroutine_queue},
     devices::discovery::{create_drivers, discover_devices},
@@ -140,6 +144,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     init_tty();
 
     load_modules_early();
+
+    BUILD_INFO.print();
 
     // print some system info
     if let Some(rev) = BASE_REVISION.loaded_revision() {
