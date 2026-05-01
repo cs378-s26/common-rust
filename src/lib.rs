@@ -65,6 +65,7 @@ use crate::{
     memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
     mp::{MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
+    net::{Ipv4Addr, ipv4::set_net_config, receive::start_network_receive_loop},
     process::init_pid_allocator,
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
@@ -160,6 +161,14 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     discover_devices();
     kprintln!("Finished device discovery.");
 
+    // TODO: replace with DHCP or a boot cmdline parameter when available
+    // these defaults match QEMU's user-mode NAT network (10.0.2.x)
+    set_net_config(
+        Ipv4Addr([10, 0, 2, 15]),
+        Ipv4Addr([255, 255, 255, 0]),
+        Ipv4Addr([10, 0, 2, 2]),
+    );
+
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
     // or just spam OnceCell
@@ -222,6 +231,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     all!({ init_event_handler() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
     one!({
+        start_network_receive_loop();
         spawn_thread(move || {
             kprintln!("Starting Testing Code...");
             Work::work();

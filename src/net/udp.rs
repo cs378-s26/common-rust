@@ -143,6 +143,10 @@ impl UdpDemux {
         }
     }
 
+    pub fn is_port_bound(&self, port: u16) -> bool {
+        self.state.lock().sockets.contains_key(&port)
+    }
+
     pub fn register(&self, port: u16, sink: Arc<dyn UdpSink>) {
         self.state.lock().sockets.insert(port, sink);
     }

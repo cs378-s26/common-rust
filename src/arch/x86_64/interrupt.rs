@@ -153,6 +153,16 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         }
         crate::thread::CURRENT_THREAD.set(cur_thread);
     }
+    if matches!(context.id as u8, irq_vector::PAGE_FAULT | irq_vector::SYSCALL) {
+        crate::print::kprintln!(
+            "irq {:#x} cs={:#x} rip={:#x} cr2={:#x} err={:#x}",
+            context.id,
+            context.cs,
+            context.rip,
+            unsafe { cr2() },
+            context.err,
+        );
+    }
     match context.id as u8 {
         PAGE_FAULT => {
             if let Some(code) = PageFaultErrorCode::from_bits(context.err) {

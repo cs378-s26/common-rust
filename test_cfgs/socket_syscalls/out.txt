@@ -1,0 +1,19 @@
+Starting Testing Code...
+sys_socket: all tests passed
+sys_close: all tests passed
+sys_bind(UDP): all tests passed
+sys_bind(TCP): test passed
+sys_listen: all tests passed
+sys_recvfrom: all tests passed
+sys_read(UDP): all tests passed
+buffer cap (MAX_IO=65536): all tests passed
+sys_write(UDP): tests passed
+sys_sendto: all tests passed
+sys_accept4: error case tests passed
+sys_connect: error case tests passed
+sys_getpid:
+fd allocation order: test passed
+sys_listen: unbound socket test passed
+sys_bind: double-bind on UDP returned EADDRINUSE
+sys_bind: double-bind on TCP socket passed
+all socket syscall tests passed

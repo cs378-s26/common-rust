@@ -11,7 +11,7 @@ use crate::{
         Ipv4Addr,
         arp::{ARP_TABLE, build_arp_request},
         ethernet::{EtherType, MacAddr, build_ethernet_frame},
-        ipv4::{Protocol, build_ipv4_packet},
+        ipv4::{Protocol, build_ipv4_packet, get_net_config},
         socket::{TcpSocket, UdpSocket},
         tcp::TcpConn,
         udp::{UDP_DEMUX, UdpSink, build_udp_packet},
@@ -25,6 +25,9 @@ const EFAULT: i64 = -14;
 const EIO: i64 = -5;
 const EINVAL: i64 = -22;
 const ENOTSOCK: i64 = -88;
+const EADDRINUSE: i64 = -98;
+
+const MAX_IO: usize = 65536;
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -242,6 +245,7 @@ fn sys_read(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, buf_ptr: u
     if !ctx.is_user_address(buf_ptr) {
         return EFAULT;
     }
+    if count as usize > MAX_IO { return EINVAL; }
     let mut kernel_buf: Vec<u8> = vec![0u8; count as usize];
     match file.read(&mut kernel_buf) {
         Ok(n) => {
@@ -258,6 +262,7 @@ fn sys_write(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, buf_ptr: 
     if !ctx.is_user_address(buf_ptr) {
         return EFAULT;
     }
+    if count as usize > MAX_IO { return EINVAL; }
     let mut kernel_buf: Vec<u8> = vec![0u8; count as usize];
     unsafe { copy_from_user(buf_ptr, &mut kernel_buf); }
     match file.write(&kernel_buf) {
@@ -349,7 +354,19 @@ fn sys_bind(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, sockaddr_p
     let Some(process) = thread.process.get() else { return EBADF; };
     let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
 
-    let Ok(socket) = file.as_any_arc().downcast::<UdpSocket>() else { return ENOTSOCK; };
+    let Ok(socket) = file.as_any_arc().downcast::<UdpSocket>() else {
+        // check if it's a TCP socket and bind that instead
+        let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+        let Ok(tcp_sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
+        let mut inner = tcp_sock.conn.inner.lock();
+        inner.local_addr = ip;
+        inner.local_port = port;
+        return 0;
+    };
+
+    if UDP_DEMUX.is_port_bound(port) {
+        return EADDRINUSE;
+    }
 
     socket.bind(ip, port);
     UDP_DEMUX.register(port, Arc::clone(&socket) as Arc<dyn UdpSink>);
@@ -390,6 +407,7 @@ fn sys_sendto(
 
     // read payload from user
     let count = len as usize;
+    if count > MAX_IO { return EINVAL; }
     let mut payload = alloc::vec![0u8; count];
     unsafe { copy_from_user(buf_ptr, &mut payload); }
 
@@ -422,6 +440,7 @@ fn sys_sendto(
                 }
             }
 
+            // TODO: add timeout — promise.get() blocks forever if ARP reply never arrives
             promise.get()
         }
     };
@@ -497,7 +516,7 @@ fn sys_listen(thread: &Arc<Thread>, fd: u64, _backlog: u64) -> i64 {
     0
 }
 
-fn sys_accept4(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_ptr: u64, _addrlen_ptr: u64) -> i64 {
+fn sys_accept4(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_ptr: u64, addrlen_ptr: u64) -> i64 {
     let Some(process) = thread.process.get() else { return EBADF; };
     let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
     let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
@@ -513,6 +532,11 @@ fn sys_accept4(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_pt
         buf[2..4].copy_from_slice(&inner.remote_port.to_be_bytes());
         buf[4..8].copy_from_slice(&inner.remote_addr.0);
         unsafe { copy_to_user(addr_ptr, &buf); }
+
+        // write the filled address length back (POSIX requirement)
+        if addrlen_ptr != 0 && ctx.is_user_address(addrlen_ptr) {
+            unsafe { copy_to_user(addrlen_ptr, &16u32.to_ne_bytes()); }
+        }
     }
 
     let new_fd = process.fd_table.lock().insert(TcpSocket::new(child_conn));
@@ -522,6 +546,11 @@ fn sys_accept4(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_pt
 fn sys_connect(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_ptr: u64, _addrlen: u64) -> i64 {
     const AF_INET: u16 = 2;
     const BUF_SIZE: usize = 1536;
+
+    // POSIX: EBADF takes precedence over EINVAL, so check fd first
+    let Some(process) = thread.process.get() else { return EBADF; };
+    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
+    let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
 
     if !ctx.is_user_address(addr_ptr) {
         return EFAULT;
@@ -535,10 +564,6 @@ fn sys_connect(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_pt
     let dst_port = u16::from_be_bytes([addr_buf[2], addr_buf[3]]);
     let dst_ip   = Ipv4Addr([addr_buf[4], addr_buf[5], addr_buf[6], addr_buf[7]]);
 
-    let Some(process) = thread.process.get() else { return EBADF; };
-    let Some(file) = process.fd_table.lock().get(fd as i32) else { return EBADF; };
-    let Ok(sock) = file.as_any_arc().downcast::<TcpSocket>() else { return ENOTSOCK; };
-
     let our_mac = {
         let devs = NETWORK_DEVICES.lock();
         match devs.first() {
@@ -551,7 +576,16 @@ fn sys_connect(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_pt
     let dst_mac = match ARP_TABLE.resolve(dst_ip) {
         Some(mac) => mac,
         None => {
-            let src_ip = sock.conn.inner.lock().local_addr;
+            // if the socket was never bound, fall back to the kernel's configured IP
+            let src_ip = {
+                let addr = sock.conn.inner.lock().local_addr;
+                if addr.0 == [0, 0, 0, 0] {
+                    get_net_config().map(|c| c.ip).unwrap_or(addr)
+                } else {
+                    addr
+                }
+            };
+            // TODO: add timeout — promise.get() blocks forever if ARP reply never arrives
             let promise = ARP_TABLE.start_lookup(dst_ip);
 
             let mut arp_buf   = [0u8; 28];
@@ -574,7 +608,7 @@ fn sys_connect(thread: &Arc<Thread>, ctx: &impl SyscallContext, fd: u64, addr_pt
 
     sock.conn.connect(dst_ip, dst_port, dst_mac);
 
-    // block until the SYN-ACK arrives and we reach ESTABLISHED
+    // TODO: add timeout — blocks forever if SYN-ACK never arrives (host down, packet loss)
     sock.conn.connected.get();
 
     0

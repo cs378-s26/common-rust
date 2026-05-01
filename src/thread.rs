@@ -152,7 +152,7 @@ pub const fn new_thread_queue() -> ThreadQueue {
 
 // TODO: alignment here is ABI specific, this needs to be moved into src/arch
 #[repr(align(16))]
-struct Stack([u8; 4 * 4096]);
+struct Stack([u8; 64 * 4096]);
 
 core_local! {
     pub IDLE: OnceCell<Arc<Thread>> = OnceCell::new();

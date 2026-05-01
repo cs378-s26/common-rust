@@ -1,0 +1,15 @@
+Starting Testing Code...
+tcp: basic SYN roundtrip passed
+tcp: SYN+MSS roundtrip passed
+tcp: data payload roundtrip passed
+tcp: bad checksum rejection passed
+tcp: truncated input rejection passed
+udp: port conflict detection passed
+tcp: listen() state transition passed
+tcp: accept queue overflow detection passed
+tcp: SYN delivery and child creation passed
+tcp: full handshake and accept passed
+tcp: data transfer after established passed
+tcp: active close sequence passed
+tcp: passive close sequence passed
+tcp: connect() happy path passed
