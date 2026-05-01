@@ -54,6 +54,23 @@ impl<T, const N: usize> BoundedBuffer<T, N> {
         self.items.up();
     }
 
+    // Returns false and drops the item if the buffer is full.
+    pub fn try_push(&self, x: T) -> bool {
+        if !self.spaces.try_down() {
+            return false;
+        }
+        {
+            let mut st = self.state.lock();
+            debug_assert!(st.len < N);
+            let tail = st.tail;
+            st.buffer[tail].write(x);
+            st.tail = (tail + 1) % N;
+            st.len += 1;
+        }
+        self.items.up();
+        true
+    }
+
     // blocks if the buffer is empty
     pub fn pop(&self) -> T {
         self.items.down();

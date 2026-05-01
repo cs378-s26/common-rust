@@ -14,6 +14,14 @@ pub mod number {
     pub const CLONE: u64 = 220;
     pub const EXIT: u64 = 93;
     pub const GETPID: u64 = 172;
+    pub const SOCKET: u64 = 198;
+    pub const BIND: u64 = 200;
+    pub const LISTEN: u64 = 201;
+    pub const CONNECT: u64 = 203;
+    pub const SENDTO: u64 = 206;
+    pub const RECVFROM: u64 = 207;
+    pub const SHUTDOWN: u64 = 210;
+    pub const ACCEPT4: u64 = 242;
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -45,6 +53,14 @@ pub mod number {
     pub const PIPE2: u64 = 293;
     pub const EXIT: u64 = 60;
     pub const GETPID: u64 = 39;
+    pub const SOCKET: u64 = 41;
+    pub const CONNECT: u64 = 42;
+    pub const SENDTO: u64 = 44;
+    pub const RECVFROM: u64 = 45;
+    pub const SHUTDOWN: u64 = 48;
+    pub const BIND: u64 = 49;
+    pub const LISTEN: u64 = 50;
+    pub const ACCEPT4: u64 = 288;
 }
 
 // Constants for syscall translation via wrappers
