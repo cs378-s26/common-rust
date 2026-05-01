@@ -9,6 +9,7 @@ use crate::{
         ethernet::{EtherType, EthernetFrame, MacAddr, build_ethernet_frame},
         icmp::{IcmpEcho, build_echo_reply},
         ipv4::{Ipv4Header, NetConfig, Protocol, build_ipv4_packet, get_net_config},
+        tcp::TCP_DEMUX,
         udp::{UDP_DEMUX, UdpDatagram, UdpHeader},
     },
     thread::yield_thread,
@@ -97,6 +98,7 @@ fn handle_ipv4(payload: &[u8], frame_src_mac: MacAddr, our_mac: MacAddr, config:
     match ip.protocol {
         Protocol::Icmp => handle_icmp(ip.payload, ip.src, frame_src_mac, our_mac, config),
         Protocol::Udp => handle_udp(ip.payload, ip.src, ip.dst),
+        Protocol::Tcp => handle_tcp(ip.payload, ip.src, ip.dst, frame_src_mac),
         _ => {}
     }
 }
@@ -133,6 +135,10 @@ fn handle_icmp(
     {
         send(&frame_buf[..frame_len]);
     }
+}
+
+fn handle_tcp(payload: &[u8], src_ip: Ipv4Addr, dst_ip: Ipv4Addr, src_mac: MacAddr) {
+    TCP_DEMUX.deliver(src_ip, dst_ip, src_mac, payload);
 }
 
 fn handle_udp(payload: &[u8], src_ip: Ipv4Addr, dst_ip: Ipv4Addr) {

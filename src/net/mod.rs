@@ -4,6 +4,7 @@ pub mod icmp;
 pub mod ipv4;
 pub mod receive;
 pub mod socket;
+pub mod tcp;
 pub mod udp;
 
 /// an IPv4 address — shared between arp and ipv4
