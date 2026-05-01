@@ -15,7 +15,9 @@ use spin::{MutexGuard, Once};
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 use crate::{
-    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+    devices::discovery::DeviceDiscovery,
+    memory::{dma::MmioRegion, virtual_memory::PagingOptions},
+    mp::CoreId,
     print::CharSink,
 };
 
@@ -88,6 +90,16 @@ pub trait ArchTrait {
         irq_num: u8,
         handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
         irq_vec: Option<u8>,
+    );
+
+    /*
+     *  Same interface as register_irq_handler.
+     */
+    fn register_msix_handler(
+        msix_table: &MmioRegion,
+        table_off: u16,
+        irq_vec: Option<u8>,
+        handler: Box<dyn (Fn() -> Option<()>) + Send + Sync>,
     );
 
     /// save the current context and switch on to the provided temp stack & call fwd()

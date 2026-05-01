@@ -229,3 +229,14 @@ The current device layer is useful, but deliberately incomplete.
 - Discovery is tightly coupled to firmware parsing, not to hotplug or runtime bus enumeration.
 
 That makes the current model best thought of as an early kernel driver framework: enough structure to discover hardware, map it safely, and expose typed operations to the rest of the kernel, but not yet a full device-management stack.
+
+## PCI-E Interface
+
+Initialization for PCI-E devices is required to run in round 2 of device discovery. On initialization, an instance
+of `PcieFunction` will be passed to `i_am_this`. Several helper functions are provided in crate 
+`devices::discovery::pcie`. 
+
+### MSI-X Interrupts
+
+Register MSI-X Interrupt handlers using `get_msix_table` and `register_msix_handler`. We split MSI-X interrupt
+registration into two functions in case the user already allocated the BAR that the MSI-X table is in. 
