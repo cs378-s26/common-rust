@@ -7,6 +7,7 @@ use spin::Once;
 
 use crate::{print::kprintln, sync::IntMutex};
 
+#[derive(Clone)]
 pub struct Random(ChaCha20Rng);
 pub struct Seed([u8; 32]);
 

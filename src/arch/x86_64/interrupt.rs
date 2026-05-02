@@ -12,7 +12,12 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
-    arch::x86_64::context::FpuState, devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC, event::{Event, push_event}, memory::virtual_memory::PageFaultConditions, mp::CORE_ID, sync::{IntMutex, MutexLike}
+    arch::x86_64::context::FpuState,
+    devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
+    event::{Event, push_event},
+    memory::virtual_memory::PageFaultConditions,
+    mp::CORE_ID,
+    sync::{IntMutex, MutexLike},
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -65,13 +70,12 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 
 #[unsafe(naked)]
 unsafe extern "C" fn irq_handler_t0() -> ! {
-
     naked_asm!(
         "pushq %rbp",
 
         "addq $-512, %rsp",
         "fxsave (%rsp)",
-        
+
         "pushq %rax",
         "pushq %rcx",
         "pushq %rdx",
@@ -210,7 +214,13 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
             unsafe { crate::thread::block_to_idle(context) };
         }
         13 => {
-            panic!("General protection violation. PC {:x}, SP {:x}, err {:x}, CPL {:x}", context.rip, context.rsp, context.err, context.cs & 0b11);
+            panic!(
+                "General protection violation. PC {:x}, SP {:x}, err {:x}, CPL {:x}",
+                context.rip,
+                context.rsp,
+                context.err,
+                context.cs & 0b11
+            );
         }
         _ => {
             handle_device_interrupt(context.id as u8);

@@ -99,10 +99,14 @@ impl Process {
 #[cfg(test)]
 mod test {
     use crate::{
-        arch::{Arch, ArchTrait}, memory::{
+        arch::{Arch, ArchTrait},
+        memory::{
             physical_memory::frame_alloc, virtual_memory::PagingOptions,
             virtual_memory_2::VirtualMemory,
-        }, print::kprintln, process::Process, thread::yield_thread
+        },
+        print::kprintln,
+        process::Process,
+        thread::yield_thread,
     };
 
     #[test_case]

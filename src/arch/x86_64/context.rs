@@ -40,10 +40,7 @@ pub struct GPRegisters {
 
 #[repr(align(16))]
 #[derive(Debug, Clone, Copy)]
-pub struct FpuState(
-    #[allow(unused)]
-    [u8; 512]
-);
+pub struct FpuState(#[allow(unused)] [u8; 512]);
 
 #[derive(Debug, Clone, Copy)]
 pub struct Context {

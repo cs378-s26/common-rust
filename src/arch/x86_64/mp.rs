@@ -7,7 +7,9 @@ use core::{
 use limine::mp::Cpu;
 use spin::Once;
 use x86::{
-    controlregs::{Cr0, Cr4, cr0, cr0_write, cr4, cr4_write}, cpuid::CpuId, msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr}
+    controlregs::{Cr0, Cr4, cr0, cr0_write, cr4, cr4_write},
+    cpuid::CpuId,
+    msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
 };
 
 use crate::{
@@ -166,6 +168,5 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
 
         core::arch::asm!("fninit");
         core::arch::asm!("ldmxcsr [{}]", in(reg) &0x1F80u32);
-
     };
 }
