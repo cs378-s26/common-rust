@@ -136,7 +136,3 @@ writing to properly mapped vmem
 reading from properly mapped vmem
 properly unmapping vmem
 virtual memory allocation test complete
-virtual memory patterns test started
-virtual memory patterns test completed
-virtual memory threading test started
-virtual memory threading test complete
