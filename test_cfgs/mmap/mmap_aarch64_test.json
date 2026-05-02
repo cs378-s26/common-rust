@@ -1,10 +1,10 @@
 {
     "is_unittest": false,
-    "test_name": "virtual_memory",
+    "test_name": "mmap",
     "n_runs": 1,
     "timeout_ms": 60000,
-    "expected_output_path": "test_cfgs/virtual_memory/out.txt",
-    "filesystem_path": "test_cfgs/virtual_memory/dir",
+    "expected_output_path": "test_cfgs/mmap/out.txt",
+    "filesystem_path": "test_cfgs/mmap/dir",
     "target": "aarch64",
     "qemu_args": [
         "-machine",
