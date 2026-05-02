@@ -1,2 +1,5 @@
 Starting Testing Code...
-Virtual memory done!
+virtual memory patterns test started
+virtual memory patterns test completed
+virtual memory threading test started
+virtual memory threading test complete

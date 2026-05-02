@@ -4,7 +4,6 @@
     "n_runs": 1,
     "timeout_ms": 60000,
     "expected_output_path": "test_cfgs/virtual_memory/out.txt",
-    "filesystem_path": "test_cfgs/virtual_memory/dir",
     "target": "aarch64",
     "qemu_args": [
         "-machine",
