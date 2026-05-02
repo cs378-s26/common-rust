@@ -130,6 +130,10 @@ impl ArchTrait for Arch {
         read_tsc()
     }
 
+    fn get_jiffy() -> u64 {
+        timer_ticks()
+    }
+
     const PAGE_SIZE: usize = 4096;
 
     fn configure_vm() {}

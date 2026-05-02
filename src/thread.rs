@@ -16,19 +16,12 @@ use core::{
 };
 
 use intrusive_collections::{
-    LinkedList, LinkedListAtomicLink, RBTreeAtomicLink, intrusive_adapter,
+    LinkedList, LinkedListAtomicLink, RBTree, RBTreeAtomicLink, RBTreeLink, intrusive_adapter,
 };
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
-    event::Event,
-    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
-    memory::virtual_memory_2::VirtualMemory,
-    mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
-    process::Process,
-    state::{Irq, StateGuard},
-    sync::{IntSpinLock, MutexLike},
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core}, event::Event, local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage}, memory::virtual_memory_2::VirtualMemory, mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local}, print::{self, kprint, kprintln}, process::Process, state::{Irq, StateGuard}, sync::{IntSpinLock, MutexLike}
 };
 
 pub struct Thread {
@@ -531,4 +524,107 @@ pub fn spawn_user_thread(process: &Arc<Process>, pc: usize, sp: usize) {
     let thread = make_user_thread(process, pc, sp);
     GLOBAL_WORK_QUEUE.lock().push_back(thread);
     Arch::wake_other_cores();
+}
+
+// sleeping logic
+
+use intrusive_collections::KeyAdapter;
+
+struct SleepContext {
+    thread: Arc<Thread>,
+    wakeup_tick: u64,
+    link: RBTreeLink,
+}
+
+intrusive_adapter!(SleepQueueAdapter = Box<SleepContext>: SleepContext { link => RBTreeLink });
+impl<'a> KeyAdapter<'a> for SleepQueueAdapter {
+    type Key = u64;
+    fn get_key(&self, x: &'a SleepContext) -> u64 {
+        x.wakeup_tick
+    }
+}
+
+static SLEEP_QUEUE: Once<IntSpinLock<RBTree<SleepQueueAdapter>>> = Once::new();
+
+pub fn init_sleep() {
+    SLEEP_QUEUE.call_once(|| IntSpinLock::new(RBTree::new(SleepQueueAdapter::new())));
+    // sleep (paralysis) demon
+    spawn_thread(|| {
+        // wake up sleeping threads
+        loop {
+            let mut sleepers = SLEEP_QUEUE.get().unwrap().lock();
+            let mut cursor = sleepers.front_mut();
+            while let Some(ctx) = cursor.get() {
+                if ctx.wakeup_tick < Arch::get_jiffy() {
+                    let ctx = cursor.remove().unwrap();
+                    schedule_thread(ctx.thread);
+                } else {
+                    break;
+                }
+            }
+            drop(sleepers); // try not to hold locks across context switch challenge: impossible
+            yield_thread();
+        }
+    });
+}
+
+pub fn sleep(ms: u64) {
+    let ctx = Box::new(SleepContext {
+        thread: THIS_THREAD.get().unwrap().upgrade().unwrap(),
+        wakeup_tick: Arch::get_jiffy() + ms,
+        link: RBTreeLink::new(),
+    });
+    
+    let guard = StateGuard::<Irq>::guard();
+    if PINNED_TO_CORE.load(Ordering::Relaxed) {
+        CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
+    }
+    drop(guard);
+
+    let _guard = StateGuard::<Irq>::preserve();
+    let mut sleepers = SLEEP_QUEUE.get().unwrap().lock_no_restore_irq();
+    sleepers.insert(ctx);
+
+    // can't drop the sleepers lock yet as we're still running
+    suspend_impl(
+        move |_| {
+            drop(sleepers); // okay to just drop the queue here, because we locked it with
+            // lock_no_restore_irq, so there's no chance of irqs randomly being
+            // restored here
+            //
+            // the _guard is used to actually restore irq state when needed
+        },
+        IDLE.get().unwrap().clone(),
+    );
+}
+
+
+#[cfg(test)]
+mod test {
+
+    use alloc::sync::Arc;
+
+    use crate::{
+        print::kprintln,
+        sync::Semaphore,
+        thread::{sleep, spawn_thread},
+    };
+
+    #[test_case]
+    fn test_sleeping() {
+        let sem = Arc::new(Semaphore::new(0));
+        for i in 1..4 {
+            let clone = sem.clone();
+            kprintln!("spawning sleeper {}", i);
+            spawn_thread(move || {
+                sleep((4 - i) * 100); // should be long enough for our fairness guarantees
+                kprintln!("sleeper {} finished", i);
+                clone.up();
+            });
+        }
+        // make sure test case doesn't pollute others
+        for i in 1..4 {
+            sem.down();
+        }
+    }
 }

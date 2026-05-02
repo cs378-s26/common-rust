@@ -69,7 +69,7 @@ use crate::{
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
     state::{Irq, StateTrait},
-    thread::{poll_tasks, set_up_idle, spawn_thread},
+    thread::{poll_tasks, set_up_idle, spawn_thread, init_sleep},
 };
 
 // some sample limine requests, for no particular reason
@@ -302,6 +302,7 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
     //kprintln!("Idle thread set up!");
     all!({ init_coroutine_executor() });
     all!({ init_event_handler() });
+    one!({ init_sleep() });
     all!({ MP_STAGE.store(MPStage::MPPreempt, Ordering::SeqCst) });
     one!({
         kprintln!("Starting second round of device discovery...");
