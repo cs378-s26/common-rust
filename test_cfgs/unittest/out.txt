@@ -140,3 +140,9 @@ virtual memory patterns test started
 virtual memory patterns test completed
 virtual memory threading test started
 virtual memory threading test complete
+spawning sleeper 1
+spawning sleeper 2
+spawning sleeper 3
+sleeper 3 finished
+sleeper 2 finished
+sleeper 1 finished

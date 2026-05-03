@@ -110,6 +110,7 @@ pub trait ArchTrait {
     unsafe fn get_thread_local_pointer() -> u64;
 
     fn read_cycle_counter() -> u64;
+    fn get_jiffy() -> u64;
     const PAGE_SIZE: usize;
     fn get_kernel_address_space() -> u64;
     fn get_user_address_space() -> u64;

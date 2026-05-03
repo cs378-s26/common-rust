@@ -107,6 +107,10 @@ impl ArchTrait for Arch {
         asm::read_cycle_counter()
     }
 
+    fn get_jiffy() -> u64 {
+        timer_ticks()
+    }
+
     const PAGE_SIZE: usize = 4096;
 
     fn get_kernel_address_space() -> u64 {
