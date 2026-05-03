@@ -104,9 +104,12 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+#[cfg(not(test))]
 fn usual_main() {
     kprintln!("Entered kernel");
-    loop {}
+    loop {
+        core::hint::spin_loop()
+    }
 }
 
 pub struct KernelWork;
@@ -175,7 +178,6 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
 
     init_physical_memory_allocator();
     init_virtual_memory_allocator();
-    init_global_rng();
     init_pid_allocator();
 
     VirtualMemory::init();
@@ -188,6 +190,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     kprintln!("First round of device discovery...");
     discover_devices(true);
     kprintln!("Finished first round of device discovery.");
+
+    init_global_rng();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,

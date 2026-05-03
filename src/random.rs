@@ -5,7 +5,10 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use spin::Once;
 
-use crate::{print::kprintln, sync::IntMutex};
+use crate::{
+    print::kprintln,
+    sync::{IntMutex, MutexLike},
+};
 
 #[derive(Clone)]
 pub struct Random(ChaCha20Rng);
@@ -31,8 +34,12 @@ pub trait Hashable {
 impl Hashable for u64 {
     fn hash(&self) -> Seed {
         let mut buffer = [0; 32];
-        for i in 0..core::mem::size_of::<u64>() {
-            buffer[i] = (self >> (8 * i)) as u8
+        for (i, item) in buffer
+            .iter_mut()
+            .enumerate()
+            .take(core::mem::size_of::<u64>())
+        {
+            *item = (self >> (8 * i)) as u8
         }
         Seed(buffer)
     }
@@ -46,7 +53,33 @@ impl Hashable for u8 {
     }
 }
 
-// TODO think about this after the interface changes
+impl<T: Hashable> Hashable for [T] {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        for i in 0..self.len() {
+            let seed = self.hash();
+            for j in 0..32 {
+                buffer[(i + j) % 32] ^= seed.0[j];
+            }
+        }
+        Seed(buffer)
+    }
+}
+
+use alloc::vec::Vec;
+impl<T: Hashable> Hashable for Vec<T> {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        for i in 0..self.len() {
+            let seed = self.hash();
+            for j in 0..32 {
+                buffer[(i + j) % 32] ^= seed.0[j];
+            }
+        }
+        Seed(buffer)
+    }
+}
+
 // impl<T: Hashable, const N: usize> Hashable for [T; N] {
 //     fn hash(&self) -> Seed {
 //         let mut buffer = [0; 32];
@@ -113,10 +146,42 @@ impl Random {
     }
 }
 
+impl Default for Random {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub static GLOBAL_RNG: Once<IntMutex<Random>> = Once::new();
 
+use alloc::sync::Arc;
+
+use crate::fs::dev::allocate_device_inode;
 pub fn init_global_rng() {
     GLOBAL_RNG.call_once(|| IntMutex::new(Random::new()));
+    allocate_device_inode("random", Arc::new(RandomDevice))
+        .expect("failed to register dev/random in DevFS");
+}
+
+struct RandomDevice;
+use crate::fs::vfs::VFSDevice;
+impl VFSDevice for RandomDevice {
+    fn read_unaligned(
+        &self,
+        _: usize,
+        buffer: &mut [u8],
+    ) -> Result<usize, crate::fs::vfs::FsError> {
+        // we don't have the notion of an active process yet :(
+        let mut rng = GLOBAL_RNG.get().unwrap().lock();
+        rng.fill(buffer);
+        Ok(buffer.len())
+    }
+
+    fn write_unaligned(&self, _: usize, buffer: &[u8]) -> Result<usize, crate::fs::vfs::FsError> {
+        let mut rng = GLOBAL_RNG.get().unwrap().lock();
+        rng.inject(&buffer.to_vec());
+        Ok(buffer.len())
+    }
 }
 
 #[cfg(test)]
@@ -131,7 +196,7 @@ mod test {
         rng.generate::<u64>();
         let mut buffer = [0; 42];
         rng.fill(&mut buffer);
-        rng.inject(&mut buffer[0]);
+        rng.inject(&buffer[0]);
         let mut rng2 = rng.fork();
         assert!(rng2.generate::<[u32; 8]>() != rng.generate::<[u32; 8]>());
     }
