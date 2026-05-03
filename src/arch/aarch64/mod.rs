@@ -108,7 +108,7 @@ impl ArchTrait for Arch {
     }
 
     fn get_jiffy() -> u64 {
-        timer_ticks();
+        timer_ticks()
     }
 
     const PAGE_SIZE: usize = 4096;
