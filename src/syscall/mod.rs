@@ -118,15 +118,15 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
                 // TODO set errno to einval when it exists
                 return;
             }
-            let tv_sec = unsafe {*(timespec_ptr as *const u64)};
-            let tv_nsec = unsafe {*(timespec_ptr as *const u64)};
+            let tv_sec = unsafe { *(timespec_ptr as *const u64) };
+            let tv_nsec = unsafe { *(timespec_ptr as *const u64) };
             // real Linux syscall behavior, don't ask why
             if tv_nsec > 999999999 {
                 ctx.set_return_value(u64::MAX);
                 // TODO set errno to einval when it exists
                 return;
             }
-            // we don't have signals, so we ignore the second parameter 
+            // we don't have signals, so we ignore the second parameter
             sleep(tv_sec * 1000 + tv_nsec / 1000000);
             ctx.set_return_value(0);
         }

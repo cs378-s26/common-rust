@@ -69,7 +69,7 @@ use crate::{
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
     state::{Irq, StateTrait},
-    thread::{poll_tasks, set_up_idle, spawn_thread, init_sleep},
+    thread::{init_sleep, poll_tasks, set_up_idle, spawn_thread},
 };
 
 // some sample limine requests, for no particular reason

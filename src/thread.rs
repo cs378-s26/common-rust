@@ -21,7 +21,14 @@ use intrusive_collections::{
 use spin::{Mutex, MutexGuard, Once};
 
 use crate::{
-    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core}, event::Event, local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage}, memory::virtual_memory_2::VirtualMemory, mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local}, print::{self, kprint, kprintln}, process::Process, state::{Irq, StateGuard}, sync::{IntSpinLock, MutexLike}
+    arch::{Arch, ArchTrait, Context, ContextTrait, InterruptContext, sleep_core},
+    event::Event,
+    local_storage::{LocalStorage, LocalStorageHandler, impl_local_storage},
+    memory::virtual_memory_2::VirtualMemory,
+    mp::{CORE_ID, CoreId, MP_STAGE, MPStage, core_local},
+    process::Process,
+    state::{Irq, StateGuard},
+    sync::{IntSpinLock, MutexLike},
 };
 
 pub struct Thread {
@@ -574,7 +581,7 @@ pub fn sleep(ms: u64) {
         wakeup_tick: Arch::get_jiffy() + ms,
         link: RBTreeLink::new(),
     });
-    
+
     let guard = StateGuard::<Irq>::guard();
     if PINNED_TO_CORE.load(Ordering::Relaxed) {
         CORE_PINNED_TO.store(CORE_ID.get().0, Ordering::Relaxed);
@@ -597,7 +604,6 @@ pub fn sleep(ms: u64) {
         IDLE.get().unwrap().clone(),
     );
 }
-
 
 #[cfg(test)]
 mod test {
