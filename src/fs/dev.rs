@@ -1,5 +1,6 @@
 use alloc::{
     collections::btree_map::BTreeMap,
+    string::{String, ToString},
     sync::{Arc, Weak},
 };
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -7,8 +8,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 
 use crate::{
-    devices::Device,
-    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VNode},
+    fs::vfs::{Filesystem, FsError, INodeKey, INodeType, VFSDevice, VNode},
     sync::{IntMutex, MutexLike},
 };
 
@@ -17,14 +17,17 @@ pub static DEV: Once<Arc<Dev>> = Once::new();
 pub struct Dev {
     self_ref: Once<Weak<Self>>,
     counter: AtomicUsize,
-    devices: IntMutex<BTreeMap<usize, Option<Arc<dyn Device>>>>,
+    devices: IntMutex<BTreeMap<usize, Arc<dyn VFSDevice>>>,
+    root: Once<Arc<dyn VNode>>,
     fs_id: IntMutex<Option<usize>>,
 }
 
 pub struct DevINode {
     fs: Weak<Dev>,
     inumber: usize,
-    device: IntMutex<Option<Arc<dyn Device>>>,
+    device: IntMutex<Option<Arc<dyn VFSDevice>>>,
+    //Devices can have children!
+    children: IntMutex<BTreeMap<String, Arc<dyn VNode>>>,
 }
 
 impl Dev {
@@ -34,6 +37,7 @@ impl Dev {
             devices: IntMutex::new(BTreeMap::new()),
             fs_id: IntMutex::new(None),
             self_ref: Once::new(),
+            root: Once::new(),
         });
         fs.self_ref.call_once(|| Arc::downgrade(&fs));
         fs
@@ -41,18 +45,23 @@ impl Dev {
 
     fn alloc_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
         let devices = self.devices.lock();
-        let device = devices.get(&inumber).ok_or(FsError::ReadError)?;
-        let cloned_device;
+        let device = devices.get(&inumber);
         if let Some(device) = device {
-            cloned_device = Some(Arc::clone(device));
+            let arc_dev = device;
+            Ok(Arc::new(DevINode {
+                fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
+                device: IntMutex::new(Some(arc_dev.clone())),
+                inumber,
+                children: IntMutex::new(BTreeMap::new()),
+            }))
         } else {
-            cloned_device = None;
+            Ok(Arc::new(DevINode {
+                fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
+                device: IntMutex::new(None),
+                inumber,
+                children: IntMutex::new(BTreeMap::new()),
+            }))
         }
-        Ok(Arc::new(DevINode {
-            fs: self.self_ref.get().ok_or(FsError::ReadError)?.clone(),
-            device: IntMutex::new(cloned_device),
-            inumber,
-        }))
     }
 }
 
@@ -62,7 +71,16 @@ impl Filesystem for Dev {
     }
 
     fn get_inode(&self, inumber: usize) -> Result<Arc<dyn VNode>, FsError> {
-        if inumber == 0 || self.devices.lock().contains_key(&inumber) {
+        if inumber == 0 {
+            if let Some(root) = self.root.get() {
+                return Ok(root.clone());
+            } else {
+                let root = self.alloc_inode(0)?;
+                self.root.call_once(|| root.clone());
+                return Ok(root);
+            }
+        }
+        if self.devices.lock().contains_key(&inumber) {
             self.alloc_inode(inumber)
         } else {
             Err(FsError::NotFound)
@@ -91,18 +109,32 @@ impl VNode for DevINode {
         }
     }
 
-    fn create_child(&self, _: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
+    fn create_child(&self, fname: &str, inode_type: INodeType) -> Result<Arc<dyn VNode>, FsError> {
         if self.inumber != 0 || inode_type != INodeType::Other {
             return Err(FsError::InvalidOperation);
         }
         let fs = self.fs.upgrade().ok_or(FsError::ReadError)?;
         let inumber = fs.counter.fetch_add(1, Ordering::SeqCst);
-        fs.devices.lock().insert(inumber, None);
-        fs.alloc_inode(inumber)
+        let vnode = fs.alloc_inode(inumber);
+        self.children
+            .lock()
+            .insert(fname.to_string(), vnode.clone()?);
+        vnode
     }
 
-    fn set_device(&self, device: Arc<dyn Device>) -> Result<(), FsError> {
-        *self.device.lock() = Some(device);
+    fn lookup(&self, name: &str) -> Result<Arc<dyn VNode>, FsError> {
+        let children = self.children.lock();
+        if let Some(child) = children.get(name) {
+            Ok(Arc::clone(child))
+        } else {
+            Err(FsError::NotFound)
+        }
+    }
+
+    fn set_device(&self, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
+        let fs = self.fs.upgrade().ok_or(FsError::ReadError)?;
+        fs.devices.lock().insert(self.inumber, device.clone());
+        self.device.lock().replace(device);
         Ok(())
     }
 
@@ -113,6 +145,22 @@ impl VNode for DevINode {
 
     fn write_page(&self, _physical_address: usize, _offset: usize) -> Result<usize, FsError> {
         Err(FsError::NotImplemented)
+    }
+
+    fn read_unaligned(&self, _offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+        if let Some(device) = self.device.lock().as_ref() {
+            device.read_unaligned(_offset, buffer)
+        } else {
+            Err(FsError::InvalidOperation)
+        }
+    }
+
+    fn write_unaligned(&self, _offset: usize, buffer: &[u8]) -> Result<usize, FsError> {
+        if let Some(device) = self.device.lock().as_ref() {
+            device.write_unaligned(_offset, buffer)
+        } else {
+            Err(FsError::InvalidOperation)
+        }
     }
 
     fn get_inode_key(&self) -> Result<INodeKey, FsError> {
@@ -128,4 +176,15 @@ impl VNode for DevINode {
         };
         Ok(result)
     }
+}
+
+/*
+* Allocates a device inode accessible by the user under `/dev/<fname>. `
+*/
+pub fn allocate_device_inode(fname: &str, device: Arc<dyn VFSDevice>) -> Result<(), FsError> {
+    let dev: Arc<Dev> = DEV.get().unwrap().clone();
+    let root = dev.get_root()?;
+    let inode: Arc<dyn VNode> = root.create_child(fname, INodeType::Other)?;
+    inode.set_device(device)?;
+    Ok(())
 }
