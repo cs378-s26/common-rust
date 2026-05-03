@@ -1,90 +1,65 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{
-    cell::UnsafeCell,
-    sync::atomic::{AtomicUsize, Ordering},
-};
 
 use ps2::{Controller, error::ControllerError, flags::ControllerConfigFlags};
 use spin::Mutex;
 
-use crate::{arch::apic, print::kprintln, sync::Promise};
-
-const QUEUE_CAP: usize = 256;
-
-// Lock-free SPSC ring buffer. IRQ handler is the sole producer.
-struct ScancodeQueue {
-    buf: UnsafeCell<[u8; QUEUE_CAP]>,
-    head: AtomicUsize, // consumer index — only written by consumer
-    tail: AtomicUsize, // producer index — only written by IRQ handler
+use crate::{
+    Arch, ArchTrait,
+    arch::apic,
+    fs::vfs::{FsError, VFSDevice},
+    print::kprintln,
+    sync::Promise,
+};
+struct Ps2Keyboard {
+    keyboard_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>,
 }
 
-unsafe impl Sync for ScancodeQueue {}
+unsafe impl Send for Ps2Keyboard {}
+unsafe impl Sync for Ps2Keyboard {}
 
-impl ScancodeQueue {
-    const fn new() -> Self {
+impl Ps2Keyboard {
+    pub fn new() -> Self {
+        let keyboard_req_queue = Arc::new(Mutex::new(Vec::new()));
+        let kb = keyboard_req_queue.clone();
+        Arch::register_irq_handler(
+            1,
+            Box::new(move || Self::keyboard_irq_handler(keyboard_req_queue.clone())),
+            Some(0x69),
+        );
         Self {
-            buf: UnsafeCell::new([0u8; QUEUE_CAP]),
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
+            keyboard_req_queue: kb.clone(),
         }
     }
 
-    /// Push a byte. Called only from IRQ context (single producer).
-    /// Drops the incoming byte silently if the queue is full.
-    fn push(&self, val: u8) {
-        let tail = self.tail.load(Ordering::Relaxed);
-        let next = (tail + 1) % QUEUE_CAP;
-
-        if next == self.head.load(Ordering::Acquire) {
-            return; // full — drop byte; never write head from producer side
+    fn keyboard_irq_handler(kb_req_queue: Arc<Mutex<Vec<Arc<Promise<char>>>>>) -> Option<()> {
+        apic::eoi();
+        let scancode: u8 = unsafe { x86::io::inb(0x60) };
+        if let Some(ch) = decode_scancode(scancode) {
+            let mut req_queue = kb_req_queue.lock();
+            if let Some(top) = req_queue.last_mut() {
+                top.set(ch);
+                req_queue.pop();
+            }
         }
-        unsafe { (*self.buf.get())[tail] = val };
-        self.tail.store(next, Ordering::Release);
-    }
-
-    /// Pop a byte. Called from thread context (single consumer).
-    fn pop(&self) -> Option<u8> {
-        let head = self.head.load(Ordering::Relaxed);
-        if head == self.tail.load(Ordering::Acquire) {
-            return None;
-        }
-        // SAFETY: head is only written here (single consumer).
-        let val = unsafe { (*self.buf.get())[head] };
-        self.head.store((head + 1) % QUEUE_CAP, Ordering::Release);
-        Some(val)
+        Some(())
     }
 }
 
-static KEYBOARD_REQ_QUEUE: Mutex<Vec<Arc<Promise<char>>>> = Mutex::new(Vec::new());
-
-// Reads new keystrokes from keyboard.
-pub fn read() -> char {
-    let req = Arc::new(Promise::new());
-    KEYBOARD_REQ_QUEUE.lock().insert(0, req.clone());
-    req.get()
-}
-
-fn keyboard_irq_handler() -> Option<()> {
-    apic::eoi();
-    let scancode: u8 = unsafe { x86::io::inb(0x60) };
-    if let Some(ch) = decode_scancode(scancode) {
-        let mut req_queue = KEYBOARD_REQ_QUEUE.lock();
-        if let Some(top) = req_queue.last_mut() {
-            top.set(ch);
-            req_queue.pop();
+impl VFSDevice for Ps2Keyboard {
+    fn read_unaligned(&self, _offset: usize, buffer: &mut [u8]) -> Result<usize, FsError> {
+        if buffer.is_empty() {
+            return Ok(0);
         }
+        let req = Arc::new(Promise::new());
+        self.keyboard_req_queue.lock().insert(0, req.clone());
+        buffer[0] = req.get() as u8;
+        Ok(1)
     }
-    Some(())
-}
 
-static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
-
-pub fn enqueue_scancode(scancode: u8) {
-    SCANCODE_QUEUE.push(scancode);
-}
-
-pub fn dequeue_scancode() -> Option<u8> {
-    SCANCODE_QUEUE.pop()
+    fn write_unaligned(&self, _offset: usize, _buffer: &[u8]) -> Result<usize, FsError> {
+        // not writable
+        Err(FsError::InvalidOperation)
+    }
 }
 
 /// Lookup table: Set 2 make code → (unshifted char, shifted char).
@@ -201,15 +176,6 @@ fn map_err(e: ControllerError) -> &'static str {
     }
 }
 
-pub fn try_get_data() -> Option<char> {
-    let status = unsafe { x86::io::inb(0x64) };
-    if status & 0x1 == 0 {
-        None
-    } else {
-        decode_scancode(unsafe { x86::io::inb(0x60) })
-    }
-}
-
 pub fn reset() {
     wait_until_ready();
     unsafe { x86::io::outb(0x64, 0xFE) };
@@ -297,33 +263,10 @@ pub fn init_ps2() -> Result<(), &'static str> {
         ctrl.keyboard()
             .reset_and_self_test()
             .map_err(|_| "keyboard reset/self-test failed")?;
-        crate::arch::register_irq_handler(1, Box::new(keyboard_irq_handler), Some(0x69));
         kprintln!("PS2 keyboard IRQ handler registered");
+        let kb = Ps2Keyboard::new();
+        let _ = crate::fs::dev::allocate_device_inode("ps2kbd", Arc::new(kb));
     }
-
-    //for some reason, enabling mouse makes keyboard stop working
-    /*
-    if false {
-        ctrl.enable_mouse().map_err(|_| "enable_mouse failed")?;
-        config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
-        config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
-        ctrl.write_config(config).map_err(|_| "write_config (mouse) failed")?;
-        ctrl.mouse()
-            .reset_and_self_test()
-            .map_err(|_| "mouse reset/self-test failed")?;
-        kprintln!("[PS2] mouse reset+self-test: PASS");
-        match ctrl.mouse().enable_data_reporting() {
-            Ok(()) => kprintln!("[PS2] mouse data reporting enabled"),
-            Err(_) => kprintln!("[PS2] enable_data_reporting: failed (non-fatal)"),
-        }
-        /*
-        crate::arch::register_irq_handler(12, Box::new(|| {
-            apic::eoi();
-            kprintln!("Mouse IRQ handler called!");
-            Some(())    }), Some(0x68));
-        */
-    }
-    */
 
     // Write final config  this enables IRQs for all working devices.
     kprintln!(

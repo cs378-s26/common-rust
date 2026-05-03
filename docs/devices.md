@@ -13,6 +13,17 @@ The kernel's device model is intentionally small. There is:
 
 This is not a Unix-style device manager yet. There is no `devfs`, no file-descriptor layer, and no syscall surface that exposes these devices to userspace. Kernel code currently interacts with devices by taking them directly from the global registries in `src/devices/discovery/mod.rs`.
 
+### Interacting with Users
+
+The primary way to interact with users is via devfs. The kernel exposes function 
+```rust
+allocate_device_inode(fname: &str, device: Arc<dyn VFSDevice>) -> Result<(), FsError>
+```
+which creates a VNode accessible under `/dev/<fname>`. Calls to read/write on the VNode
+from the user will be routed to the device. It is required for the device driver
+state to implement trait `VFSDevice`. Default implementations exist for char devices,
+though it is recommended that you define your own
+
 ## Core Interfaces
 
 ### `Device`

@@ -1,10 +1,7 @@
 use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{
-    devices::Device,
-    sync::{IntMutex, MutexLike},
-};
+use crate::sync::{IntMutex, MutexLike};
 
 // TODO we probably don't want to cache on both the fs and the VFS level,
 type INodeCache = BTreeMap<usize, BTreeMap<usize, Arc<dyn VNode>>>;
@@ -23,6 +20,12 @@ pub enum FsError {
     NotImplemented,
     Corrupted(String),
     Other(String),
+}
+
+// Shim between the different variants of devices and the VFS
+pub trait VFSDevice: Send + Sync {
+    fn read_unaligned(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, FsError>;
+    fn write_unaligned(&self, offset: usize, buffer: &[u8]) -> Result<usize, FsError>;
 }
 
 pub struct VFS {
@@ -240,7 +243,7 @@ pub trait VNode: Send + Sync {
     }
 
     // should only be implemented for devices
-    fn set_device(&self, _device: Arc<dyn Device>) -> Result<(), FsError> {
+    fn set_device(&self, _: Arc<dyn VFSDevice>) -> Result<(), FsError> {
         Err(FsError::NotImplemented)
     }
 
