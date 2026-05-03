@@ -12,6 +12,7 @@ use x86_64::{registers::segmentation::GS, structures::idt::PageFaultErrorCode};
 
 use super::apic;
 use crate::{
+    arch::x86_64::context::FpuState,
     devices::discovery::acpi::IOAPIC_CPU_TO_LAPIC,
     event::{Event, push_event},
     memory::virtual_memory::PageFaultConditions,
@@ -28,6 +29,7 @@ pub fn timer_ticks() -> u64 {
 #[repr(C)]
 pub struct InterruptContext {
     pub regs: [u64; 14],
+    pub fpstate: FpuState,
     pub rbp: u64, // For preemptive context restore.
     pub id: u64,
     pub err: u64,
@@ -70,6 +72,10 @@ pub(super) unsafe extern "C" fn irq_handler_entry<const I: u8>() -> ! {
 unsafe extern "C" fn irq_handler_t0() -> ! {
     naked_asm!(
         "pushq %rbp",
+
+        "addq $-512, %rsp",
+        "fxsave (%rsp)",
+
         "pushq %rax",
         "pushq %rcx",
         "pushq %rdx",
@@ -117,6 +123,10 @@ unsafe extern "C" fn irq_handler_t0() -> ! {
         "popq %rdx",
         "popq %rcx",
         "popq %rax",
+
+        "fxrstor (%rsp)",
+        "addq $512, %rsp",
+
         "popq %rbp",
 
         "addq $16, %rsp",
@@ -202,6 +212,15 @@ unsafe extern "C" fn irq_handler_t1(addr: *mut InterruptContext) {
         SYSCALL => {
             push_event(Event::Syscall, CORE_ID.get(), false);
             unsafe { crate::thread::block_to_idle(context) };
+        }
+        13 => {
+            panic!(
+                "General protection violation. PC {:x}, SP {:x}, err {:x}, CPL {:x}",
+                context.rip,
+                context.rsp,
+                context.err,
+                context.cs & 0b11
+            );
         }
         _ => {
             handle_device_interrupt(context.id as u8);
@@ -303,6 +322,6 @@ fn handle_device_interrupt(irq_vec: u8) {
         }
     }
     if !has_handled {
-        panic!("Spurious interrupt on IRQ {}", irq_vec);
+        panic!("Spurious interrupt on IRQ {} at PC:", irq_vec);
     }
 }

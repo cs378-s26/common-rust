@@ -26,6 +26,7 @@ pub mod mp;
 pub mod panic;
 pub mod print;
 pub mod process;
+pub mod random;
 pub mod state;
 pub mod symbols;
 pub mod sync;
@@ -68,7 +69,9 @@ use crate::{
     mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
+    random::{GLOBAL_RNG, init_global_rng},
     state::{Irq, StateTrait},
+    sync::MutexLike,
     thread::{poll_tasks, set_up_idle, spawn_thread},
 };
 
@@ -101,9 +104,12 @@ pub trait KernelWorkTrait {
     fn work() -> ();
 }
 
+#[cfg(not(test))]
 fn usual_main() {
     kprintln!("Entered kernel");
-    loop {}
+    loop {
+        core::hint::spin_loop()
+    }
 }
 
 pub struct KernelWork;
@@ -184,6 +190,8 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
     kprintln!("First round of device discovery...");
     discover_devices(true);
     kprintln!("Finished first round of device discovery.");
+
+    init_global_rng();
 
     // note we don't need to do anything special here because rust doesn't have init_array
     // if we wanted once-initialized data, we would either provide our custom mechanism,
@@ -273,7 +281,11 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         if !ONCE.swap(true, Ordering::SeqCst) {
             $code;
         }
-
+        GLOBAL_RNG
+            .get()
+            .unwrap()
+            .lock()
+            .inject(&Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 
@@ -283,6 +295,11 @@ unsafe extern "C" fn core_init<Work: KernelWorkTrait>(cpu: &Cpu) -> ! {
         // needs to be in an extra block to avoid namespace collisions
         static BARRIER: SpinBarrier = SpinBarrier::new();
         $code;
+        GLOBAL_RNG
+            .get()
+            .unwrap()
+            .lock()
+            .inject(&Arch::read_cycle_counter());
         BARRIER.wait(core_count);
     }}
 

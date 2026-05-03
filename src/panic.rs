@@ -1,8 +1,24 @@
+use core::arch::asm;
+
 use crate::{
     arch::{Arch, ArchTrait},
     print::kprintln,
     *,
 };
+
+#[inline(always)]
+pub fn assert_aligned() {
+    let rsp: u64;
+    unsafe {
+        asm!("mov {}, rsp", out(reg) rsp);
+    }
+    let rip: u64;
+    unsafe {
+        asm!("lea {}, [rip]", out(reg) rip);
+    }
+    kprintln!("rsp: {:x}, rip: {:x}", rsp, rip);
+    assert!(rsp.is_multiple_of(16), "misaligned stack pointer: {}", rsp);
+}
 
 #[inline(always)]
 #[allow(dead_code)]

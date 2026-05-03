@@ -7,6 +7,7 @@ use core::{
 use limine::mp::Cpu;
 use spin::Once;
 use x86::{
+    controlregs::{Cr0, Cr4, cr0, cr0_write, cr4, cr4_write},
     cpuid::CpuId,
     msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
 };
@@ -153,4 +154,19 @@ pub unsafe fn initialize_core(cpu: &Cpu) {
         let initial_count = (apic_freq / timer_hz) as u32;
         apic::setup_timer(TIMER_INTERRUPT, initial_count, true);
     }
+
+    unsafe {
+        let mut old_cr0 = cr0();
+        old_cr0.insert(Cr0::CR0_MONITOR_COPROCESSOR);
+        old_cr0.remove(Cr0::CR0_EMULATE_COPROCESSOR);
+        cr0_write(old_cr0);
+
+        let mut old_cr4 = cr4();
+        old_cr4.insert(Cr4::CR4_ENABLE_SSE);
+        old_cr4.remove(Cr4::CR4_UNMASKED_SSE);
+        cr4_write(old_cr4);
+
+        core::arch::asm!("fninit");
+        core::arch::asm!("ldmxcsr [{}]", in(reg) &0x1F80u32);
+    };
 }

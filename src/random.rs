@@ -1,0 +1,203 @@
+use core::array::from_fn;
+
+// "never, ever try to roll your own crypto" - david wu
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
+use spin::Once;
+
+use crate::{
+    print::kprintln,
+    sync::{IntMutex, MutexLike},
+};
+
+#[derive(Clone)]
+pub struct Random(ChaCha20Rng);
+pub struct Seed([u8; 32]);
+
+/// Combines two seeds together
+/// # Safety
+/// For every value of new, must be a bijection from values of old to returned values
+fn combine(mut old: Seed, new: Seed) -> Seed {
+    for i in 0..32 {
+        old.0[i] ^= new.0[i]
+    }
+    old
+}
+
+// TODO make trait implementation easier with macros
+
+pub trait Hashable {
+    fn hash(&self) -> Seed;
+}
+
+//  TODO numeric types can be further special cases
+impl Hashable for u64 {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        for (i, item) in buffer
+            .iter_mut()
+            .enumerate()
+            .take(core::mem::size_of::<u64>())
+        {
+            *item = (self >> (8 * i)) as u8
+        }
+        Seed(buffer)
+    }
+}
+
+impl Hashable for u8 {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        buffer[0] = *self;
+        Seed(buffer)
+    }
+}
+
+impl<T: Hashable> Hashable for [T] {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        for i in 0..self.len() {
+            let seed = self.hash();
+            for j in 0..32 {
+                buffer[(i + j) % 32] ^= seed.0[j];
+            }
+        }
+        Seed(buffer)
+    }
+}
+
+use alloc::vec::Vec;
+impl<T: Hashable> Hashable for Vec<T> {
+    fn hash(&self) -> Seed {
+        let mut buffer = [0; 32];
+        for i in 0..self.len() {
+            let seed = self.hash();
+            for j in 0..32 {
+                buffer[(i + j) % 32] ^= seed.0[j];
+            }
+        }
+        Seed(buffer)
+    }
+}
+
+// impl<T: Hashable, const N: usize> Hashable for [T; N] {
+//     fn hash(&self) -> Seed {
+//         let mut buffer = [0; 32];
+//         for i in 0..core::mem::size_of::<u64>() {
+//             buffer[i] = (self >> 8 * i) as u8
+//         }
+//         Seed(buffer)
+//     }
+// }
+
+// rust sucks :(
+// impl<T: Iterator> Hashable for T where T::Item: Hashable {
+//     fn hash(&self) -> Seed {
+//         if let Some(next) = T::next(&mut self) {
+//             combine(self.hash(), next.hash())
+//         } else {
+//             Seed([0; 32])
+//         }
+//     }
+// }
+
+pub trait Randomizable {
+    fn generate(rng: &mut Random) -> Self;
+}
+
+impl Randomizable for u64 {
+    fn generate(rng: &mut Random) -> Self {
+        kprintln!("generating randomness");
+        let v = rng.0.next_u64();
+        kprintln!("generated randomness");
+        v
+    }
+}
+
+impl Randomizable for u32 {
+    fn generate(rng: &mut Random) -> Self {
+        rng.0.next_u32()
+    }
+}
+
+impl<T: Randomizable, const N: usize> Randomizable for [T; N] {
+    fn generate(rng: &mut Random) -> Self {
+        from_fn(|_| rng.generate())
+    }
+}
+
+impl Random {
+    pub fn new() -> Random {
+        Random(ChaCha20Rng::from_seed([0; 32]))
+    }
+    fn fill(&mut self, buffer: &mut [u8]) {
+        self.0.fill_bytes(buffer);
+    }
+    pub fn generate<T: Randomizable>(&mut self) -> T {
+        T::generate(self)
+    }
+    pub fn inject(&mut self, data: &dyn Hashable) {
+        let mut buffer = [0; 32];
+        self.fill(&mut buffer);
+        self.0 = ChaCha20Rng::from_seed(combine(Seed(buffer), data.hash()).0);
+    }
+    pub fn fork(&mut self) -> Random {
+        Random(self.0.fork())
+    }
+}
+
+impl Default for Random {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub static GLOBAL_RNG: Once<IntMutex<Random>> = Once::new();
+
+use alloc::sync::Arc;
+
+use crate::fs::dev::allocate_device_inode;
+pub fn init_global_rng() {
+    GLOBAL_RNG.call_once(|| IntMutex::new(Random::new()));
+    allocate_device_inode("random", Arc::new(RandomDevice))
+        .expect("failed to register dev/random in DevFS");
+}
+
+struct RandomDevice;
+use crate::fs::vfs::VFSDevice;
+impl VFSDevice for RandomDevice {
+    fn read_unaligned(
+        &self,
+        _: usize,
+        buffer: &mut [u8],
+    ) -> Result<usize, crate::fs::vfs::FsError> {
+        // we don't have the notion of an active process yet :(
+        let mut rng = GLOBAL_RNG.get().unwrap().lock();
+        rng.fill(buffer);
+        Ok(buffer.len())
+    }
+
+    fn write_unaligned(&self, _: usize, buffer: &[u8]) -> Result<usize, crate::fs::vfs::FsError> {
+        let mut rng = GLOBAL_RNG.get().unwrap().lock();
+        rng.inject(&buffer.to_vec());
+        Ok(buffer.len())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{print::kprintln, random::Random};
+
+    #[test_case]
+    fn test_rng() {
+        // can't print anything for now, so just checking if it runs
+        kprintln!("testing RNG");
+        let mut rng: Random = Random::new();
+        rng.generate::<u64>();
+        let mut buffer = [0; 42];
+        rng.fill(&mut buffer);
+        rng.inject(&buffer[0]);
+        let mut rng2 = rng.fork();
+        assert!(rng2.generate::<[u32; 8]>() != rng.generate::<[u32; 8]>());
+    }
+}

@@ -38,8 +38,13 @@ pub struct GPRegisters {
     pub r15: u64,
 }
 
+#[repr(align(16))]
+#[derive(Debug, Clone, Copy)]
+pub struct FpuState(#[allow(unused)] [u8; 512]);
+
 #[derive(Debug, Clone, Copy)]
 pub struct Context {
+    pub fp: FpuState,
     pub gp: GPRegisters,
     pub rip: u64,
     pub rflags: RFlags,
@@ -89,6 +94,7 @@ impl SyscallContext for Context {
 impl const Default for Context {
     fn default() -> Self {
         Self {
+            fp: FpuState([0; 512]),
             gp: GPRegisters {
                 rax: 0,
                 rbx: 0,
@@ -228,6 +234,7 @@ impl ContextTrait for Context {
                 rsp: _sp,
                 ..Default::default()
             },
+            fp: FpuState([0; 512]),
             cs: SegmentSelector::new(GlobalDescriptorTable::USER_CS, Ring::Ring3)
                 .bits()
                 .into(),
@@ -264,6 +271,7 @@ impl Context {
         self.gp.rsp = ctx.rsp;
         self.rip = ctx.rip;
         self.rflags = RFlags::from_bits_truncate(ctx.rflags);
+        self.fp = ctx.fpstate;
     }
 }
 
