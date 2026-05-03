@@ -629,7 +629,7 @@ mod test {
             });
         }
         // make sure test case doesn't pollute others
-        for i in 1..4 {
+        for _ in 1..4 {
             sem.down();
         }
     }
