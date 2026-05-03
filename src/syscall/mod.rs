@@ -5,7 +5,7 @@ pub use numbers::number;
 #[cfg(target_arch = "x86_64")]
 pub use numbers::wrapper_constants::*;
 
-use crate::thread::Thread;
+use crate::thread::{Thread, sleep};
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -105,6 +105,30 @@ pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
             let exit_code = ctx.arg0() as i32;
             thread.process.get().unwrap().exit_code.set(exit_code);
             // TODO handle thread/process termination and cleanup, needs parent-child relationship most likely
+        }
+        number::NANOSLEEP => {
+            // https://man7.org/linux/man-pages/man2/nanosleep.2.html
+            let Some(timespec_ptr) = ctx.get_arg_ptr_safe(0) else {
+                ctx.set_return_value(u64::MAX);
+                // TODO set errno to einval when it exists
+                return;
+            };
+            if !ctx.is_user_address(timespec_ptr + 8) {
+                ctx.set_return_value(u64::MAX);
+                // TODO set errno to einval when it exists
+                return;
+            }
+            let tv_sec = unsafe {*(timespec_ptr as *const u64)};
+            let tv_nsec = unsafe {*(timespec_ptr as *const u64)};
+            // real Linux syscall behavior, don't ask why
+            if tv_nsec > 999999999 {
+                ctx.set_return_value(u64::MAX);
+                // TODO set errno to einval when it exists
+                return;
+            }
+            // we don't have signals, so we ignore the second parameter 
+            sleep(tv_sec * 1000 + tv_nsec / 1000000);
+            ctx.set_return_value(0);
         }
         number::GETPID => {
             ctx.set_return_value(thread.process.get().unwrap().get_pid() as u64);

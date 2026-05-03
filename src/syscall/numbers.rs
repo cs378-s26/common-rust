@@ -11,6 +11,7 @@ pub mod number {
     pub const PSELECT6: u64 = 72;
     pub const PPOLL: u64 = 73;
     pub const NEWFSTATAT: u64 = 79;
+    pub const NANOSLEEP: u64 = 101;
     pub const CLONE: u64 = 220;
     pub const EXIT: u64 = 93;
     pub const GETPID: u64 = 172;
@@ -28,6 +29,7 @@ pub mod number {
     pub const ACCESS: u64 = 21;
     pub const PIPE: u64 = 22;
     pub const SELECT: u64 = 23;
+    pub const NANOSLEEP: u64 = 35;
     pub const CLONE: u64 = 56;
     pub const FORK: u64 = 57;
     pub const VFORK: u64 = 58;
