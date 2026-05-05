@@ -3,6 +3,14 @@
 Our unittests are all inline. 
 Marking a function with `#[test_case]` in the `kernel_common` lib will let it get run via `cargo buildtool test`.
 
+You can also use the `unit_test!` macro to define a test case with expected output. The test will pass if the output of the test case matches the expected output. For example:
+```rust
+unit_test!("hello unit test world!", {
+    test_output!("hello unit test world!");
+});
+```
+The output will not be printed to serial unless the test fails, in which case the panic will display the diff.
+
 ## Integration Tests
 New integration tests can be defined by:
 1. Writing a kernel test binary crate in `tests/`
