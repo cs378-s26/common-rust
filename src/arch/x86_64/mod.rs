@@ -30,8 +30,7 @@ use context::save_context;
 pub use interrupt::*;
 pub use irq_vector::IPI_WAKE;
 use mp::{
-    get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
-    set_thread_local_pointer,
+    get_cpu_local_pointer, init_cpu_local_ptr, initialize_core,
 };
 pub use vmm::*;
 use x86::{
@@ -107,14 +106,6 @@ impl ArchTrait for Arch {
 
     fn set_cpu_local_pointer(core_id: CoreId) {
         init_cpu_local_ptr(core_id);
-    }
-
-    unsafe fn get_thread_local_pointer() -> u64 {
-        unsafe { get_thread_local_pointer() }
-    }
-
-    unsafe fn set_thread_local_pointer(base: *const u64) {
-        unsafe { set_thread_local_pointer(base) };
     }
 
     fn read_cycle_counter() -> u64 {

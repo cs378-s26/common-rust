@@ -66,6 +66,7 @@ fn default_exception_handler(exc: &mut ExceptionContext) {
             sp: exc.sp,
             pc: exc.elr_el1,
             spsr: exc.spsr_el1,
+            tpidr_el0: exc.tpidr_el0,
         };
         unsafe {
             block_to_idle(&interrupt_context);
@@ -126,6 +127,7 @@ fn page_fault_handler(e: &mut ExceptionContext, exception_class: u64) {
             sp: e.sp,
             pc: e.elr_el1,
             spsr: e.spsr_el1,
+            tpidr_el0: e.tpidr_el0,
         };
 
         unsafe {
@@ -147,6 +149,7 @@ fn timer_interrupt_handler(e: &mut ExceptionContext) {
         sp: e.sp,
         pc: e.elr_el1,
         spsr: e.spsr_el1,
+        tpidr_el0: e.tpidr_el0
     };
 
     gic::eoi(30);

@@ -21,8 +21,7 @@ pub use exceptions::{dump_core_state, init_exceptions};
 pub use gic::timer_ticks;
 pub use interrupt::*;
 use mp::{
-    get_cpu_local_pointer, get_thread_local_pointer, init_cpu_local_ptr, initialize_core,
-    set_thread_local_pointer,
+    get_cpu_local_pointer, init_cpu_local_ptr, initialize_core,
 };
 mod vmm;
 
@@ -85,14 +84,6 @@ impl ArchTrait for Arch {
 
     fn set_cpu_local_pointer(core_id: crate::mp::CoreId) {
         init_cpu_local_ptr(core_id);
-    }
-
-    unsafe fn get_thread_local_pointer() -> u64 {
-        unsafe { get_thread_local_pointer() }
-    }
-
-    unsafe fn set_thread_local_pointer(base: *const u64) {
-        unsafe { set_thread_local_pointer(base) };
     }
 
     fn read_cycle_counter() -> u64 {

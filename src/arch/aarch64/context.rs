@@ -28,6 +28,7 @@ pub struct Context {
     pub sp: u64,
     pub pc: u64,
     pub spsr: u64,
+    pub tpidr_el0: u64 // needed for user threads
 }
 
 fn slice_stack_ptr(stack: &[u8]) -> u64 {
@@ -48,6 +49,7 @@ impl ContextTrait for Context {
                 self.sp,
                 self.spsr,
                 self.pc,
+                self.tpidr_el0,
                 (self.spsr & 0b1111) == 0,
             );
         }
@@ -72,6 +74,7 @@ impl ContextTrait for Context {
             spsr: 0,
             pc,
             sp,
+            tpidr_el0: 0,
             ..Default::default()
         }
     }
@@ -117,6 +120,7 @@ impl const Default for Context {
             sp: Default::default(),
             pc: Default::default(),
             spsr: SPSR_MODE_EL1H | SPSR_IRQ_MASK, // EL1h with IRQ masked
+            tpidr_el0: Default::default(),
         }
     }
 }
@@ -127,6 +131,7 @@ impl Context {
         self.sp = ctx.sp;
         self.pc = ctx.pc;
         self.spsr = ctx.spsr;
+        self.tpidr_el0 = ctx.tpidr_el0;
     }
 }
 
@@ -136,6 +141,7 @@ unsafe extern "C" fn jump_to_context(
     _sp: u64,
     _spsr: u64,
     _pc: u64,
+    _tpidr_el0: u64,
     _is_user: bool,
 ) -> ! {
     naked_asm!(
@@ -144,12 +150,13 @@ unsafe extern "C" fn jump_to_context(
 
         // put the sp in the correct exception level sp depending on
         // 'is_user'
-        "cmp x4, #1",
+        "cmp x5, #1",
         "b.eq 1f",
         "mov sp, x1",
         "b 2f",
         "1:",
         "msr sp_el0, x1",
+        "msr tpidr_el0, x4",
         "2:",
         // set things up for eret
         "msr spsr_el1, x2",

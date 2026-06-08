@@ -90,15 +90,6 @@ pub trait ArchTrait {
     );
     fn set_cpu_local_pointer(core_id: CoreId);
     fn get_cpu_local_pointer() -> u64;
-
-    /// # Safety
-    /// Internal, do not call outside of thread module.
-    unsafe fn set_thread_local_pointer(base: *const u64);
-
-    /// # Safety
-    /// Internal, do not call outside of thread module.
-    unsafe fn get_thread_local_pointer() -> u64;
-
     fn read_cycle_counter() -> u64;
     const PAGE_SIZE: usize;
     fn get_kernel_address_space() -> u64;

@@ -131,7 +131,7 @@ Thread-local storage provides one instance of each variable per thread.
 The base pointer for TLS is retrieved using:
 
 ```
-Arch::get_thread_local_pointer()
+CUR_TLS_ADDR.get()
 ```
 
 Each thread receives its own copy of the `.thread_local` template region when it is created. The thread structure stores the address of this region

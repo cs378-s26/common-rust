@@ -8,7 +8,7 @@ use limine::mp::Cpu;
 use spin::Once;
 use x86::{
     cpuid::CpuId,
-    msr::{IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
+    msr::{IA32_GS_BASE, IA32_KERNEL_GSBASE, wrmsr},
 };
 
 use crate::{
@@ -49,24 +49,6 @@ pub fn get_cpu_local_pointer() -> u64 {
     unsafe {
         asm!(
             "movq %gs:0, {}",
-            lateout(reg) val,
-            options(nostack, preserves_flags, pure, readonly, att_syntax),
-        );
-    }
-
-    val
-}
-
-pub unsafe fn set_thread_local_pointer(base: *const u64) {
-    unsafe { wrmsr(IA32_FS_BASE, base as u64) };
-}
-
-pub unsafe fn get_thread_local_pointer() -> u64 {
-    let mut val: u64;
-
-    unsafe {
-        asm!(
-            "movq %fs:0, {}",
             lateout(reg) val,
             options(nostack, preserves_flags, pure, readonly, att_syntax),
         );

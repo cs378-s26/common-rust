@@ -54,30 +54,6 @@ pub fn get_cpu_local_pointer() -> u64 {
     unsafe { *(slot as *const u64) }
 }
 
-pub unsafe fn set_thread_local_pointer(base: *const u64) {
-    unsafe {
-        asm!(
-            "msr tpidr_el0, {}",
-            in(reg) base as u64,
-            options(nomem, nostack, preserves_flags),
-        )
-    };
-}
-
-pub unsafe fn get_thread_local_pointer() -> u64 {
-    let mut slot: u64;
-
-    unsafe {
-        asm!(
-            "mrs {} , tpidr_el0",
-            lateout(reg) slot,
-            options(nomem, nostack, preserves_flags),
-        );
-    }
-
-    unsafe { *(slot as *const u64) }
-}
-
 pub unsafe fn initialize_core(cpu: &Cpu) {
     enable_advsimd();
     let id = CoreId(cpu.extra.load(Ordering::SeqCst) as usize);

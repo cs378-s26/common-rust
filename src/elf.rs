@@ -29,6 +29,7 @@ mod ph_constants {
     pub const PT_LOAD: u32 = 1;
     pub const PT_NOTE: u32 = 4;
     pub const PT_TLS: u32 = 7;
+    pub const PT_GNU_EH_FRAME: u32 = 0x6474e550;
     pub const PT_GNU_STACK: u32 = 0x6474e551;
     pub const PT_GNU_RELRO: u32 = 0x6474e552;
     pub const PT_GNU_PROPERTY: u32 = 0x6474e553;
@@ -268,6 +269,9 @@ impl ElfLoader {
                 }
                 ph_constants::PT_NOTE => {
                     // Parse notes if needed later.
+                }
+                ph_constants::PT_GNU_EH_FRAME => {
+                    // Unwind metadata emitted by modern toolchains.
                 }
                 ph_constants::PT_GNU_STACK => {
                     // TODO: handle stack permissions. Save this somewhere probably.
