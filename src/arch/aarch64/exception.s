@@ -31,12 +31,14 @@
     cmp x4, #0b0000
     b.eq 1f
     add x3, sp, #18 * 16
+    mov x5, xzr
     b 2f
 1:      
     mrs x3, sp_el0
+    mrs x5, tpidr_el0
 2:
 
-    stp x3, xzr, [sp, #16 * 17] // store stack pointer, xzr is just to pad to keep stack 16B aligned
+    stp x3, x5, [sp, #16 * 17] // store stack pointer and user tcb pointer
 .endm
 
 .macro RESTORE_REGS

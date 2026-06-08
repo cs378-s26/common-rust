@@ -153,7 +153,7 @@ pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Ar
             process
                 .virtual_memory
                 .handle_page_fault(cause, address)
-                .unwrap();
+                .unwrap(); // TODO this will allow processes to break the kernel if they case bad faults
         } else {
             panic!("*** PAGE FAULT AT {:x} when no process exists ***", address);
         }
