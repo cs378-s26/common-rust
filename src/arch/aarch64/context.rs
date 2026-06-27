@@ -28,7 +28,7 @@ pub struct Context {
     pub sp: u64,
     pub pc: u64,
     pub spsr: u64,
-    pub tpidr_el0: u64 // needed for user threads
+    pub tpidr_el0: u64, // needed for user threads
 }
 
 fn slice_stack_ptr(stack: &[u8]) -> u64 {

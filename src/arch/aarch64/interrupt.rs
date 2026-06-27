@@ -7,7 +7,7 @@ pub struct InterruptContext {
     pub sp: u64,
     pub pc: u64,
     pub spsr: u64,
-    pub tpidr_el0: u64
+    pub tpidr_el0: u64,
 }
 
 pub const IPI_WAKE_VECTOR: u8 = 0;

@@ -51,7 +51,7 @@ struct ExceptionContext {
     spsr_el1: u64,
     esr_el1: u64,
     sp: u64,
-    tpidr_el0: u64
+    tpidr_el0: u64,
 }
 
 /// Prints verbose information about the exception and then panics.
@@ -149,7 +149,7 @@ fn timer_interrupt_handler(e: &mut ExceptionContext) {
         sp: e.sp,
         pc: e.elr_el1,
         spsr: e.spsr_el1,
-        tpidr_el0: e.tpidr_el0
+        tpidr_el0: e.tpidr_el0,
     };
 
     gic::eoi(30);
@@ -329,6 +329,8 @@ impl fmt::Display for ExceptionContext {
         writeln!(f, "ELR_EL1: {:#018x}", self.elr_el1)?;
         writeln!(f, "SPSR_EL1: {:#010x}", self.spsr_el1)?;
         writeln!(f, "ESR_EL1: {:#010x}", self.esr_el1)?;
+        writeln!(f, "TPIDR_EL0: {:#018x}", self.tpidr_el0)?;
+        writeln!(f, "sp: {:#018x}", self.sp)?;
 
         let _ = writeln!(f, "coreid {}", CORE_ID.get());
 

@@ -5,7 +5,7 @@ pub use numbers::number;
 #[cfg(target_arch = "x86_64")]
 pub use numbers::wrapper_constants::*;
 
-use crate::thread::Thread;
+use crate::{print::kprintln, thread::Thread};
 
 // SycallContext Trait
 // The purpose of this trait is to unify system calls between
@@ -55,6 +55,7 @@ pub trait SyscallContext {
 
 pub fn syscall_handler(thread: &Arc<Thread>, ctx: &mut impl SyscallContext) {
     let num = ctx.syscall_number();
+    kprintln!("handling syscall {} for thread {}", num, thread.tid());
 
     match num {
         // Modern core ABI (Aarch64 uses these exclusively while x86_64 uses both because of legacy support)

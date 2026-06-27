@@ -88,8 +88,13 @@ impl Process {
             task()
         });
     }
+
     pub fn get_pid(&self) -> u32 {
         self.pid
+    }
+
+    pub fn get_address_space(&self) -> u64 {
+        self.virtual_memory.get_page_table() as u64
     }
 }
 

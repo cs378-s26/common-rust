@@ -108,5 +108,8 @@ pub trait ArchTrait {
         system_drivers: &mut Vec<Box<dyn DeviceDiscovery + Send + Sync>>,
     );
 
+    // sets up the initial stack for a user process and returns the initial stack pointer. Space is the address space the stack should be mapped in
+    fn setup_stack(sp: u64, space: u64, argc: u64, argv: &[&str], envp: &[&str]) -> Option<u64>;
+
     fn init_tty(cell: &Once<Box<dyn CharSink>>);
 }

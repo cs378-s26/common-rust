@@ -34,6 +34,51 @@ pub fn configure_vm() {
     kprintln!("Configured VM with MAIR_EL1 = {:#x}", mair_el1);
 }
 
+pub fn get_phys_addr(vaddr: u64, space: u64) -> Option<u64> {
+    let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
+
+    let index_0 = ((vaddr >> 39) & 0x1FF) as usize;
+    let index_1 = ((vaddr >> 30) & 0x1FF) as usize;
+    let index_2 = ((vaddr >> 21) & 0x1FF) as usize;
+    let index_3 = ((vaddr >> 12) & 0x1FF) as usize;
+
+    let pt_base = (space & !0xFFF) + hhdm_offset as u64;
+    unsafe {
+        let _ = VMM_PROTECTOR.lock();
+        let l0: &[u64] = core::slice::from_raw_parts(pt_base as *const u64, PTE_PER_PAGE);
+        if (l0[index_0] & 0b11) != 0b11 {
+            return None;
+        }
+
+        let l1_phys = l0[index_0] & PTE_ADDR_MASK;
+        let l1: &[u64] =
+            core::slice::from_raw_parts((l1_phys + hhdm_offset as u64) as *const u64, PTE_PER_PAGE);
+        if (l1[index_1] & 0b11) != 0b11 {
+            return None;
+        }
+
+        let l2_phys = l1[index_1] & PTE_ADDR_MASK;
+        let l2: &[u64] =
+            core::slice::from_raw_parts((l2_phys + hhdm_offset as u64) as *const u64, PTE_PER_PAGE);
+        if (l2[index_2] & 0b11) != 0b11 {
+            return None;
+        }
+
+        let l3_phys = l2[index_2] & PTE_ADDR_MASK;
+        let l3: &[u64] =
+            core::slice::from_raw_parts((l3_phys + hhdm_offset as u64) as *const u64, PTE_PER_PAGE);
+        if (l3[index_3] & 0b1) == 0 {
+            return None;
+        }
+
+        Some((l3[index_3] & PTE_ADDR_MASK) | (vaddr & 0xFFF))
+    }
+}
+
+pub fn phys_to_virt(paddr: u64) -> u64 {
+    paddr + HHDM_REQUEST.get_response().unwrap().offset()
+}
+
 // TODO allow for shared mappings and write-through caching
 bitflags! {
     pub struct PageTableEntryFlags: u64 {
@@ -116,19 +161,20 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
     let pt_base = (space & !0xFFF) + hhdm_offset as u64;
     unsafe {
         let _ = VMM_PROTECTOR.lock();
-        let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, 512);
+        // TODO make a function to reduce repeated code here
+        let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, PTE_PER_PAGE);
 
         let l1_phys = ensure_next_table(&mut l0[index_0], hhdm_offset);
         let l1: &mut [u64] =
-            core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
 
         let l2_phys = ensure_next_table(&mut l1[index_1], hhdm_offset);
         let l2: &mut [u64] =
-            core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
 
         let l3_phys = ensure_next_table(&mut l2[index_2], hhdm_offset);
         let l3: &mut [u64] =
-            core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
 
         l3[index_3] = (paddr & PTE_ADDR_MASK) | create_aarch64_attributes(options);
     }
@@ -229,21 +275,21 @@ fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> {
         }
         let l1_phys = (l0[index_0] & PTE_ADDR_MASK) as usize;
         let l1: &mut [u64] =
-            core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
 
         if (l1[index_1] & 0b11) != 0b11 {
             return None; // entry not valid or not a table
         }
         let l2_phys = (l1[index_1] & PTE_ADDR_MASK) as usize;
         let l2: &mut [u64] =
-            core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
 
         if (l2[index_2] & 0b11) != 0b11 {
             return None; // entry not valid or not a table
         }
         let l3_phys = (l2[index_2] & PTE_ADDR_MASK) as usize;
         let l3: &mut [u64] =
-            core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
+            core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, PTE_PER_PAGE);
         if (l3[index_3] & 0b11) == 0 {
             return None; // entry not valid
         }

@@ -10,7 +10,8 @@ use super::apic;
 use crate::{
     event::{Event, push_event},
     memory::virtual_memory::PageFaultConditions,
-    mp::CORE_ID, thread::CUR_TLS_ADDR,
+    mp::CORE_ID,
+    thread::CUR_TLS_ADDR,
 };
 
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);

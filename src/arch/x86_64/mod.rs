@@ -29,9 +29,7 @@ pub use context::Context;
 use context::save_context;
 pub use interrupt::*;
 pub use irq_vector::IPI_WAKE;
-use mp::{
-    get_cpu_local_pointer, init_cpu_local_ptr, initialize_core,
-};
+use mp::{get_cpu_local_pointer, init_cpu_local_ptr, initialize_core};
 pub use vmm::*;
 use x86::{
     bits64::rflags::{self, RFlags},
@@ -122,6 +120,16 @@ impl ArchTrait for Arch {
 
     fn get_user_address_space() -> u64 {
         get_address_space()
+    }
+
+    fn setup_stack(
+        _sp: u64,
+        _space: u64,
+        _argc: u64,
+        _argv: &[&str],
+        _envp: &[&str],
+    ) -> Option<u64> {
+        unimplemented!("setup_stack is not implemented for x86_64 yet");
     }
 
     fn set_user_address_space(space: u64) {

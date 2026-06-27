@@ -8,6 +8,7 @@ use crate::{
     arch::{Arch, ArchTrait},
     memory::virtual_memory::{PageFaultConditions, handle_page_fault},
     mp::{CORE_ID, CoreId, core_local},
+    print::kprintln,
     sync::{IntSpinLock, MutexLike},
     syscall::syscall_handler,
     thread::{
@@ -84,6 +85,11 @@ pub fn init_event_handler() {
                 let event = CUR_EVENT.read_for(&thread).lock().take().unwrap();
                 match event {
                     PageFault { cause, address } => {
+                        kprintln!(
+                            "handling page fault for thread {} at address {:#x}",
+                            thread.tid(),
+                            address
+                        );
                         handle_page_fault(cause, address, &thread);
                         LOCAL_WORK_QUEUE.lock().push_back(thread);
                     }
