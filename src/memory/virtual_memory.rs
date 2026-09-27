@@ -8,7 +8,7 @@ use spin::{Mutex, Once};
 use crate::{
     arch::{Arch, ArchTrait},
     memory::{
-        physical_memory::{HHDM_OFFSET, REGIONS, frame_alloc},
+        physical_memory::{EarlyPmm, HHDM_OFFSET, PageArray, REGIONS, frame_alloc},
         virtual_memory_2::USERSPACE_END,
     },
     print::kprintln,
@@ -96,7 +96,7 @@ impl VirtualMemoryEntryContainer {
     }
 }
 
-pub fn init_virtual_memory_allocator() {
+pub fn init_virtual_memory_allocator(early: &mut EarlyPmm) -> PageArray {
     Arch::configure_vm();
     kprintln!("initializing virtual memory allocator");
     VMES.call_once(|| {
@@ -107,6 +107,22 @@ pub fn init_virtual_memory_allocator() {
     });
     let mut executable_length = 0;
     let executable_start = EXECUTABLE_ADDRESS_REQUEST.get_response().unwrap();
+    let phys_top = REGIONS
+        .get()
+        .unwrap()
+        .iter()
+        .map(|region| (region.base + region.length) as usize)
+        .max()
+        .unwrap();
+    assert!(
+        HHDM_OFFSET
+            .get()
+            .unwrap()
+            .checked_add(phys_top)
+            .is_some_and(|top| top <= executable_start.virtual_base() as usize),
+        "physical memory up to {:x} does not fit in the linear map",
+        phys_top
+    );
     for region in *REGIONS.get().unwrap() {
         // if you need to map over one of these, just change backing and options accordingly
         VirtualMemoryAllocation::new(
@@ -145,6 +161,7 @@ pub fn init_virtual_memory_allocator() {
         PagingOptions::SHADOW,
         true,
     );
+    PageArray::map(early)
 }
 
 pub fn handle_page_fault(cause: PageFaultConditions, address: usize, thread: &Arc<Thread>) {

@@ -47,7 +47,7 @@ use crate::{
         ArchTrait, UnwindContextTrait, apic::send_ipi_all_except_self, irq_vector::TLB_SHOOTDOWN,
     },
     event::{Event::Shootdown, push_event},
-    memory::virtual_memory::PagingOptions,
+    memory::{physical_memory::PageFrameAllocator, virtual_memory::PagingOptions},
     mp::{CORE_ID, CoreId},
     print::CharSink,
     thread::yield_thread,
@@ -146,8 +146,14 @@ impl ArchTrait for Arch {
         set_address_space(space)
     }
 
-    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-        vmap(space, vaddr, paddr, options);
+    fn virtual_map_with<P: PageFrameAllocator>(
+        space: u64,
+        vaddr: u64,
+        paddr: u64,
+        options: PagingOptions,
+        pmm: &mut P,
+    ) {
+        vmap(space, vaddr, paddr, options, pmm);
     }
 
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {

@@ -15,7 +15,12 @@ use spin::{MutexGuard, Once};
 #[cfg(target_arch = "aarch64")]
 pub use self::aarch64::*;
 use crate::{
-    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, mp::CoreId,
+    devices::discovery::DeviceDiscovery,
+    memory::{
+        physical_memory::{GlobalPmm, PageFrameAllocator},
+        virtual_memory::PagingOptions,
+    },
+    mp::CoreId,
     print::CharSink,
 };
 
@@ -115,7 +120,17 @@ pub trait ArchTrait {
     fn get_user_address_space() -> u64;
     fn set_user_address_space(space: u64);
     fn configure_vm();
-    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions);
+    /// Maps a page, allocating intermediate page tables from `pmm`.
+    fn virtual_map_with<P: PageFrameAllocator>(
+        space: u64,
+        vaddr: u64,
+        paddr: u64,
+        options: PagingOptions,
+        pmm: &mut P,
+    );
+    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+        Self::virtual_map_with(space, vaddr, paddr, options, &mut GlobalPmm);
+    }
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64>;
     /// Unmaps a page without freeing the physical frame (for MMIO / externally-owned backing).
     fn virtual_unmap_no_dealloc(space: u64, vaddr: u64) -> Option<u64>;

@@ -4,37 +4,26 @@ use spin::Mutex;
 use x86_64::{
     PhysAddr, VirtAddr,
     structures::paging::{
-        FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags,
-        PhysFrame, Size4KiB,
+        FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame,
+        Size4KiB,
     },
 };
 
 use crate::{
     arch::apic,
     memory::{
-        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        physical_memory::{HHDM_REQUEST, PageFrameAllocator, frame_dealloc},
         virtual_memory::PagingOptions,
     },
 }; // https://docs.rs/x86_64/latest/x86_64/structures/paging/
 
 // ChatGPT told me how to do this trait impl'ing
-pub struct FrameAllocatorWrapper {
-    pub inner: fn() -> usize,
-}
-unsafe impl FrameAllocator<Size4KiB> for FrameAllocatorWrapper {
+struct FrameAllocatorWrapper<'a, P>(&'a mut P);
+
+unsafe impl<P: PageFrameAllocator> FrameAllocator<Size4KiB> for FrameAllocatorWrapper<'_, P> {
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
-        // if our physmem allocator starts returning misaligned frames, we're in big trouble...
-        PhysFrame::from_start_address(PhysAddr::new((self.inner)() as u64)).ok()
-    }
-}
-
-pub struct FrameDeallocatorWrapper {
-    pub inner: fn(usize) -> (),
-}
-
-impl FrameDeallocator<Size4KiB> for FrameDeallocatorWrapper {
-    unsafe fn deallocate_frame(&mut self, frame: PhysFrame<Size4KiB>) {
-        (self.inner)(frame.start_address().as_u64() as usize)
+        let frame = self.0.alloc_frame()?;
+        PhysFrame::from_start_address(PhysAddr::new(frame as u64)).ok()
     }
 }
 
@@ -59,12 +48,16 @@ pub fn set_address_space(cr3: u64) {
     }
 }
 
-// TODO allocator wrapper is kinda dumb
-
 struct VMMProtector; // TODO make cr3-specific
 static VMM_PROTECTOR: Mutex<VMMProtector> = Mutex::new(VMMProtector {});
 
-pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+pub fn vmap<P: PageFrameAllocator>(
+    space: u64,
+    vaddr: u64,
+    paddr: u64,
+    options: PagingOptions,
+    pmm: &mut P,
+) {
     // TODO avoid doing this every time somehow?
     let hhdm_offset: u64 = HHDM_REQUEST.get_response().unwrap().offset();
     let mut mapper = unsafe {
@@ -104,14 +97,7 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
         .unwrap_or_else(|_| panic!("misaligned physical address {:x} to vmap", paddr));
     let toilet = {
         let _ = VMM_PROTECTOR.lock();
-        unsafe {
-            mapper.map_to(
-                vpage,
-                pframe,
-                flags,
-                &mut FrameAllocatorWrapper { inner: frame_alloc },
-            )
-        }
+        unsafe { mapper.map_to(vpage, pframe, flags, &mut FrameAllocatorWrapper(pmm)) }
     }
     .unwrap_or_else(|e| {
         panic!(
@@ -140,12 +126,7 @@ pub fn vunmap_internal(space: u64, vaddr: u64, free_frame: bool) -> Option<u64> 
     } {
         toilet.flush(); // this handles all the TLB clearing for us, but not the IPI...
         if free_frame {
-            unsafe {
-                FrameDeallocatorWrapper {
-                    inner: frame_dealloc,
-                }
-                .deallocate_frame(frame)
-            }; // no shared mappings for now
+            frame_dealloc(frame.start_address().as_u64() as usize); // no shared mappings for now
         }
         Some(frame.start_address().as_u64()) // returning this will be useful when we allow shared mappings
     } else {
