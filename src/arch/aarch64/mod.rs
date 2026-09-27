@@ -4,7 +4,9 @@ use core::arch::asm;
 use spin::Once;
 
 use crate::{
-    devices::discovery::DeviceDiscovery, memory::virtual_memory::PagingOptions, print::CharSink,
+    devices::discovery::DeviceDiscovery,
+    memory::{physical_memory::PageFrameAllocator, virtual_memory::PagingOptions},
+    print::CharSink,
 };
 
 mod asm;
@@ -121,8 +123,14 @@ impl ArchTrait for Arch {
         vmm::set_user_address_space(space)
     }
 
-    fn virtual_map(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
-        vmm::vmap(space, vaddr, paddr, options)
+    fn virtual_map_with<P: PageFrameAllocator>(
+        space: u64,
+        vaddr: u64,
+        paddr: u64,
+        options: PagingOptions,
+        pmm: &mut P,
+    ) {
+        vmm::vmap(space, vaddr, paddr, options, pmm)
     }
 
     fn virtual_unmap(space: u64, vaddr: u64) -> Option<u64> {

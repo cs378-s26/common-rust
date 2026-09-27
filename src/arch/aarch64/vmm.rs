@@ -6,7 +6,7 @@ use spin::Mutex;
 use crate::{
     kprintln,
     memory::{
-        physical_memory::{HHDM_REQUEST, frame_alloc, frame_dealloc},
+        physical_memory::{HHDM_REQUEST, PageFrameAllocator, frame_dealloc},
         virtual_memory::PagingOptions,
     },
 };
@@ -102,7 +102,13 @@ pub fn set_user_address_space(space: u64) {
 
 // map a virtual address to a physical address in the given address space, with the given paging options
 // if calling this directly, make sure to call tlb shootdown to prevent any caching issues with overwriting
-pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
+pub fn vmap<P: PageFrameAllocator>(
+    space: u64,
+    vaddr: u64,
+    paddr: u64,
+    options: PagingOptions,
+    pmm: &mut P,
+) {
     let hhdm_offset = HHDM_REQUEST.get_response().unwrap().offset() as usize;
 
     // back in my day, we didn't have no fancy x86 crate to parse our pages, we did it
@@ -118,15 +124,15 @@ pub fn vmap(space: u64, vaddr: u64, paddr: u64, options: PagingOptions) {
         let _ = VMM_PROTECTOR.lock();
         let l0: &mut [u64] = core::slice::from_raw_parts_mut(pt_base as *mut u64, 512);
 
-        let l1_phys = ensure_next_table(&mut l0[index_0], hhdm_offset);
+        let l1_phys = ensure_next_table(&mut l0[index_0], hhdm_offset, pmm);
         let l1: &mut [u64] =
             core::slice::from_raw_parts_mut((l1_phys + hhdm_offset) as *mut u64, 512);
 
-        let l2_phys = ensure_next_table(&mut l1[index_1], hhdm_offset);
+        let l2_phys = ensure_next_table(&mut l1[index_1], hhdm_offset, pmm);
         let l2: &mut [u64] =
             core::slice::from_raw_parts_mut((l2_phys + hhdm_offset) as *mut u64, 512);
 
-        let l3_phys = ensure_next_table(&mut l2[index_2], hhdm_offset);
+        let l3_phys = ensure_next_table(&mut l2[index_2], hhdm_offset, pmm);
         let l3: &mut [u64] =
             core::slice::from_raw_parts_mut((l3_phys + hhdm_offset) as *mut u64, 512);
 
@@ -193,10 +199,14 @@ pub fn tlb_shootdown(vaddr: u64) {
 
 // make sure a pt entry contains a valid next-level table, allocating one if necessary,
 // and return the physical address of the next-level table
-fn ensure_next_table(entry: &mut u64, hhdm_offset: usize) -> usize {
+fn ensure_next_table<P: PageFrameAllocator>(
+    entry: &mut u64,
+    hhdm_offset: usize,
+    pmm: &mut P,
+) -> usize {
     // these bits check if the entry is valid and points to a next-level table for levels 0-2
     if (*entry & 0b11) == 0 {
-        let new_table_phys = frame_alloc();
+        let new_table_phys = pmm.alloc_frame().expect("out of memory for page tables");
 
         // Zero the freshly allocated page table.
         unsafe {

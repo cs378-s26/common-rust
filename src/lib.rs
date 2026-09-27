@@ -47,10 +47,7 @@ use limine::{
         RequestsStartMarker,
     },
 };
-use memory::{
-    physical_memory::{THE_HEAP, init_physical_memory_allocator},
-    virtual_memory::init_virtual_memory_allocator,
-};
+use memory::{init_mm, physical_memory::THE_HEAP};
 use modules::load_modules_early;
 
 use crate::{
@@ -64,7 +61,7 @@ use crate::{
         fake::{FAKE, Fake},
         vfs::VFS,
     },
-    memory::{heap::init_malloc, virtual_memory_2::VirtualMemory},
+    memory::heap::init_malloc,
     mp::{CORE_ID, MP_STAGE, MPStage, init_cpu_local_table},
     print::{StackTrace, init_tty, kprintln},
     process::init_pid_allocator,
@@ -179,11 +176,9 @@ pub fn system_init<Work: KernelWorkTrait>() -> ! {
         )
     }
 
-    init_physical_memory_allocator();
-    init_virtual_memory_allocator();
+    init_mm();
     init_pid_allocator();
 
-    VirtualMemory::init();
     let fake = Arc::clone(FAKE.call_once(Fake::new));
     VFS.mount(fake, &["/", "fake"]).unwrap();
     let dev = Arc::clone(DEV.call_once(Dev::new));
